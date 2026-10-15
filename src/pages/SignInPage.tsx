@@ -13,8 +13,9 @@ import { rememberInviteToken, useNoReferrer } from '../lib/inviteToken';
 import { INVITE_ROUTE } from '../contracts/friends';
 import styles from './SignInPage.module.css';
 
+/** What the wall explains. `already` belongs to the signed-in app (AuthGate). */
 const isSigninResult = (v: string | null): v is SigninResult =>
-  (SIGNIN_RESULTS as readonly (string | null)[]).includes(v);
+  v !== 'already' && (SIGNIN_RESULTS as readonly (string | null)[]).includes(v);
 
 /** Decorative radar rings. No data: the wall shows nothing until you sign in. */
 function RingsBackdrop() {

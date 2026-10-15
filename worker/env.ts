@@ -7,6 +7,8 @@ export interface Env {
   WRITE_LIMITER: RateLimit;
   /** 30 Apple Maps searches/lookups a minute per user (protects Apple's daily quota). */
   SEARCH_LIMITER: RateLimit;
+  /** 30 POSTs to /auth/callback a minute per client IP. */
+  CALLBACK_LIMITER: RateLimit;
   /** 20 photo uploads a minute per user (on top of WRITE_LIMITER). */
   PHOTO_UPLOAD_LIMITER: RateLimit;
   /** Photo bytes (bucket grub-radar-photos). Private: only the Worker serves them. */
@@ -39,7 +41,7 @@ export interface Env {
 
   /** Secret. ES256 .p8 key as PEM (literal "\n" escapes are accepted). */
   APPLE_PRIVATE_KEY: string;
-  /** Secret. HMAC key for the SIWA state cookie. */
+  /** Secret. Root key for the sealed SIWA state, the sign-in hand-off and other HMACs. */
   SESSION_HMAC_KEY: string;
 
   /** Dev only: enables POST /auth/dev-login. Never set in production. */

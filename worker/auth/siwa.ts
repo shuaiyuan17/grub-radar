@@ -8,7 +8,7 @@ import { importPKCS8, jwtVerify, SignJWT, type JWTVerifyGetKey } from 'jose';
 import { z } from 'zod/mini';
 import { clampName } from '../../src/contracts/me';
 import { isDevelopment, type Env } from '../env';
-import { randomToken, sha256Hex, signValue, verifyValue } from '../lib/crypto';
+import { openValue, randomToken, sealValue, sha256Hex } from '../lib/crypto';
 import { MINUTE } from '../lib/time';
 
 export const APPLE_ISSUER = 'https://appleid.apple.com';
@@ -42,25 +42,70 @@ export function safeReturnTo(raw: string | undefined | null): string {
 }
 
 // ---------------------------------------------------------------------------
-// state cookie: HMAC-signed { state, nonceHash, returnTo, iat }
+// state: a sealed, self-authenticating `state` parameter (+ the same value in a cookie)
+//
+// The `state` we send Apple IS the payload, sealed with AES-GCM (key derived
+// from SESSION_HMAC_KEY): { jti, nonceHash, returnTo, iat, prevSession? }.
+// Encrypted, not just signed, because prevSession (the SHA-256 id of the
+// browser's old session) has no business in Apple's logs or the URL bar.
+// Apple echoes `state` back verbatim in its form_post, so the callback can
+// verify it with no server-side storage and no cookie.
+//
+// The same sealed value also goes in the `__Host-grub_siwa` cookie
+// (SameSite=None). When the browser sends that cookie back, it must equal the
+// posted `state` exactly: that binds the callback to the browser that set off
+// (path "cookie"). Some browsers don't send it on Apple's cross-site POST (an
+// in-app browser handing off to another one, cross-site cookies blocked); then
+// a valid, unexpired sealed state alone is accepted (path "signed-state-only").
+//
+// ACCEPTED TRADE-OFF: without the cookie, nothing ties the callback to the
+// browser that started. Login CSRF becomes possible: an attacker who starts a
+// sign-in in their own browser, signs in to Apple as themselves and makes a
+// victim's browser POST their unused code + state here within 10 minutes can
+// sign the victim in to the ATTACKER's account. Impact here is low (the
+// victim sees the attacker's list; nothing of the victim's is exposed), and
+// it's narrowed: such a sign-in never replaces a live session (/auth/finish
+// sends an already-signed-in browser home untouched). A browser that does
+// send the cookie still gets the binding: a mismatch is refused. A state that
+// comes back with a code is single use either way (its jti in D1, see
+// db/authStates.ts), and the id_token's nonce must still match nonceHash.
 
-const StatePayload = z.strictObject({
-  state: z.string(),
-  nonceHash: z.string(),
-  returnTo: z.string(),
-  iat: z.number(),
+const STATE_SEAL_INFO = 'grub-radar siwa state v1';
+/** Hard cap on what we try to open: our own states are well under 1 KB. */
+const MAX_STATE_LENGTH = 2048;
+
+/** The wire shape: short keys keep Apple's `state` parameter compact. */
+const SealedState = z.strictObject({
+  j: z.string().check(z.minLength(16)),
+  n: z.string(),
+  r: z.string(),
+  t: z.number(),
+  p: z.optional(z.string()),
+});
+
+export interface StatePayload {
+  /** Random id: the state's single-use key in D1 (auth_states_used). */
+  jti: string;
+  /** SHA-256 (hex) of the nonce sent to Apple; the id_token must carry that nonce. */
+  nonceHash: string;
+  returnTo: string;
+  /** When /auth/apple/start issued it (ms). */
+  iat: number;
   /**
    * The session id (SHA-256 of the token) this browser had when it started
    * signing in. The callback can't see the Lax session cookie (Apple's POST
    * is cross-site), so it learns which session to end from here.
    */
-  prevSession: z.optional(z.string()),
-});
-export type StatePayload = z.infer<typeof StatePayload>;
+  prevSession?: string;
+}
+
+/** Which proof the callback accepted: logged (the name only, never values). */
+export type StatePath = 'cookie' | 'signed-state-only';
 
 export interface AuthorizeStart {
   url: string;
-  cookie: string;
+  /** The sealed state: Apple's `state` parameter, and the state cookie's value. */
+  state: string;
 }
 
 export async function startAuthorize(
@@ -70,15 +115,15 @@ export async function startAuthorize(
   prevSession?: string,
   now = Date.now(),
 ): Promise<AuthorizeStart> {
-  const state = randomToken(32);
   const nonce = randomToken(32);
-  const payload: StatePayload = {
-    state,
-    nonceHash: await sha256Hex(nonce),
-    returnTo: safeReturnTo(returnTo),
-    iat: now,
-    ...(prevSession ? { prevSession } : {}),
+  const sealed: z.infer<typeof SealedState> = {
+    j: randomToken(16),
+    n: await sha256Hex(nonce),
+    r: safeReturnTo(returnTo),
+    t: now,
+    ...(prevSession ? { p: prevSession } : {}),
   };
+  const state = await sealValue(JSON.stringify(sealed), env.SESSION_HMAC_KEY, STATE_SEAL_INFO);
   const url = new URL('/auth/authorize', appleBase(env));
   url.searchParams.set('client_id', env.APPLE_CLIENT_ID);
   url.searchParams.set('redirect_uri', redirectUri(env, requestUrl));
@@ -88,31 +133,51 @@ export async function startAuthorize(
   url.searchParams.set('scope', 'name email');
   url.searchParams.set('state', state);
   url.searchParams.set('nonce', nonce);
+  return { url: url.toString(), state };
+}
+
+/** A sealed state we made, unexpired; else null. Says nothing about single use. */
+export async function openState(
+  env: Env,
+  state: string | undefined,
+  now = Date.now(),
+): Promise<StatePayload | null> {
+  if (!state || state.length > MAX_STATE_LENGTH) return null;
+  const raw = await openValue(state, env.SESSION_HMAC_KEY, STATE_SEAL_INFO);
+  if (raw === null) return null;
+  let s: z.infer<typeof SealedState>;
+  try {
+    s = SealedState.parse(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+  if (now - s.t > STATE_MAX_AGE_S * 1000 || s.t > now + MINUTE) return null;
   return {
-    url: url.toString(),
-    cookie: await signValue(JSON.stringify(payload), env.SESSION_HMAC_KEY),
+    jti: s.j,
+    nonceHash: s.n,
+    returnTo: safeReturnTo(s.r),
+    iat: s.t,
+    ...(s.p ? { prevSession: s.p } : {}),
   };
 }
 
-/** The verified state payload, or null if missing / forged / expired / not this state. */
-export async function readStateCookie(
+/**
+ * The callback's state check (before single use, which needs D1):
+ * - cookie sent: it must be exactly the posted state, and that state valid;
+ * - no cookie: the posted state alone, if valid (see the trade-off above).
+ * Null for missing / forged / expired / mismatched.
+ */
+export async function readState(
   env: Env,
   cookie: string | undefined,
   formState: string | undefined,
   now = Date.now(),
-): Promise<StatePayload | null> {
-  if (!cookie || !formState) return null;
-  const raw = await verifyValue(cookie, env.SESSION_HMAC_KEY);
-  if (raw === null) return null;
-  let parsed: StatePayload;
-  try {
-    parsed = StatePayload.parse(JSON.parse(raw));
-  } catch {
-    return null;
-  }
-  if (now - parsed.iat > STATE_MAX_AGE_S * 1000 || parsed.iat > now + MINUTE) return null;
-  if (!timingSafeEqualStrings(parsed.state, formState)) return null;
-  return parsed;
+): Promise<{ payload: StatePayload; path: StatePath } | null> {
+  if (!formState) return null;
+  if (cookie !== undefined && !timingSafeEqualStrings(cookie, formState)) return null;
+  const payload = await openState(env, formState, now);
+  if (!payload) return null;
+  return { payload, path: cookie !== undefined ? 'cookie' : 'signed-state-only' };
 }
 
 function timingSafeEqualStrings(a: string, b: string): boolean {
@@ -247,7 +312,7 @@ export interface AppleIdentity {
 
 /**
  * Verifies an Apple id_token: RS256 signature against Apple's keys, iss, aud,
- * exp (jose), then the nonce against the hash we kept in the state cookie.
+ * exp (jose), then the nonce against the hash we kept in the sealed state.
  */
 export async function verifyIdToken(
   idToken: string,

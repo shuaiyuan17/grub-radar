@@ -11,14 +11,15 @@ import {
 } from 'jose';
 import { describe, expect, it } from 'vitest';
 import type { Env } from '../env';
-import { signValue, sha256Hex } from '../lib/crypto';
+import { sealValue, sha256Hex } from '../lib/crypto';
 import { CLIENT_ID, fakeAppleKeys } from '../test/helpers';
 import {
   appleBase,
   createClientSecret,
   nameFromUserField,
   normalizePem,
-  readStateCookie,
+  openState,
+  readState,
   redirectUri,
   safeReturnTo,
   SiwaError,
@@ -74,13 +75,32 @@ describe('authorize request', () => {
       response_mode: 'form_post',
       scope: 'name email',
     });
-    expect(p.state).toMatch(/^[\w-]{43}$/);
+    // the state is the sealed payload: opaque, URL-safe, compact
+    expect(p.state).toBe(start.state);
+    expect(p.state).toMatch(/^[\w-]{16}\.[\w-]+$/);
     expect(p.nonce).toMatch(/^[\w-]{43}$/);
-    expect(p.state).not.toBe(p.nonce);
-    // the cookie carries the nonce's hash, not the nonce
-    expect(start.cookie).not.toContain(p.nonce);
-    const state = await readStateCookie(env, start.cookie, p.state);
+    // it carries the nonce's hash, not the nonce, and nothing readable
+    expect(p.state).not.toContain(p.nonce);
+    const state = await openState(env, p.state);
     expect(state).toMatchObject({ returnTo: '/radar', nonceHash: await sha256Hex(p.nonce ?? '') });
+    expect(state?.jti).toMatch(/^[\w-]{22}$/);
+  });
+
+  it('keeps the state short: ~300 chars usually, under 1 KB at the longest returnTo', async () => {
+    const prev = await sha256Hex('a session token');
+    const usual = await startAuthorize(env, 'https://grub.test/x', '/place/lucky-thread', prev);
+    expect(usual.state.length).toBeLessThan(400);
+    const longest = await startAuthorize(env, 'https://grub.test/x', `/${'x'.repeat(511)}`, prev);
+    expect(longest.state.length).toBeLessThan(1024);
+    expect((await openState(env, longest.state))?.returnTo).toHaveLength(512);
+  });
+
+  it('encrypts the previous session id: it never shows in the URL', async () => {
+    const prev = await sha256Hex('a session token');
+    const start = await startAuthorize(env, 'https://grub.test/x', '/', prev);
+    expect(start.url).not.toContain(prev);
+    expect(start.url).not.toContain(prev.slice(0, 16));
+    expect((await openState(env, start.state))?.prevSession).toBe(prev);
   });
 
   it.each(['production', 'staging', 'Development', '', 'test'])(
@@ -110,34 +130,86 @@ describe('authorize request', () => {
   });
 });
 
-describe('state cookie', () => {
+describe('sealed state', () => {
   const now = Date.now();
-  const payload = (over = {}) =>
-    JSON.stringify({ state: 's1', nonceHash: 'h', returnTo: '/', iat: now, ...over });
+  const INFO = 'grub-radar siwa state v1';
+  const wire = (over = {}) =>
+    JSON.stringify({ j: 'jti-0123456789abcdef', n: 'h', r: '/', t: now, ...over });
+  const seal = (over = {}, key = env.SESSION_HMAC_KEY) => sealValue(wire(over), key, INFO);
 
-  it('accepts its own signed cookie for the matching state', async () => {
-    const cookie = await signValue(payload(), env.SESSION_HMAC_KEY);
-    expect(await readStateCookie(env, cookie, 's1', now)).not.toBeNull();
+  it('opens its own sealed state', async () => {
+    expect(await openState(env, await seal(), now)).toEqual({
+      jti: 'jti-0123456789abcdef',
+      nonceHash: 'h',
+      returnTo: '/',
+      iat: now,
+    });
   });
 
-  it('rejects a missing cookie, a different state, a forged or tampered cookie', async () => {
-    const cookie = await signValue(payload(), env.SESSION_HMAC_KEY);
-    expect(await readStateCookie(env, undefined, 's1', now)).toBeNull();
-    expect(await readStateCookie(env, cookie, undefined, now)).toBeNull();
-    expect(await readStateCookie(env, cookie, 's2', now)).toBeNull();
-    const forged = await signValue(payload(), 'some-other-key');
-    expect(await readStateCookie(env, forged, 's1', now)).toBeNull();
-    const [body, sig] = cookie.split('.');
-    const tampered = `${btoa(payload({ returnTo: '//evil' })).replace(/=+$/, '')}.${sig ?? ''}`;
-    expect(await readStateCookie(env, tampered, 's1', now)).toBeNull();
-    expect(await readStateCookie(env, body ?? '', 's1', now)).toBeNull();
-    expect(await readStateCookie(env, 'not.base64!!', 's1', now)).toBeNull();
+  it('rejects a missing, forged, tampered, malformed or oversized state', async () => {
+    const good = await seal();
+    expect(await openState(env, undefined, now)).toBeNull();
+    expect(await openState(env, '', now)).toBeNull();
+    expect(await openState(env, await seal({}, 'some-other-key'), now)).toBeNull();
+    // one ciphertext character changed
+    const i = good.length - 5;
+    const flipped = good.slice(0, i) + (good[i] === 'A' ? 'B' : 'A') + good.slice(i + 1);
+    expect(await openState(env, flipped, now)).toBeNull();
+    expect(await openState(env, good.split('.')[1], now)).toBeNull();
+    expect(await openState(env, 'not.base64!!', now)).toBeNull();
+    // a random token (the old state format) is not a state
+    expect(await openState(env, 'x'.repeat(43), now)).toBeNull();
+    // sealed by us but not a state's shape (another purpose, extra fields, short jti)
+    expect(await openState(env, await seal({ extra: 1 }), now)).toBeNull();
+    expect(await openState(env, await seal({ j: 'short' }), now)).toBeNull();
+    expect(
+      await openState(env, await sealValue(wire(), env.SESSION_HMAC_KEY, 'other purpose'), now),
+    ).toBeNull();
+    expect(await openState(env, `${good}${'A'.repeat(2048)}`, now)).toBeNull();
   });
 
-  it('expires after 10 minutes', async () => {
-    const cookie = await signValue(payload(), env.SESSION_HMAC_KEY);
-    expect(await readStateCookie(env, cookie, 's1', now + 9 * 60_000)).not.toBeNull();
-    expect(await readStateCookie(env, cookie, 's1', now + 11 * 60_000)).toBeNull();
+  it('expires after 10 minutes, and is never from the future', async () => {
+    const state = await seal();
+    expect(await openState(env, state, now + 9 * 60_000)).not.toBeNull();
+    expect(await openState(env, state, now + 11 * 60_000)).toBeNull();
+    expect(await openState(env, await seal({ t: now + 2 * 60_000 }), now)).toBeNull();
+  });
+
+  it('re-checks returnTo on the way out', async () => {
+    expect((await openState(env, await seal({ r: '//evil.example' }), now))?.returnTo).toBe('/');
+  });
+});
+
+describe('readState (the callback check)', () => {
+  const now = Date.now();
+  const make = () =>
+    sealValue(
+      JSON.stringify({ j: 'jti-0123456789abcdef', n: 'h', r: '/', t: now }),
+      env.SESSION_HMAC_KEY,
+      'grub-radar siwa state v1',
+    );
+
+  it('with the cookie: it must be exactly the posted state', async () => {
+    const state = await make();
+    expect((await readState(env, state, state, now))?.path).toBe('cookie');
+    const other = await make();
+    expect(await readState(env, other, state, now)).toBeNull();
+    expect(await readState(env, '', state, now)).toBeNull();
+    expect(await readState(env, `${state}x`, state, now)).toBeNull();
+  });
+
+  it('without the cookie: a valid sealed state alone', async () => {
+    const state = await make();
+    expect((await readState(env, undefined, state, now))?.path).toBe('signed-state-only');
+    expect(await readState(env, undefined, undefined, now)).toBeNull();
+    expect(await readState(env, undefined, 'forged', now)).toBeNull();
+    expect(await readState(env, undefined, state, now + 11 * 60_000)).toBeNull();
+  });
+
+  it('a matching cookie does not rescue an invalid state', async () => {
+    const state = await make();
+    expect(await readState(env, state, state, now + 11 * 60_000)).toBeNull();
+    expect(await readState(env, 'forged', 'forged', now)).toBeNull();
   });
 });
 

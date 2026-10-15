@@ -352,6 +352,7 @@ const en = {
     cancelled: 'sign-in cancelled. no worries, try again whenever.',
     closed: 'grub radar is invite-only for now. that Apple ID doesn’t have an account.',
     failed: 'that didn’t work. try signing in again?',
+    already: 'you’re already signed in.',
   } satisfies Record<SigninResult, string>,
 
   photos: {
@@ -775,6 +776,7 @@ const zh: Messages = {
     cancelled: '登录已取消。随时可以再来。',
     closed: 'grub radar 目前仅限邀请，这个 Apple ID 还没有账号。',
     failed: '没成功，再登录一次试试？',
+    already: '你已经登录了。',
   },
 
   photos: {

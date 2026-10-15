@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { AppEnv } from './app';
 import { principalResolver } from './auth/principal';
+import { sweepSpentStates } from './db/authStates';
 import { CorruptSpotError } from './db/spots';
 import { apiError } from './lib/http';
 import { timedD1 } from './lib/timedD1';
@@ -116,13 +117,24 @@ app.onError((err, c) => {
 /**
  * Cron (wrangler.jsonc triggers.crons, hourly): delete the photo bytes still
  * on the deletion outbox (anything a request's own sweep didn't finish, and
- * everything an account deletion cascaded).
+ * everything an account deletion cascaded), and the spent sign-in states that
+ * can no longer be valid (auth_states_used).
  */
 const scheduled: ExportedHandlerScheduledHandler<Env> = (_controller, env, ctx) => {
   ctx.waitUntil(
     sweepPhotoDeletions(env.DB, env.PHOTOS, { limit: 5000 }).then((r) => {
       if (r.deleted || r.failed) console.log('photo sweep', r);
     }),
+  );
+  ctx.waitUntil(
+    sweepSpentStates(env.DB).then(
+      (deleted) => {
+        if (deleted) console.log('spent sign-in states swept', { deleted });
+      },
+      (e: unknown) => {
+        console.error('state sweep failed', e instanceof Error ? e.message : e);
+      },
+    ),
   );
 };
 

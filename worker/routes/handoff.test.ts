@@ -85,7 +85,7 @@ afterEach(() => {
 });
 
 describe('POST /auth/callback: the "signing you in…" page', () => {
-  it('answers at once, before any Apple or D1 work, with no session yet', async () => {
+  it('answers at once, before any Apple work and with one D1 round trip, with no session yet', async () => {
     const { page, mock, t } = await handoff();
     expect(page.status).toBe(200);
     expect(page.headers.get('content-type')).toMatch(/^text\/html/);
@@ -99,9 +99,9 @@ describe('POST /auth/callback: the "signing you in…" page', () => {
     expect(html).toContain('<form id="go" method="POST" action="/auth/finish">');
     expect(html).not.toMatch(/finish\?/);
     expect(html).not.toMatch(/http-equiv="refresh"/);
-    // no D1 at all on this request
-    expect(timingNames(page)).not.toContain('d1_1');
-    expect(page.headers.get('server-timing')).toContain('d1;desc="0 round trips"');
+    // one D1 round trip on this request: spending the state (single use), nothing else
+    expect(timingNames(page)).not.toContain('d1_2');
+    expect(page.headers.get('server-timing')).toContain('d1;desc="1 round trips"');
   });
 
   it('runs only its own one-line script and style, both allowed by hash', async () => {
@@ -170,6 +170,37 @@ describe('POST /auth/callback: the "signing you in…" page', () => {
     const noCode = await postCallback({ state: start.state }, start.cookie);
     expect(noCode.headers.get('location')).toBe('/?signin=failed');
     expect(setCookieLine(noCode, PENDING_COOKIE)).toBeUndefined();
+  });
+});
+
+describe('the hand-off when the state cookie did not come back', () => {
+  // The pending cookie is set on OUR response to Apple's POST (a top-level
+  // navigation: first-party, unlike the state cookie riding on the cross-site
+  // request) and read on a same-origin POST from our own page, so a browser that
+  // drops the state cookie still keeps this one. e2e/auth.spec.ts checks that in
+  // a real browser whose cookie jar never saw /auth/apple/start.
+  it('sets the same __Host-, Lax, two-minute pending cookie, and /auth/finish completes', async () => {
+    const mock = appleAnswers();
+    const start = await startSignIn('/radar');
+    mock.setNonce(start.nonce);
+    const page = await postCallback({ code: 'c.fictional', state: start.state });
+    expect(page.status).toBe(200);
+    const line = setCookieLine(page, PENDING_COOKIE) ?? '';
+    expect(line).toMatch(/^__Host-grub_signin=/);
+    expect(line).toMatch(/; SameSite=Lax/);
+    expect(line).toMatch(/; Max-Age=120/);
+    const t = (await handoffValue(page)) ?? '';
+    const cookie = cookieFrom(page, PENDING_COOKIE) ?? '';
+    // the hand-off is exactly as strict: no `t`, no cookie, or cross-site is refused
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect((await finish(undefined, cookie)).headers.get('location')).toBe('/?signin=failed');
+    expect((await finish(t, undefined)).headers.get('location')).toBe('/?signin=failed');
+    expect(
+      (await finish(t, cookie, { 'sec-fetch-site': 'cross-site' })).headers.get('location'),
+    ).toBe('/?signin=failed');
+    const res = await finish(t, cookie);
+    expect(res.headers.get('location')).toBe('/radar');
+    expect(cookieFrom(res, '__Host-grub_session')).not.toBeNull();
   });
 });
 

@@ -33,6 +33,7 @@ let before: Record<string, unknown[]> = {};
 
 beforeAll(async () => {
   for (const t of [
+    'auth_states_used',
     'photo_deletions',
     'photos',
     'invites',

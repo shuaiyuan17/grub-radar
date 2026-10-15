@@ -5,3 +5,34 @@
   gap: 14px;
   padding: 18px 24px;
 }
+
+/* ?signin=already: a sticky note over the app, clear of the header */
+.notice {
+  --fill: var(--sticky);
+  --sx: 2px;
+  --sy: 3px;
+  position: fixed;
+  z-index: 50;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  translate: -50% 0;
+  width: min(360px, calc(100vw - 32px));
+  border-radius: 4px 6px 3px 5px;
+  padding: 8px 6px 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  rotate: -0.6deg;
+}
+.notice p {
+  flex: 1;
+}
+.closeBtn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
