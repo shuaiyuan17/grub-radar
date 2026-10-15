@@ -121,9 +121,84 @@ Hourly at minute 23 (`triggers.crons` in `wrangler.jsonc`, `scheduled` in `worke
 
 - sweep the photo deletion outbox (`photo_deletions`, up to 5000 keys) from R2
   ([data.md](data.md#the-deletion-outbox)),
-- delete spent sign-in states that can no longer be valid (`auth_states_used`).
+- delete spent sign-in states that can no longer be valid (`auth_states_used`),
+- housekeeping (`worker/db/housekeeping.ts`): sessions that expired or passed the 90-day
+  limit, invites that are used, revoked or expired once they're over a day old (the 20-a-day
+  cap still counts them until then), and `daily_counts` rows older than yesterday (some are
+  keyed by IP address).
 
-Each logs a line only when it did something (`photo sweep`, `spent sign-in states swept`).
+Each logs a line only when it did something (`photo sweep`, `spent sign-in states swept`,
+`housekeeping`). The [Privacy Policy](https://grub.shuaiyuan.me/privacy) states these
+rules: change both together.
+
+## Deleting an account
+
+There is no delete-account endpoint yet. The Privacy Policy promises that on request (to
+`CONTACT_EMAIL` in `src/contracts/legal.ts`) we delete the account and the data associated
+with it, including photos and agent connections, **within 30 days**. Do it like this.
+
+1. **Find the account.** From the request: the email (matched against
+   `auth_identities.email`, which is kept only for this and support) or the display name.
+   Confirm it's really theirs (reply from that address) before deleting anything.
+
+   ```sh
+   wrangler d1 execute DB --remote --command \
+     "SELECT u.id, u.display_name, i.email FROM users u JOIN auth_identities i ON i.user_id = u.id WHERE i.email = '<email>'"
+   ```
+
+2. **Revoke Sign in with Apple** while the refresh token still exists. Read it:
+
+   ```sh
+   wrangler d1 execute DB --remote --command \
+     "SELECT refresh_token FROM auth_identities WHERE user_id = '<user_id>'"
+   ```
+
+   then `POST https://appleid.apple.com/auth/revoke` (form-encoded) with `client_id`
+   (`APPLE_CLIENT_ID`), `client_secret` (an ES256 JWT minted as in `createClientSecret`,
+   `worker/auth/siwa.ts`, with `APPLE_PRIVATE_KEY`), `token=<refresh_token>` and
+   `token_type_hint=refresh_token`. 200 means revoked. If there's no token, skip this step.
+
+3. **Disconnect their agents** (OAuth grants and tokens in `OAUTH_KV`, keyed by user id):
+
+   ```sh
+   wrangler kv key list --binding OAUTH_KV --remote --prefix "grant:<user_id>:"  > grants.json
+   wrangler kv key list --binding OAUTH_KV --remote --prefix "token:<user_id>:"  > tokens.json
+   # turn each list into a JSON array of key names, then:
+   wrangler kv bulk delete names.json --binding OAUTH_KV --remote
+   ```
+
+   Client registrations aren't per person (anyone can register one); an unused one
+   expires on its own after 30 days (`CLIENT_REGISTRATION_TTL_S`).
+
+4. **Delete the user row.** D1 enforces foreign keys, so this cascades to
+   `auth_identities` (email, Apple sub, refresh token), `sessions`, `user_private` (home),
+   `user_places`, `visits`, `friendships` (both directions), `invites` they sent,
+   `photos`, `api_tokens`, `agent_grants_seen` and `agent_grants_revoked`. Other people's
+   invites they accepted keep the row with `used_by` set to NULL; places they created keep
+   `created_by` NULL. Every deleted `photos` row queues its R2 key on `photo_deletions`
+   (trigger). In the same command, delete manual places nobody has on a list any more, and
+   their per-day consent counter:
+
+   ```sh
+   wrangler d1 execute DB --remote --command \
+     "DELETE FROM users WHERE id = '<user_id>';
+      DELETE FROM places WHERE apple_place_id IS NULL
+        AND NOT EXISTS (SELECT 1 FROM user_places WHERE place_id = places.id);
+      DELETE FROM daily_counts WHERE key = 'consent:<user_id>';"
+   ```
+
+5. **Photos in R2.** The hourly cron deletes every queued key within the hour (retrying up
+   to 10 times). Then make sure nothing is left under the person's prefix `u/<user_id>/`,
+   which also catches an object whose upload died between R2 and D1: in the dashboard
+   (R2 → `grub-radar-photos` → prefix `u/<user_id>/`), or with any S3 client against R2's
+   S3 API, e.g. `aws s3 rm s3://grub-radar-photos/u/<user_id>/ --recursive --endpoint-url
+https://<account_id>.r2.cloudflarestorage.com`. (`purgeUserPhotos` in
+   `worker/db/photos.ts` does the same in code, for a future in-app delete.) Check
+   `photo_deletions` has no rows left at `attempts >= 10` for that prefix.
+
+6. **Check** that `SELECT COUNT(*) FROM users WHERE id = '<user_id>'` is 0 and the KV
+   lists above come back empty, then reply to confirm. Workers Logs (at most 7 days) and
+   the 15-minute search cache hold no account data and expire on their own.
 
 ## Timing and logs
 

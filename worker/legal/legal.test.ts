@@ -2,6 +2,7 @@
  * /privacy and /terms: public, plain HTML, no script, and linked from the
  * consent page and the docs agents read.
  */
+import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 import {
   CONTACT_EMAIL,
@@ -11,6 +12,7 @@ import {
   TERMS_PATH,
 } from '../../src/contracts/legal';
 import { consentErrorPage, consentPage } from '../agents/consentPage';
+import { CLIENT_REGISTRATION_TTL_S } from '../agents/oauth';
 import { agentSetup, llmsTxt, openApi } from '../agents/docs';
 import { call, ORIGIN } from '../test/helpers';
 import { LEGAL_STYLE, privacyPage, termsPage } from './pages';
@@ -92,7 +94,14 @@ describe('what the privacy policy says', () => {
   it('covers the points the code backs', () => {
     for (const claim of [
       'private relay address',
-      'rejects any file that still carries metadata',
+      'rejects any file that still carries camera or location metadata',
+      'A colour profile',
+      'New spots are visible to your friends by default',
+      'mark any spot “just me”',
+      'use it only to answer your support or account deletion requests',
+      'not stored in plain text',
+      'we use it only to carry out that agent’s requests',
+      'including photos and agent connections, within 30 days of your request',
       'never shown to friends or to agents',
       '~1 km grid square',
       'only a hash of the link’s secret',
@@ -104,9 +113,7 @@ describe('what the privacy policy says', () => {
       'Workers KV',
       'don’t sell',
       'don’t use your data to train AI models',
-      'used only to perform the actions you ask',
       'at most 7 days',
-      'within 30 days',
       'children under 13',
     ])
       expect(html).toContain(claim);
@@ -116,6 +123,28 @@ describe('what the privacy policy says', () => {
     expect(html).toContain('expire after 30 days without use, and after 90 days at most');
     expect(html).toContain('an access token lasts 4 hours');
     expect(html).toContain('a refresh token expires after 30 days unused');
+    expect(html).toContain('A registration that is never used expires after 30 days');
+  });
+
+  it('the client registration lifetime it states is the one the OAuth server applies', async () => {
+    const before = Math.floor(Date.now() / 1000);
+    const res = await call('/oauth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        client_name: 'TTL check',
+        redirect_uris: ['http://127.0.0.1:43117/callback'],
+        token_endpoint_auth_method: 'none',
+        grant_types: ['authorization_code', 'refresh_token'],
+        response_types: ['code'],
+      }),
+    });
+    expect(res.status).toBe(201);
+    const { client_id } = await res.json<{ client_id: string }>();
+    const { keys } = await env.OAUTH_KV.list({ prefix: `client:${client_id}` });
+    const ttl = (keys[0]?.expiration ?? 0) - before;
+    expect(ttl).toBeGreaterThanOrEqual(CLIENT_REGISTRATION_TTL_S - 5);
+    expect(ttl).toBeLessThanOrEqual(CLIENT_REGISTRATION_TTL_S + 5);
   });
 
   it('there is no account deletion endpoint, so the page says to email us', async () => {
@@ -127,8 +156,20 @@ describe('what the privacy policy says', () => {
 });
 
 describe('the terms', () => {
+  const html = termsPage(ORIGIN);
+
   it('names Washington law', () => {
-    expect(termsPage(ORIGIN)).toContain('State of Washington, USA');
+    expect(html).toContain('State of Washington, USA');
+  });
+
+  it('licenses content only to host and show it, keeps Apple data Apple’s, gives notice', () => {
+    expect(html).toContain('You keep whatever rights you have');
+    expect(html).toContain(
+      'to your friends (for what you share with them) and to the agents you authorize',
+    );
+    expect(html).toContain('Apple Maps remains Apple’s');
+    expect(html).toContain('that you authorize, or that you could reasonably have prevented');
+    expect(html).toContain('reasonable notice in the app before they take effect');
   });
 });
 

@@ -16,9 +16,13 @@ import {
 } from '../../src/contracts/legal';
 import { INVITE_TTL_DAYS } from '../../src/contracts/friends';
 import { PHOTOS_PER_SPOT } from '../../src/contracts/photos';
-import { ACCESS_TOKEN_TTL_S, REFRESH_TOKEN_TTL_S } from '../agents/oauth';
+import {
+  ACCESS_TOKEN_TTL_S,
+  CLIENT_REGISTRATION_TTL_S,
+  REFRESH_TOKEN_TTL_S,
+} from '../agents/oauth';
 import { SESSION_MAX_AGE_MS, SESSION_TTL_MS } from '../auth/session';
-import { DAY } from '../lib/time';
+import { DAY, SECOND } from '../lib/time';
 
 /** The only CSS on these pages; its hash goes in the CSP. */
 export const LEGAL_STYLE = `
@@ -144,9 +148,9 @@ export function privacyPage(origin: string): string {
 <p>You sign in with Apple. We don’t get or store a password. From Apple we receive and store:</p>
 <ul>
 <li><b>Your Apple user id</b> (Apple’s “sub”): a stable id for this app, used to recognise you when you sign in again.</li>
-<li><b>The email address Apple shares</b>, which may be a private relay address (…@privaterelay.appleid.com) if you chose “Hide My Email”. We store it with your Apple identity, but the app doesn’t currently use it: we don’t send you email, show it to anyone or use it to identify you.</li>
+<li><b>The email address Apple shares</b>, which may be a private relay address (…@privaterelay.appleid.com) if you chose “Hide My Email”. We store it with your Apple identity and use it only to answer your support or account deletion requests. It isn’t your sign-in identifier (that’s the Apple user id), we don’t send you other email, and nobody else sees it.</li>
 <li><b>Your name</b>, if Apple shares it on your first sign-in. It becomes your display name; you can change it.</li>
-<li><b>A refresh token Apple issues</b> to the app, kept so that our connection to your Apple ID can be revoked with Apple.</li>
+<li><b>A refresh token Apple issues</b> to the app, stored so that we can revoke the app’s access to your Apple ID with Apple when your account is deleted.</li>
 </ul>
 <h3>Your profile</h3>
 <ul>
@@ -160,7 +164,7 @@ export function privacyPage(origin: string): string {
 <li>Which agent added a spot (“found by”), if one did.</li>
 </ul>
 <h3>Photos</h3>
-<p>Up to ${String(PHOTOS_PER_SPOT)} photos per spot, with an optional caption. Before upload, your browser redraws each photo and re-encodes it, which drops all metadata, including the camera’s GPS position, date and device details. Our server checks every upload again and <b>rejects any file that still carries metadata</b> (EXIF, XMP, IPTC and similar). Photos are stored privately: there is no public link to them.</p>
+<p>Up to ${String(PHOTOS_PER_SPOT)} photos per spot, with an optional caption. Before upload, your browser redraws each photo and re-encodes it, which drops camera and location metadata: the GPS position, date and device details. Our server checks every upload again and <b>rejects any file that still carries camera or location metadata</b> (EXIF, including GPS, XMP, IPTC and embedded comments). A colour profile, which describes colours and nothing about you, may remain. Photos are stored privately: there is no public link to them.</p>
 <h3>Home and location</h3>
 <ul>
 <li><b>Home</b>: if you set one, its coordinates are stored on your account, apart from your profile. Home is <b>never shown to friends or to agents</b>. For a connected agent, “home” is only ever the centre of the ~1 km grid square your home is in, so it can sort by distance without learning where you live. You can clear home at any time.</li>
@@ -175,7 +179,8 @@ export function privacyPage(origin: string): string {
 <p>When you sign in, your browser gets a session cookie. We store only a hash of it, with when the session started, when it was last used and a coarse device label such as “Safari on iPhone” (not your full browser string). Other cookies we set are short-lived and only used to complete sign-in. We use no advertising or analytics cookies, and the app loads no third-party scripts. The app keeps a few things in your browser’s own storage, such as your language choice.</p>
 <h3>Connected agents and personal tokens</h3>
 <ul>
-<li>When you connect an AI agent (over OAuth), we store the agent’s registration (its name, website and where it receives access), what you allowed it to do, and when it last used grub. Its access and refresh tokens are <b>stored hashed or encrypted</b> by the OAuth library we use; we never see them in plain text after issuing them.</li>
+<li>When an AI agent registers with grub (OAuth dynamic client registration, which any app can do before anyone approves it), we store the client metadata it sends: its name, its website and logo URLs, contact addresses if it gives any, and the redirect URIs where it receives access. A registration that is never used expires after ${days(CLIENT_REGISTRATION_TTL_S * SECOND)} days; one that keeps being used is renewed and stays.</li>
+<li>When you connect an agent, we store what you allowed it to do and when it last used grub. Its access and refresh tokens reach the agent over HTTPS and are <b>not stored in plain text</b>: the OAuth library we use keeps only hashed or encrypted forms.</li>
 <li><b>Personal API tokens</b> you create in settings: we store only a hash of the token, its name, what it may do and when it was last used. The token itself is shown once.</li>
 </ul>
 <h3>Security and operational logs</h3>
@@ -183,7 +188,7 @@ export function privacyPage(origin: string): string {
 <ul>
 <li>Our own log lines record, per request to the API and sign-in: the method, the path (without the query string), the response status, timings and database statistics, and short outcome codes for sign-in (for example “cancelled” or “state already used”). Errors are logged by their name and message. <b>Our log lines never contain tokens, cookies, passwords, request bodies, your email or your home.</b></li>
 <li>Cloudflare, which runs the service, also records each request it hands to our code: the method and the full URL (which can include a query string, such as a search term or coordinates an agent sent), along with request headers and connection metadata that Cloudflare attaches.</li>
-<li>To cap how many new agent apps can register, we count registrations per day, per IP address. Those counters (the IP address, the day and a number) are kept in our database.</li>
+<li>To cap how many new agent apps can register, we count registrations per day, per IP address. Those counters (the IP address, the day and a number) are deleted automatically after a day or two.</li>
 <li>Rate limits count requests per account, per credential or per IP address over a short window; those counts are not stored by us.</li>
 </ul>`,
       },
@@ -193,7 +198,7 @@ export function privacyPage(origin: string): string {
         body: `
 <ul>
 <li><b>Cloudflare</b> hosts grub radar: the app and server run on Cloudflare Workers, your data is in Cloudflare D1 (database), photos are in Cloudflare R2 (storage), agent connections are in Cloudflare Workers KV, and logs are in Cloudflare Workers Logs.</li>
-<li><b>Apple</b> provides Sign in with Apple, and Apple Maps for finding places. When you (or an agent acting for you) search for a place, we send Apple’s Maps Server API <b>the search text and an approximate location</b> (rounded to about 1 km), or the Apple place id of a place being looked up. Search results are cached for 15 minutes, and place details for a day, in Cloudflare’s cache, keyed by the search text and that rounded location.</li>
+<li><b>Apple</b> provides Sign in with Apple, and Apple Maps for finding places. When you (or an agent acting for you) search for a place, we send Apple’s Maps Server API <b>the search text and an approximate location</b> (rounded to about 1 km), or the Apple place id of a place being looked up. Search results are cached in Cloudflare’s cache for 15 minutes, keyed by the search text, that rounded location and the language. Place details are cached for a day, keyed by the Apple place id and the language. Neither cache records who asked.</li>
 </ul>
 <p>Each processes data under its own terms and privacy policy. We don’t use any other service providers.</p>`,
       },
@@ -202,10 +207,10 @@ export function privacyPage(origin: string): string {
         title: 'Who sees what',
         body: `
 <ul>
-<li><b>Nobody, by default.</b> Your list is private to you. Without signing in, nobody sees anything of it.</li>
-<li><b>Your friends</b> (only people who accepted your invite link, or whose link you accepted) see your display name and emoji, and the spots you leave visible to friends: the place, kind, cuisine, price, been or want to try, your verdict, your one-line note and your photos of it. They <b>never</b> see your home, your private spots, your longer notes, tags, dishes or why you saved it. This is enforced in the database queries themselves. Someone who opens your invite link sees your name and emoji. Either of you can unfriend at any time.</li>
+<li><b>Nothing is public.</b> Without signing in, nobody sees anything of your list.</li>
+<li><b>Your friends</b> (only people who accepted your invite link, or whose link you accepted). <b>New spots are visible to your friends by default</b>; you can mark any spot “just me” to keep it to yourself. Friends see your display name and emoji, and your spots that are visible to friends: the place, kind, cuisine, price, been or want to try, your verdict, your one-line note and your photos of it. They <b>never</b> see your home, your private spots, your longer notes, tags, dishes or why you saved it. This is enforced in the database queries themselves. Someone who opens your invite link sees your name and emoji. Either of you can unfriend at any time.</li>
 <li><b>Agents you connect</b> see and do only what you authorized, by scope: <i>spots:read</i> (your spots and notes) and, if you ticked it, <i>spots:write</i> (add spots, mark them been, add notes, edit spot details). Agents can’t see your home (only the ~1 km grid point above), your photos, your friends or your account settings, and can’t delete spots.</li>
-<li><b>Data accessed through a connected agent</b>, including an agent on a third-party AI platform, is used only to perform the actions you ask that agent for. What the agent’s provider does with what it reads is governed by that provider’s own terms and privacy policy.</li>
+<li><b>Data accessed through a connected agent</b>, including an agent on a third-party AI platform: we use it only to carry out that agent’s requests. What the agent’s provider does with what it reads is governed by that provider’s own terms and privacy policy.</li>
 <li>We <b>don’t sell</b> your data, show <b>no advertising</b>, do <b>no profiling</b>, and <b>don’t use your data to train AI models</b>.</li>
 <li><b>We</b>, as operator, can access the database to run and fix the service. The admin page shows only totals and, per account, the display name, emoji, sign-up date, last activity and how many spots and friends it has.</li>
 <li>We may disclose data if the law requires it, and we’ll tell you if we’re allowed to.</li>
@@ -218,12 +223,13 @@ export function privacyPage(origin: string): string {
 <h3>How long</h3>
 <ul>
 <li><b>Your account and list</b>: until you delete them, or ask us to.</li>
-<li><b>Sessions</b> expire after ${days(SESSION_TTL_MS)} days without use, and after ${days(SESSION_MAX_AGE_MS)} days at most, however active. Signing out ends the session at once.</li>
+<li><b>Sessions</b> expire after ${days(SESSION_TTL_MS)} days without use, and after ${days(SESSION_MAX_AGE_MS)} days at most, however active; expired session records are deleted within the hour. Signing out ends the session at once.</li>
 <li><b>Agent access</b>: an access token lasts ${String(ACCESS_TOKEN_TTL_S / 3600)} hours; a refresh token expires after ${String(Math.round(REFRESH_TOKEN_TTL_S / 86400))} days unused. Personal tokens last until you revoke them.</li>
-<li><b>Photos</b>: when you delete a photo or a spot, its file is queued for deletion and removed from storage straight away, or by an hourly clean-up that retries if storage didn’t respond.</li>
+<li><b>Photos</b>: when you delete a photo or a spot, its file is queued for deletion and normally removed from storage right away; if storage doesn’t respond, an hourly clean-up retries.</li>
 <li><b>Sign-in state</b> (single-use records that protect sign-in) is valid for about 10 minutes and deleted within the hour after.</li>
 <li><b>Logs</b> in Cloudflare Workers Logs are kept for at most 7 days.</li>
-<li><b>Invite records</b> and per-day registration counters are kept in the database after they expire.</li>
+<li><b>Invite links</b> that were used, revoked or expired are deleted within the hour once they’re more than a day old. <b>Per-day counters</b> (including the per-IP registration counters above) are deleted after a day or two.</li>
+<li><b>Agent registrations</b> nobody uses expire after ${days(CLIENT_REGISTRATION_TTL_S * SECOND)} days.</li>
 <li>Places are shared across accounts (a restaurant has one record, whoever saves it), so a place’s name, address and location can remain after you remove it from your list. A place you typed in by hand is deleted with your spot if nobody else has it.</li>
 </ul>
 <h3>Deleting things yourself</h3>
@@ -233,14 +239,14 @@ export function privacyPage(origin: string): string {
 <li><b>Disconnect agents</b> and <b>revoke personal tokens</b> in settings. They stop working immediately.</li>
 </ul>
 <h3>Deleting your account</h3>
-<p>The app doesn’t have a delete-account button yet. Email ${mail} from your account’s Apple email (or tell us your display name), and we’ll delete your account and all associated data within 30 days. You can also stop the app’s access to your Apple ID in your Apple ID settings under “Sign in with Apple”.</p>`,
+<p>The app doesn’t have a delete-account button yet. Email ${mail} (ideally from the email address Apple shared with us, so we can match your account), and we will delete your account and the data associated with it, including photos and agent connections, within 30 days of your request. We’ll also revoke the app’s access to your Apple ID with Apple. Logs and caches that don’t identify your account expire on their own as described above. You can also stop the app’s access to your Apple ID in your Apple ID settings under “Sign in with Apple”.</p>`,
       },
       {
         id: 'security',
         title: 'Security',
         body: `
 <ul>
-<li>Session cookies, invite links, personal tokens and agent tokens are stored only as hashes (or encrypted), so a copy of the database can’t be turned back into working credentials.</li>
+<li>Session cookies, invite links, personal API tokens and agent tokens are stored only as hashes (or encrypted), so a copy of the database can’t be turned back into working grub credentials. The Apple refresh token is stored as issued, so that we can revoke the app’s access with Apple.</li>
 <li>Everything is served over HTTPS (encrypted in transit), with strict security headers.</li>
 <li>Who can see what is enforced in the database queries: every read is scoped to your account, and friends’ reads go through the friendship and the friends-visible flag.</li>
 <li>Rate limits on sign-in, writes, searches, uploads and agent requests.</li>
@@ -288,12 +294,12 @@ export function termsPage(origin: string): string {
       {
         id: 'account',
         title: 'Your account',
-        body: `<p>You sign in with Apple, and you need an Apple ID to use grub radar. Keep your Apple ID and your devices secure; you’re responsible for what happens under your account. One person, one account.</p>`,
+        body: `<p>You sign in with Apple, and you need an Apple ID to use grub radar. Keep your Apple ID and your devices secure. You’re responsible for activity on your account that you authorize, or that you could reasonably have prevented. One person, one account.</p>`,
       },
       {
         id: 'content',
         title: 'Your content',
-        body: `<p>Your spots, notes, verdicts, photos and everything else you add are <b>yours</b>. You give us a licence only to store, process and display that content to you and, for what you share with friends, to your friends, as needed to run the service. That licence ends when you delete the content or your account (apart from copies in logs or backups that expire on their own).</p>
+        body: `<p>You keep whatever rights you have in your spots, notes, verdicts, photos and everything else you add. You give us a licence only to host that content and display it to you, to your friends (for what you share with them) and to the agents you authorize, as needed to run the service. That licence ends when you delete the content or your account, apart from copies in logs or caches that expire on their own. Place information that comes from Apple Maps remains Apple’s.</p>
 <p>Only upload what you have the right to share. Don’t upload other people’s private information or photos of people who haven’t agreed to it.</p>`,
       },
       {
@@ -340,7 +346,7 @@ export function termsPage(origin: string): string {
       {
         id: 'changes',
         title: 'Changes and contact',
-        body: `<p>We may update these terms. We’ll post the new version here and change the “Last updated” date. If you keep using grub radar after a change, you accept the new terms. Contact: ${mail}.</p>`,
+        body: `<p>We may update these terms. We’ll post the new version here and change the “Last updated” date, and for material changes we’ll give reasonable notice in the app before they take effect. If you keep using grub radar after a change takes effect, you accept the new terms. Contact: ${mail}.</p>`,
       },
     ],
   });

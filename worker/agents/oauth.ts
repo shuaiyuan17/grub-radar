@@ -38,6 +38,13 @@ export const REQUIRED_SCOPES = [...AGENT_SCOPES];
 
 export const ACCESS_TOKEN_TTL_S = 4 * 60 * 60;
 export const REFRESH_TOKEN_TTL_S = 30 * 24 * 60 * 60;
+/**
+ * A dynamically registered client (its name, URLs, redirect URIs) expires from KV this long
+ * after registering. The library renews it (one KV write) once it's past half of this while
+ * the client still refreshes tokens, so only clients nobody uses go: the same 30 days after
+ * which an unused grant's refresh token has expired anyway. Stated in the Privacy Policy.
+ */
+export const CLIENT_REGISTRATION_TTL_S = 30 * 24 * 60 * 60;
 /** Dynamic client registrations per UTC day, across everyone (each is a KV write). */
 export const REGISTRATIONS_PER_DAY = 50;
 /** …and per client IP, so one IP can't use up everyone's. */
@@ -107,6 +114,7 @@ export function authServer(origin: string): OAuthAuthorizationServer<Env> {
       accessTokenTTL: ACCESS_TOKEN_TTL_S,
       refreshTokenTTL: REFRESH_TOKEN_TTL_S,
       refreshTokenIdleTTL: REFRESH_TOKEN_TTL_S,
+      clientRegistrationTTL: CLIENT_REGISTRATION_TTL_S,
       onError: ({ code, status, internal }) => {
         // never the request or any token: just what failed
         if (status >= 500) console.error('oauth error', { code, status, reason: internal.reason });
