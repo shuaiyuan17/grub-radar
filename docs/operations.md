@@ -26,6 +26,7 @@ documents every local variable.
 | `npm run preview`           | serve the build in workerd, like production                               |
 | `npm test`                  | Vitest: `spa` (jsdom), `domain` (node), `worker` (workerd + D1)           |
 | `npm run test:e2e`          | Playwright at phone and desktop sizes (starts the stub + preview)         |
+| `npm run test:e2e:webkit`   | the layout spec in WebKit on an iPhone (run it on macOS)                  |
 | `npm run deploy`            | build, apply D1 migrations (remote), deploy the built Worker + SPA        |
 | `npm run deploy:built`      | the last two steps, on an existing build                                  |
 | `npm run deploy:dry-run`    | build, then bundle + config check, no upload                              |
@@ -35,7 +36,9 @@ documents every local variable.
 | `npm run format`            | Prettier                                                                  |
 | `npm run og-image`          | redraw the link-preview images (`public/og.png`, icons)                   |
 
-The first `test:e2e` run needs `npx playwright install chromium`. Set `E2E_PORT` /
+The first `test:e2e` run needs `npx playwright install chromium`; `test:e2e:webkit` needs
+`npx playwright install webkit`. WebKit on Linux sizes text inputs differently, so the
+WebKit layout run only means something on macOS (where iPhone overflows reproduce). Set `E2E_PORT` /
 `APPLE_STUB_PORT` to run two checkouts' e2e side by side. Some specs (friends, photos, name, agents)
 save screenshots along the way with `SHOTS_DIR=/some/dir`.
 
@@ -44,6 +47,7 @@ save screenshots along the way with `SHOTS_DIR=/some/dir`.
 `.github/workflows/ci.yml`, on every pull request and push to `main`: `npm ci`,
 `npm run dev:vars` (throwaway keys), `npm run check`, `npm run deploy:dry-run`, the D1
 migrations applied in order on a fresh local database, then Playwright (phone + desktop).
+A second job on `macos-latest` runs `npm run test:e2e:webkit` (the layout spec in WebKit).
 CI never deploys.
 
 ## Deploying

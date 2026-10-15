@@ -28,8 +28,6 @@
 .input {
   font-size: 18px;
   padding-left: 10px;
-  min-width: 0;
-  flex: 1 1 auto;
 }
 /* the field's own focus ring is on the frame (fields.module.css) */
 .input::-webkit-search-cancel-button {

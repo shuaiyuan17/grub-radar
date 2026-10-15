@@ -3,6 +3,8 @@ import { defineConfig, devices } from '@playwright/test';
 // overridable so two checkouts can run e2e side by side (point .dev.vars' Apple bases at the stub port)
 const PORT = Number(process.env.E2E_PORT ?? 4173);
 const STUB_PORT = Number(process.env.APPLE_STUB_PORT ?? 4599);
+// the WebKit project only when asked for (needs `npx playwright install webkit`)
+const WEBKIT = Boolean(process.env.E2E_WEBKIT);
 
 export default defineConfig({
   testDir: './e2e',
@@ -29,6 +31,18 @@ export default defineConfig({
       name: 'desktop',
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
     },
+    // Safari's engine on an iPhone, opt-in (`npm run test:e2e:webkit`): some layout bugs
+    // (an <input>'s intrinsic width in a flex box) only show in WebKit, and only on Apple
+    // platforms (CI runs it on macOS). Layout spec only.
+    ...(WEBKIT
+      ? [
+          {
+            name: 'webkit-phone',
+            testMatch: 'layout.spec.ts',
+            use: { ...devices['iPhone 17 Pro'] },
+          },
+        ]
+      : []),
   ],
   webServer: [
     {

@@ -33,6 +33,7 @@ npm run dev          # http://localhost:5173
 npm run check        # typecheck + lint + format check + all Vitest projects: run before every commit
 npm test             # Vitest only (spa / domain / worker projects)
 npm run test:e2e     # Playwright, phone + desktop; builds first; needs `npx playwright install chromium`
+npm run test:e2e:webkit   # the layout spec in WebKit (iPhone); macOS only; needs `npx playwright install webkit`
 npm run format       # Prettier
 npm run deploy:dry-run   # build + bundle/config check, no upload
 ```
