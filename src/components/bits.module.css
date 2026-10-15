@@ -1,0 +1,96 @@
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--ink);
+}
+.logo:hover {
+  color: var(--ink);
+}
+.logoBlob {
+  --fill: var(--hl);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-blob);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.logoText {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+@media (min-width: 960px) {
+  .logoBlob {
+    width: 44px;
+    height: 44px;
+  }
+  .logoText {
+    font-size: 24px;
+  }
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  padding: 1px 8px 1px 5px;
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+}
+.been {
+  border: 1.5px solid var(--ink);
+  transform: rotate(-2deg);
+}
+.want {
+  background: var(--hl);
+  transform: rotate(1.5deg);
+}
+@media (min-width: 960px) {
+  .badge {
+    font-size: 13px;
+    padding: 2px 10px 2px 6px;
+  }
+}
+
+/* round "take me there" button */
+.go {
+  --fill: var(--ink);
+  --sh: var(--tomato);
+  --sx: 2px;
+  --sy: 3px;
+  color: var(--card);
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: var(--r-go);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 14.5px;
+}
+.go:hover {
+  color: var(--card);
+}
+
+.iconBtn {
+  --sx: 2px;
+  --sy: 3px;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: var(--r-round);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+  text-decoration: none;
+}

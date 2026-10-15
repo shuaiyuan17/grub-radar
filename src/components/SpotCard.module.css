@@ -1,0 +1,150 @@
+.card {
+  border-radius: var(--r-card);
+  padding: 14px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'tile head time'
+    'tile badge go'
+    'tile note go';
+  grid-template-rows: auto auto 1fr;
+  column-gap: 12px;
+  row-gap: 4px;
+  align-items: start;
+}
+
+.tile {
+  grid-area: tile;
+}
+.head {
+  grid-area: head;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.name {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.name a {
+  text-decoration: none;
+}
+/* the whole card is a link to the place */
+.name a::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.meta {
+  font-size: 13.5px;
+  color: var(--pencil);
+}
+.time {
+  grid-area: time;
+  text-align: right;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.minutes {
+  display: block;
+  font-size: 17px;
+  font-weight: 800;
+}
+.how {
+  display: block;
+  font-size: 12.5px;
+  color: var(--pencil);
+}
+.badge {
+  grid-area: badge;
+  justify-self: start;
+}
+.note {
+  grid-area: note;
+  font-size: 20px;
+  line-height: 1.1;
+  margin-top: 2px;
+}
+.go {
+  grid-area: go;
+  justify-self: end;
+  margin-top: 6px;
+  position: relative;
+  z-index: 1;
+}
+.goLabel {
+  display: none;
+}
+.rule {
+  display: none;
+}
+/* phones: badge + go sit in their own grid cells */
+.foot {
+  display: contents;
+}
+
+@media (min-width: 960px) {
+  .card {
+    padding: 16px;
+    grid-template-areas:
+      'tile head time'
+      'note note note'
+      'rule rule rule'
+      'foot foot foot';
+    grid-template-rows: auto auto auto auto;
+    row-gap: 12px;
+    align-items: center;
+  }
+  .head,
+  .time,
+  .tile {
+    align-self: start;
+  }
+  .name {
+    font-size: 18px;
+  }
+  .meta {
+    font-size: 14px;
+  }
+  .minutes {
+    font-size: 18px;
+  }
+  .how {
+    font-size: 13px;
+  }
+  .note {
+    font-size: 22px;
+    margin-top: 0;
+  }
+  .foot {
+    grid-area: foot;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .rule {
+    display: block;
+    grid-area: rule;
+    border-top: 2px dashed var(--dot-grid);
+  }
+  .card .go {
+    margin-top: 0;
+    width: auto;
+    height: auto;
+    min-height: 42px;
+    padding: 0 14px;
+    border-radius: var(--r-tile);
+  }
+  .card .go svg:not(:global(.ink)) {
+    width: 17px;
+    height: 17px;
+  }
+  .goLabel {
+    display: inline;
+  }
+}

@@ -1,0 +1,100 @@
+.linkBtn {
+  min-height: 32px;
+  padding: 0 4px;
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: underline dashed;
+  text-underline-offset: 4px;
+}
+.linkBtn:hover {
+  color: var(--note-red);
+}
+.dismiss {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pencil);
+}
+
+.panel {
+  --fill: var(--card);
+  border-radius: var(--r-panel);
+  padding: 16px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 520px;
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.head h2 {
+  font-size: 20px;
+  font-weight: 800;
+}
+.small {
+  font-size: 13px;
+  color: var(--pencil);
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.btn {
+  --sx: 2px;
+  --sy: 3px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--r-btn);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.primary {
+  --fill: var(--ink);
+  --sh: var(--tomato);
+  color: var(--card);
+}
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field {
+  --bw: 2px;
+  flex: 1 1 200px;
+  min-height: 44px;
+  border-radius: var(--r-tile);
+  display: flex;
+}
+.field:focus-within {
+  outline: 3px dashed var(--note-red);
+  outline-offset: 3px;
+}
+.input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0 12px;
+  font-size: 15px;
+}
+.input:focus {
+  outline: none;
+}
+.input::placeholder {
+  color: var(--placeholder);
+}
+.error {
+  font-size: 13.5px;
+  color: var(--note-red);
+  font-weight: 600;
+}

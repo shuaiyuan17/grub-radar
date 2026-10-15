@@ -1,0 +1,28 @@
+{
+  // The domain typechecks on its own with no DOM lib and no ambient types,
+  // so a stray `window`/`fetch`/React import fails `tsc -b`, not just lint.
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.domain.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "types": [],
+    "module": "esnext",
+    "skipLibCheck": true,
+
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src/domain", "src/copy"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+}

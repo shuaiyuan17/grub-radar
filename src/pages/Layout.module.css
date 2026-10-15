@@ -1,0 +1,43 @@
+.shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px var(--page-pad) var(--bottom-nav-space);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 20px;
+}
+.brand {
+  margin-right: auto;
+}
+.search {
+  flex: 1 1 280px;
+  max-width: 420px;
+}
+@media (min-width: 960px) {
+  .shell {
+    --page-pad: clamp(16px, 4vw, 40px);
+    padding: 28px var(--page-pad) 56px;
+    gap: 28px;
+  }
+}
+.skip {
+  position: absolute;
+  left: 12px;
+  top: -100px;
+  z-index: 100;
+  padding: 10px 16px;
+  background: var(--ink);
+  color: var(--card);
+  border-radius: var(--r-tile);
+  font-weight: 700;
+}
+.skip:focus {
+  top: 12px;
+  color: var(--card);
+}

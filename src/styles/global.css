@@ -1,0 +1,371 @@
+/* ---------------------------------------------------------------------------
+   Sketch kit tokens (copied from the owner's mockup "sketch kit" frame).
+   wobbly on the outside, crisp on the inside.
+--------------------------------------------------------------------------- */
+:root {
+  /* ink + paper */
+  --paper: #f7f3ea;
+  --card: #fffdf8;
+  --ink: #1e1b18;
+  --pencil: #5a534b;
+  --hl: #ffd84a; /* highlighter */
+  --tomato: #e0583a;
+  --note-red: #a8361c;
+  --dot-grid: #ddd5c4;
+
+  /* supporting tints used across the frames */
+  --tint-yellow: #ffefa8;
+  --tint-pink: #f8d2c6;
+  --tint-sand: #ede6d6;
+  --sticky: #fff3b8;
+  --dice-red: #7a2914;
+  --rule: #cfc6b3;
+  --placeholder: #6b6359;
+
+  /* kind colours (radar). Never the only signal: dots also differ in shape. */
+  --kind-food: var(--tomato);
+  --kind-coffee: var(--ink);
+  --kind-bakery: var(--hl);
+
+  /* type */
+  --font-ui: 'Shantell Sans', 'Chalkboard SE', 'Comic Sans MS', cursive;
+  --font-note: 'Caveat', cursive;
+
+  /* wobbly radii: never the same corner twice */
+  --r-card: 18px 24px 16px 22px / 22px 16px 24px 18px;
+  --r-panel: 22px 28px 20px 26px / 26px 20px 28px 22px;
+  --r-seg: 20px 26px 18px 24px / 24px 18px 26px 20px;
+  --r-seg-on: 16px 20px 14px 18px / 18px 14px 20px 16px;
+  --r-tile: 14px 18px 12px 16px / 16px 12px 18px 14px;
+  --r-btn: 14px 18px 12px 20px / 18px 12px 20px 14px;
+  --r-tag: 12px 16px 10px 14px / 14px 10px 16px 12px;
+  --r-pill: 999px 800px 900px 700px / 700px 900px 800px 999px;
+  --r-round: 50% 46% 52% 48% / 48% 52% 46% 50%;
+  --r-go: 48% 52% 46% 54% / 54% 46% 52% 48%;
+  --r-blob: 52% 48% 45% 55% / 55% 45% 55% 45%;
+  --r-dot: 50% 45% 55% 48%;
+
+  /* motion: compositor-only (transform/opacity), all off under reduced motion */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --press-duration: 120ms;
+  --lift-duration: 180ms;
+  --boil-duration: 0.5s;
+  --enter-duration: 220ms;
+  --enter-stagger: 35ms;
+  --enter-rise: 6px;
+  --dot-duration: 280ms;
+  --dot-stagger: 22ms;
+  --fade-duration: 250ms;
+  --hl-duration: 500ms;
+  --hl-delay: 120ms;
+  --wiggle-duration: 420ms;
+  --route-duration: 160ms;
+
+  --page-pad: 20px;
+  --bottom-nav-space: 110px;
+  --desktop: 960px; /* documentation only; media queries can't read vars */
+
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--ink);
+  background-color: var(--paper);
+  background-image: radial-gradient(circle, var(--dot-grid) 1.1px, transparent 1.5px);
+  background-size: 20px 20px;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (min-width: 960px) {
+  body {
+    background-size: 22px 22px;
+  }
+}
+
+a {
+  color: var(--ink);
+}
+a:hover {
+  color: var(--note-red);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3,
+p,
+ul {
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 3px dashed var(--note-red);
+  outline-offset: 3px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Sketch primitives
+   .sk     a hand-drawn box. Its <Ink> child draws a wobbly outline, fill and
+           ink shadow as plain SVG paths, precomputed per element (lib/inkPath)
+           and redrawn only when the element resizes. No runtime filters.
+   .flat   no shadow.
+   .press  hover lifts, active slides the shadow under.
+   .boil   swaps between 3 outlines (~6fps) while hovered/focused only.
+   Knobs: --fill --bw --dash --sh --sx --sy
+--------------------------------------------------------------------------- */
+.sk {
+  position: relative;
+  isolation: isolate;
+}
+.ink {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  z-index: -1;
+  pointer-events: none;
+}
+.ink-body {
+  fill: var(--fill, var(--card));
+  stroke: var(--ink);
+  stroke-width: var(--bw, 2.5px);
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  stroke-dasharray: var(--dash, none);
+}
+.ink-b,
+.ink-c {
+  visibility: hidden;
+}
+.ink-shadow {
+  fill: var(--sh, var(--ink));
+  transform: translate(var(--sx, 3px), var(--sy, 4px));
+}
+.flat > .ink .ink-shadow {
+  display: none;
+}
+:is(.boil:hover, .boil:focus-visible, :hover > .boil, :focus-visible > .boil) > .ink .ink-a {
+  animation: boil-a var(--boil-duration) steps(1) infinite;
+}
+:is(.boil:hover, .boil:focus-visible, :hover > .boil, :focus-visible > .boil) > .ink .ink-b {
+  animation: boil-b var(--boil-duration) steps(1) infinite;
+}
+:is(.boil:hover, .boil:focus-visible, :hover > .boil, :focus-visible > .boil) > .ink .ink-c {
+  animation: boil-c var(--boil-duration) steps(1) infinite;
+}
+@keyframes boil-a {
+  0% {
+    visibility: visible;
+  }
+  33%,
+  100% {
+    visibility: hidden;
+  }
+}
+@keyframes boil-b {
+  0% {
+    visibility: hidden;
+  }
+  33% {
+    visibility: visible;
+  }
+  66%,
+  100% {
+    visibility: hidden;
+  }
+}
+@keyframes boil-c {
+  0%,
+  33% {
+    visibility: hidden;
+  }
+  66%,
+  100% {
+    visibility: visible;
+  }
+}
+.press {
+  transition: transform var(--press-duration) var(--ease-out);
+}
+.press > .ink .ink-shadow {
+  transition: transform var(--press-duration) var(--ease-out);
+}
+.press:hover {
+  transform: translate(-1px, -1px);
+}
+.press:active {
+  transform: translate(2px, 3px) scale(0.97);
+}
+.press:active > .ink .ink-shadow {
+  transform: translate(0, 0);
+}
+.lift {
+  transition: transform var(--lift-duration) var(--ease-out);
+}
+.lift:hover {
+  transform: rotate(-0.6deg) translateY(-2px);
+}
+
+/* highlighter swipe behind a word */
+.hl {
+  position: relative;
+  display: inline-block;
+  isolation: isolate;
+  padding: 0 4px;
+  margin: 0 -2px;
+}
+.hl::before {
+  content: '';
+  position: absolute;
+  inset: 34% 0 8% 0;
+  z-index: -1;
+  background: linear-gradient(
+    100deg,
+    transparent 1%,
+    var(--hl) 2.5%,
+    var(--hl) 97%,
+    transparent 99%
+  );
+  transform-origin: left center;
+}
+/* the highlighter "draws" itself in, left to right, once per page load */
+.hl-draw::before {
+  animation: hl-draw var(--hl-duration) var(--ease-out) var(--hl-delay) backwards;
+}
+@keyframes hl-draw {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Motion. transform + opacity only (compositor-friendly), nothing at idle,
+   everything off under prefers-reduced-motion (see the end of this file).
+--------------------------------------------------------------------------- */
+/* list cards: fade + small rise, staggered by --i */
+.enter {
+  animation: enter var(--enter-duration) var(--ease-out) backwards;
+  animation-delay: calc(min(var(--i, 0), 10) * var(--enter-stagger));
+}
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--enter-rise));
+  }
+}
+/* press feedback for plain (non-.press) buttons */
+.tap {
+  transition: transform var(--press-duration) var(--ease-out);
+}
+.tap:active {
+  transform: scale(0.96);
+}
+.wiggle {
+  display: inline-flex;
+  animation: wiggle var(--wiggle-duration) var(--ease-out);
+}
+@keyframes wiggle {
+  20% {
+    transform: rotate(-14deg) scale(1.1);
+  }
+  45% {
+    transform: rotate(10deg);
+  }
+  70% {
+    transform: rotate(-5deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+/* route changes: a quick cross-fade where View Transitions are supported */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--route-duration);
+  animation-timing-function: var(--ease-out);
+}
+
+.note {
+  font-family: var(--font-note);
+  color: var(--note-red);
+}
+
+.noscroll {
+  scrollbar-width: none;
+}
+.noscroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* Responsive visibility helpers: one DOM, two layouts. */
+@media (max-width: 959.98px) {
+  .desktop-only {
+    display: none !important;
+  }
+}
+@media (min-width: 960px) {
+  .phone-only {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after,
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+    transition: none !important;
+  }
+  .press:hover,
+  .press:active,
+  .lift:hover {
+    transform: none;
+  }
+}
