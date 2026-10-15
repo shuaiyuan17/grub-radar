@@ -95,11 +95,11 @@ describe('the friends page', () => {
 
     await user.click(screen.getByRole('button', { name: 'invite a friend' }));
     const link = await screen.findByRole('textbox', { name: 'your invite link' });
-    expect(link).toHaveValue(`${window.location.origin}/invite/${'T'.repeat(43)}`);
+    expect(link).toHaveValue(`${window.location.origin}/invite#${'T'.repeat(43)}`);
     // no Web Share in jsdom: it falls back to the clipboard
     expect(await screen.findByText('copied. paste it to them.')).toBeInTheDocument();
     expect(await navigator.clipboard.readText()).toBe(
-      `${window.location.origin}/invite/${'T'.repeat(43)}`,
+      `${window.location.origin}/invite#${'T'.repeat(43)}`,
     );
 
     const revoke = screen.getByRole('button', { name: /Revoke the link made/ });
@@ -136,6 +136,48 @@ describe('the friends page', () => {
 
 describe('an invite link', () => {
   const token = 'A'.repeat(43);
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it('keeps the token across sign-in in this tab, out of the address bar, no Referer', async () => {
+    // signed out on /invite#token: the wall keeps it, and asks for no Referer
+    const wall = renderAt(`/invite#${token}`, { auth: { status: 'signed-out' } });
+    await screen.findByText('someone sent you an invite. sign in to accept it.');
+    expect(document.querySelector('meta[name="referrer"]')).toHaveAttribute(
+      'content',
+      'no-referrer',
+    );
+    // Sign in with Apple's returnTo is the route alone
+    await wall.user.click(screen.getByRole('button', { name: /Sign in with Apple/ }));
+    expect(wall.client.signInUrl).toHaveBeenCalledWith('/invite');
+    wall.unmount();
+    expect(document.querySelector('meta[name="referrer"]')).toBeNull();
+
+    // back from Apple at /invite (no fragment): the kept token is used
+    const friends = fakeFriendsClient();
+    friends.preview.mockResolvedValue({
+      from: { displayName: 'Mo', avatarEmoji: '🦊' },
+      state: 'open',
+    });
+    const { router } = renderAt('/invite', { friends });
+    expect(await screen.findByText('Mo wants to be friends on grub radar.')).toBeInTheDocument();
+    expect(friends.preview).toHaveBeenCalledWith(token);
+    expect(router.state.location.hash).toBe('');
+  });
+
+  it('a fragment is taken out of the address bar once kept', async () => {
+    const friends = fakeFriendsClient();
+    friends.preview.mockResolvedValue({
+      from: { displayName: 'Mo', avatarEmoji: '🦊' },
+      state: 'open',
+    });
+    const { router } = renderAt(`/invite#${token}`, { friends });
+    await screen.findByText('Mo wants to be friends on grub radar.');
+    expect(router.state.location.pathname).toBe('/invite');
+    expect(router.state.location.hash).toBe('');
+    expect(sessionStorage.getItem('grub-radar:invite')).toBe(token);
+  });
 
   it('says who sent it; accept makes you friends', async () => {
     const friends = fakeFriendsClient();
@@ -147,11 +189,12 @@ describe('an invite link', () => {
       friend: { id: 'u_mo', displayName: 'Mo', avatarEmoji: '🦊', since: 'x' },
       already: false,
     });
-    const { user } = renderAt(`/invite/${token}`, { friends });
+    const { user } = renderAt(`/invite#${token}`, { friends });
     expect(await screen.findByText('Mo wants to be friends on grub radar.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'accept' }));
     expect(friends.accept).toHaveBeenCalledWith(token);
     expect(await screen.findByText('you and Mo are friends now.')).toBeInTheDocument();
+    expect(sessionStorage.getItem('grub-radar:invite')).toBeNull();
     // the cards' avatars are fetched again
     expect(friends.places).toHaveBeenCalledTimes(2);
   });
@@ -162,24 +205,24 @@ describe('an invite link', () => {
       from: { displayName: 'Tess', avatarEmoji: '🥟' },
       state: 'own',
     });
-    renderAt(`/invite/${token}`, { friends });
+    renderAt(`/invite#${token}`, { friends });
     expect(await screen.findByText(/that’s your own link/)).toBeInTheDocument();
 
     const gone = fakeFriendsClient();
     gone.preview.mockRejectedValue(new ApiRequestError(410, 'invite_gone', 'gone'));
-    renderAt(`/invite/${token}`, { friends: gone });
+    renderAt(`/invite#${token}`, { friends: gone });
     expect(await screen.findByText(/has been used, revoked or has expired/)).toBeInTheDocument();
   });
 
   it("a malformed link doesn't even ask the server", async () => {
     const friends = fakeFriendsClient();
-    renderAt('/invite/nope', { friends });
+    renderAt('/invite#nope', { friends });
     expect(await screen.findByText(/has been used, revoked or has expired/)).toBeInTheDocument();
     expect(friends.preview).not.toHaveBeenCalled();
   });
 
   it('signed out: the login wall says there is an invite waiting', async () => {
-    renderAt(`/invite/${token}`, { auth: { status: 'signed-out' } });
+    renderAt(`/invite#${token}`, { auth: { status: 'signed-out' } });
     expect(
       await screen.findByText('someone sent you an invite. sign in to accept it.'),
     ).toBeInTheDocument();

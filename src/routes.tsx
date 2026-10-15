@@ -28,7 +28,8 @@ export const routes: RouteObject[] = [
           { path: 'radar', element: <RadarPage /> },
           { path: 'friends', element: <FriendsPage /> },
           { path: 'friends/:id', element: <FriendSpotsPage /> },
-          { path: 'invite/:token', element: <InvitePage /> },
+          // the token is in the fragment (/invite#<token>), never the path
+          { path: 'invite', element: <InvitePage /> },
           // owner-only: its own chunk; to anyone else it's the not-found page (see AdminPage)
           {
             path: 'admin',

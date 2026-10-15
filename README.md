@@ -66,7 +66,7 @@ The first `test:e2e` run needs `npx playwright install chromium`.
 - `/radar` `?reach=0..3` (10 min … road trip), `?kinds=food,coffee`, `?sel=<spot id>`.
 - `/friends` invite a friend (a single-use link, offered to the share sheet or copied), your
   links still waiting (revocable), your friends (unfriend), and how friends see you (name +
-  emoji). `/friends/:id` a friend's shared list. `/invite/:token` an invite link: sign in,
+  emoji). `/friends/:id` a friend's shared list. `/invite#<token>` an invite link (the token in the fragment): sign in,
   see who sent it, accept.
 - `/admin` owner only (see **Admin** below); to everyone else, the ordinary not-found page.
 
@@ -295,7 +295,11 @@ bytes; D1 keeps only their SHA-256. It works once, for 7 days, and its creator c
 while unused. Accepting is one D1 batch: claim the link (only if unused, unrevoked, unexpired,
 not your own, not already friends, both under 200 friends), then the friendship only if that
 claim was this request's, so two people racing for one link can't both get it. Tokens travel
-in request bodies, never in API URLs (they'd end up in logs). Limits: 20 links per person per
+in the link's fragment (`/invite#<token>`), which browsers never send: not in requests, not in
+`Referer`, not in sign-in's `returnTo` (just `/invite`; the tab keeps the token in
+`sessionStorage` across the Apple round trip, and invite pages set `referrer` to `no-referrer`).
+The API takes it only in request bodies (preview is braked like a write). Each accept marks its
+claim with a random id, so the outcome reflects the update that actually happened. Limits: 20 links per person per
 24 h (counted inside the `INSERT`), 200 friends. **What a friend sees** is decided in SQL:
 every read of someone else's data joins through `friendships` from the viewer's own id and
 keeps only `user_places.visibility = 'friends'` (the default; any spot can be set to "just

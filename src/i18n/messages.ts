@@ -1,4 +1,5 @@
 import type { ErrorCode, SigninResult } from '../contracts/errors';
+import { FRIEND_LIMIT } from '../contracts/friends';
 import type { Day, Hours, IconName, Kind, Verdict, Visibility } from '../domain/spot';
 import { formatMiles, formatMinutes, type TravelMode } from '../domain/travel';
 import type { Mode } from '../domain/modes';
@@ -307,7 +308,7 @@ const en = {
     rate_limited: 'slow down a little, then try again.',
     invite_gone: 'this link has been used, revoked or has expired.',
     own_invite: 'that’s your own invite link.',
-    friend_limit: 'one of you already has the most friends allowed (200).',
+    friend_limit: `one of you already has the most friends allowed (${String(FRIEND_LIMIT)}).`,
     invite_limit: 'that’s a lot of links for one day. try again tomorrow.',
     unknown: 'couldn’t save that. try again?',
   } satisfies Partial<Record<ErrorCode, string>> & { unknown: string },
@@ -694,7 +695,7 @@ const zh: Messages = {
     rate_limited: '慢一点，等会儿再试。',
     invite_gone: '这个链接已经用过、被撤销或者过期了。',
     own_invite: '这是你自己的邀请链接。',
-    friend_limit: '你们其中一位的好友已经满了（200 位）。',
+    friend_limit: `你们其中一位的好友已经满了（${String(FRIEND_LIMIT)} 位）。`,
     invite_limit: '今天生成的链接太多了，明天再来吧。',
     unknown: '没保存成功，再试一次？',
   },

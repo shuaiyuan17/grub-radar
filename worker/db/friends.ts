@@ -257,9 +257,10 @@ export async function listInvites(
     .prepare(
       `SELECT id, created_at, expires_at FROM invites
        WHERE user_id = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?
-       ORDER BY created_at DESC, id DESC LIMIT 50`,
+       ORDER BY created_at DESC, id DESC LIMIT ?`,
     )
-    .bind(userId, iso(now))
+    // every live link: at most a day's allowance for each day a link lives (140)
+    .bind(userId, iso(now), INVITES_PER_DAY * INVITE_TTL_DAYS)
     .all<{ id: string; created_at: string; expires_at: string }>();
   return results.map((r) => ({ id: r.id, createdAt: r.created_at, expiresAt: r.expires_at }));
 }
@@ -329,11 +330,11 @@ interface AcceptRow {
   user_id: string;
   display_name: string;
   avatar_emoji: string;
-  used_by: string | null;
-  used_at: string | null;
+  /** 1 when this attempt's claim is the one on the link. */
+  mine: number | null;
   usable: number;
   since: string | null;
-  mine: number;
+  mine_count: number;
   theirs: number;
 }
 
@@ -344,7 +345,8 @@ interface AcceptRow {
  *
  *   1. claim the link: only if unused, unrevoked, unexpired, not your own,
  *      you aren't friends already, and both of you are under FRIEND_LIMIT
- *   2-3. the friendship, both ways, only if step 1 claimed it for you just now
+ *   2-3. the friendship, both ways, only if step 1's claim (a random marker
+ *        per attempt) is the one on the link
  *   4. read back the link and where things stand
  *
  * Already friends: nothing is written and the link stays unused.
@@ -357,41 +359,55 @@ export async function acceptInvite(
 ): Promise<AcceptOutcome> {
   const at = iso(now);
   const hash = await sha256Hex(token);
-  const claimedNow = 'FROM invites WHERE token_hash = ? AND used_by = ? AND used_at = ?';
+  // marks this attempt's claim: two accepts in the same millisecond can't mistake
+  // each other's claim for their own
+  const claim = randomToken(16);
+  const claimedNow = 'FROM invites WHERE token_hash = ? AND claim = ?';
   const results = await db.batch([
     db
       .prepare(
-        `UPDATE invites SET used_by = ?, used_at = ?
+        `UPDATE invites SET used_by = ?, used_at = ?, claim = ?
          WHERE token_hash = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?
            AND user_id <> ?
            AND NOT EXISTS (SELECT 1 FROM friendships WHERE user_id = ? AND friend_id = invites.user_id)
            AND (SELECT COUNT(*) FROM friendships WHERE user_id = ?) < ?
            AND (SELECT COUNT(*) FROM friendships WHERE user_id = invites.user_id) < ?`,
       )
-      .bind(viewerId, at, hash, at, viewerId, viewerId, viewerId, FRIEND_LIMIT, FRIEND_LIMIT),
+      .bind(
+        viewerId,
+        at,
+        claim,
+        hash,
+        at,
+        viewerId,
+        viewerId,
+        viewerId,
+        FRIEND_LIMIT,
+        FRIEND_LIMIT,
+      ),
     db
       .prepare(
         `INSERT OR IGNORE INTO friendships (user_id, friend_id, created_at)
          SELECT user_id, used_by, ? ${claimedNow}`,
       )
-      .bind(at, hash, viewerId, at),
+      .bind(at, hash, claim),
     db
       .prepare(
         `INSERT OR IGNORE INTO friendships (user_id, friend_id, created_at)
          SELECT used_by, user_id, ? ${claimedNow}`,
       )
-      .bind(at, hash, viewerId, at),
+      .bind(at, hash, claim),
     db
       .prepare(
-        `SELECT i.user_id, u.display_name, u.avatar_emoji, i.used_by, i.used_at,
+        `SELECT i.user_id, u.display_name, u.avatar_emoji, i.claim = ? AS mine,
            (i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > ?) AS usable,
            (SELECT created_at FROM friendships WHERE user_id = ? AND friend_id = i.user_id) AS since,
-           (SELECT COUNT(*) FROM friendships WHERE user_id = ?) AS mine,
+           (SELECT COUNT(*) FROM friendships WHERE user_id = ?) AS mine_count,
            (SELECT COUNT(*) FROM friendships WHERE user_id = i.user_id) AS theirs
          FROM invites i JOIN users u ON u.id = i.user_id
          WHERE i.token_hash = ?`,
       )
-      .bind(at, viewerId, viewerId, hash),
+      .bind(claim, at, viewerId, viewerId, hash),
   ]);
   const row = (results[3]?.results as AcceptRow[] | undefined)?.[0];
   if (!row) return { kind: 'gone' };
@@ -403,10 +419,9 @@ export async function acceptInvite(
       avatar_emoji: row.avatar_emoji,
       since: row.since,
     });
-    const mineNow = row.used_by === viewerId && row.used_at === at;
-    return { kind: mineNow ? 'accepted' : 'already', friend };
+    return { kind: row.mine ? 'accepted' : 'already', friend };
   }
   if (!row.usable) return { kind: 'gone' };
-  if (row.mine >= FRIEND_LIMIT || row.theirs >= FRIEND_LIMIT) return { kind: 'limit' };
+  if (row.mine_count >= FRIEND_LIMIT || row.theirs >= FRIEND_LIMIT) return { kind: 'limit' };
   return { kind: 'gone' };
 }

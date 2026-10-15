@@ -52,7 +52,22 @@ async function unknownEndpoint(method = 'GET', cookie?: string) {
     cookie,
     ...(method === 'GET' ? {} : { headers: writeHeaders, body: '{}' }),
   });
-  return { status: res.status, body: await res.text(), type: res.headers.get('content-type') };
+  return shape(res);
+}
+
+/**
+ * Everything a client can see of a response: status, body and every header.
+ * Server-Timing's durations differ request to request, so they're blanked;
+ * its metric names and descriptions (which D1 work ran) must match exactly.
+ */
+async function shape(res: Response) {
+  const headers = Object.fromEntries(
+    [...res.headers].map(([k, v]) => [
+      k,
+      k === 'server-timing' ? v.replace(/dur=[\d.]+/g, 'dur=_') : v,
+    ]),
+  );
+  return { status: res.status, body: await res.text(), headers };
 }
 
 describe('the admin API is a plain 404 for everyone but admins', () => {
@@ -75,11 +90,8 @@ describe('the admin API is a plain 404 for everyone but admins', () => {
             cookie: c,
             ...(method === 'GET' ? {} : { headers: writeHeaders, body: '{}' }),
           });
-          expect({
-            status: res.status,
-            body: await res.text(),
-            type: res.headers.get('content-type'),
-          }).toEqual(expected);
+          // headers included: no extra D1 work may show in Server-Timing
+          expect(await shape(res)).toEqual(expected);
         }
       }
     });

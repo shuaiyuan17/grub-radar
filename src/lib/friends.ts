@@ -131,5 +131,5 @@ export const AVATAR_CHOICES = [
   '🌵',
 ] as const;
 
-/** The full link for an invite: this app's origin + `/invite/<token>`. */
+/** The full link for an invite: this app's origin + `/invite#<token>`. */
 export const inviteUrl = (path: string, origin = window.location.origin) => `${origin}${path}`;

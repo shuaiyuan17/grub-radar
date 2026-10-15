@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { Headline } from '../components/bits';
 import { formErrorClass } from '../components/fieldClasses';
 import { InkButton } from '../components/fields';
 import { Ink } from '../components/Ink';
-import { InviteTokenSchema, type InvitePreview } from '../contracts/friends';
+import { INVITE_ROUTE, type InvitePreview } from '../contracts/friends';
 import { parseHeadline } from '../domain/headlines';
 import { useT } from '../i18n/context';
 import { ApiRequestError } from '../lib/api';
 import { saveErrorMessage } from '../lib/errors';
 import { useFriendsClient, useFriendTakes } from '../lib/friends';
+import { forgetInviteToken, rememberInviteToken, useNoReferrer } from '../lib/inviteToken';
 import styles from './FriendsPage.module.css';
 
 type View =
@@ -20,17 +21,26 @@ type View =
   | { state: 'accepted'; name: string; emoji: string; already: boolean };
 
 /**
- * /invite/:token: someone sent you a link. Signed out, the login wall shows
+ * /invite#<token>: someone sent you a link. Signed out, the login wall shows
  * first (and brings you back here after Sign in with Apple). Then: who sent
  * it, and one button. Accepting makes you friends both ways at once.
  */
 export function InvitePage() {
-  const { token = '' } = useParams();
+  const { hash } = useLocation();
+  const navigate = useNavigate();
   const t = useT();
   const client = useFriendsClient();
   const { refresh } = useFriendTakes();
-  const valid = InviteTokenSchema.safeParse(token).success;
+  useNoReferrer();
+  // from the fragment, or kept in this tab across the Apple sign-in round trip
+  const [token] = useState(() => rememberInviteToken(hash) ?? '');
+  const valid = token !== '';
   const [view, setView] = useState<View>(valid ? { state: 'checking' } : { state: 'gone' });
+
+  // once kept, take it out of the address bar (and this history entry)
+  useEffect(() => {
+    if (hash) void navigate(INVITE_ROUTE, { replace: true });
+  }, [hash, navigate]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,10 +50,12 @@ export function InvitePage() {
     client.preview(token).then(
       (preview) => {
         if (live) setView({ state: 'preview', preview });
+        if (preview.state !== 'open') forgetInviteToken();
       },
       (e: unknown) => {
         if (!live) return;
         const gone = e instanceof ApiRequestError && e.code === 'invite_gone';
+        if (gone) forgetInviteToken();
         setView(gone ? { state: 'gone' } : { state: 'error' });
       },
     );
@@ -57,6 +69,7 @@ export function InvitePage() {
     setError(null);
     try {
       const res = await client.accept(token);
+      forgetInviteToken();
       setView({
         state: 'accepted',
         name: res.friend.displayName,
@@ -65,8 +78,10 @@ export function InvitePage() {
       });
       refresh();
     } catch (e) {
-      if (e instanceof ApiRequestError && e.code === 'invite_gone') setView({ state: 'gone' });
-      else setError(saveErrorMessage(e, t));
+      if (e instanceof ApiRequestError && e.code === 'invite_gone') {
+        forgetInviteToken();
+        setView({ state: 'gone' });
+      } else setError(saveErrorMessage(e, t));
     } finally {
       setBusy(false);
     }

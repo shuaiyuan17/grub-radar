@@ -13,6 +13,7 @@ import {
 } from '../../src/contracts/friends';
 import { SEED_SPOTS } from '../../src/data/seed';
 import { parseSpots } from '../../src/domain/spot';
+import { acceptInvite, createInvite } from '../db/friends';
 import { call, d1RoundTrips, send, userSession, writeHeaders } from '../test/helpers';
 
 /**
@@ -262,11 +263,12 @@ describe('invite links', () => {
   const create = async (cookie: string) =>
     CreatedInviteSchema.parse(await json(await send('POST', '/api/invites', cookie)));
 
-  it('stores only a hash of the token; the link is /invite/<token>', async () => {
+  it('stores only a hash of the token; the link is /invite#<token>', async () => {
     const { a } = await trio();
     const made = await create(a);
     expect(made.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(made.path).toBe(`/invite/${made.token}`);
+    // the token rides in the fragment: browsers never send it to any server
+    expect(made.path).toBe(`/invite#${made.token}`);
     const row = await env.DB.prepare('SELECT * FROM invites WHERE id = ?').bind(made.id).first();
     expect(JSON.stringify(row)).not.toContain(made.token);
     expect(row?.token_hash).toMatch(/^[0-9a-f]{64}$/);
@@ -445,6 +447,74 @@ describe('invite links', () => {
       await json(await call('/api/invites', { cookie: a })),
     );
     expect(pending.invites.map((i) => i.id)).toContain(made.id);
+  });
+
+  it(`the accepter's own ${String(FRIEND_LIMIT)}-friend cap counts too`, async () => {
+    const { a, b, ids } = await trio();
+    const full = ids[1] ?? '';
+    await env.DB.batch(
+      Array.from({ length: FRIEND_LIMIT }, (_, i) => `u_acc${String(n)}_${String(i)}`).flatMap(
+        (id) => [
+          env.DB.prepare(
+            "INSERT INTO users (id, display_name, created_at, last_login_at) VALUES (?, 'f', 'x', 'x')",
+          ).bind(id),
+          env.DB.prepare(
+            "INSERT INTO friendships (user_id, friend_id, created_at) VALUES (?, ?, 'x'), (?, ?, 'x')",
+          ).bind(full, id, id, full),
+        ],
+      ),
+    );
+    const made = await create(a);
+    const res = await send('POST', '/api/invites/accept', b, { token: made.token });
+    expect(res.status).toBe(409);
+    expect(await json(res)).toMatchObject({ error: { code: 'friend_limit' } });
+    expect(await friendRows(ids[0] ?? '', full)).toBe(0);
+  });
+
+  it('two accepts by one person in the same millisecond: one "accepted", one "already"', async () => {
+    const { ids } = await trio();
+    const [from = '', to = ''] = ids;
+    const made = await createInvite(env.DB, from);
+    if (made === 'limit') throw new Error('limit');
+    const now = Date.now();
+    const outcomes = await Promise.all([
+      acceptInvite(env.DB, to, made.token, now),
+      acceptInvite(env.DB, to, made.token, now),
+    ]);
+    expect(outcomes.map((o) => o.kind).sort()).toEqual(['accepted', 'already']);
+    expect(await friendRows(from, to)).toBe(2);
+  });
+
+  it('every friends write refuses a cross-site request, even with a session', async () => {
+    const { a, b } = await trio();
+    const made = await create(a);
+    const routes: [string, string, unknown][] = [
+      ['POST', '/api/invites', {}],
+      ['DELETE', `/api/invites/${made.id}`, {}],
+      ['POST', '/api/invites/preview', { token: made.token }],
+      ['POST', '/api/invites/accept', { token: made.token }],
+      ['DELETE', '/api/friends/u_nobody', {}],
+      ['PATCH', '/api/me', { displayName: 'pwned' }],
+    ];
+    const attacks: Record<string, string>[] = [
+      // a cross-site page: right content type and header, wrong site
+      { 'content-type': 'application/json', 'x-grub-request': '1', 'sec-fetch-site': 'cross-site' },
+      // a plain form post: no custom header
+      { 'content-type': 'text/plain', 'sec-fetch-site': 'cross-site' },
+      // no Sec-Fetch-Site, but a foreign Origin
+      { 'content-type': 'application/json', 'x-grub-request': '1', origin: 'https://evil.test' },
+    ];
+    for (const [method, path, body] of routes) {
+      for (const headers of attacks) {
+        const res = await call(path, { method, cookie: b, headers, body: JSON.stringify(body) });
+        expect([method, path, res.status]).toEqual([method, path, 403]);
+      }
+    }
+    // nothing happened: the link is still live, and the name unchanged
+    const pending = InvitesResponseSchema.parse(
+      await json(await call('/api/invites', { cookie: a })),
+    );
+    expect(pending.invites.map((i) => i.id)).toEqual([made.id]);
   });
 
   it('deleting an account ends its friendships and links', async () => {

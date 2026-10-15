@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useLocation, useSearchParams } from 'react-router';
 import { AppleSignInButton } from '../components/AppleSignInButton';
 import { Headline, Logo } from '../components/bits';
@@ -9,6 +9,8 @@ import { LangToggle } from '../components/controls';
 import { parseHeadline } from '../domain/headlines';
 import { useT } from '../i18n/context';
 import { useAuth } from '../lib/auth';
+import { rememberInviteToken, useNoReferrer } from '../lib/inviteToken';
+import { INVITE_ROUTE } from '../contracts/friends';
 import styles from './SignInPage.module.css';
 
 const isSigninResult = (v: string | null): v is SigninResult =>
@@ -41,12 +43,24 @@ function RingsBackdrop() {
  * JS map of nearby Apple POIs there (token from GET /api/mapkit-token) with
  * this same card on top.
  */
+/**
+ * On /invite#<token> while signed out: keep the token in this tab (sign-in's
+ * returnTo is just /invite) and send no Referer from here.
+ */
+function InviteKeeper() {
+  const { hash } = useLocation();
+  useState(() => rememberInviteToken(hash));
+  useNoReferrer();
+  return null;
+}
+
 export function SignInPage({ backdrop }: { backdrop?: ReactNode }) {
   const t = useT();
   const { signIn } = useAuth();
   const [params, setParams] = useSearchParams();
   const { pathname } = useLocation();
   const result = params.get('signin');
+  const invite = pathname === INVITE_ROUTE;
 
   const dismiss = () => {
     const next = new URLSearchParams(params);
@@ -56,6 +70,7 @@ export function SignInPage({ backdrop }: { backdrop?: ReactNode }) {
 
   return (
     <div className={styles.landing}>
+      {invite && <InviteKeeper />}
       <div className={styles.backdrop} aria-hidden="true">
         {backdrop ?? <RingsBackdrop />}
       </div>
@@ -73,9 +88,7 @@ export function SignInPage({ backdrop }: { backdrop?: ReactNode }) {
             className={styles.tagline}
             parts={parseHeadline(t.wallTagline)}
           />
-          {pathname.startsWith('/invite/') && (
-            <p className={`note ${styles.inviteNote}`}>{t.friends.inviteWall}</p>
-          )}
+          {invite && <p className={`note ${styles.inviteNote}`}>{t.friends.inviteWall}</p>}
           <div role="status" className={styles.status}>
             {isSigninResult(result) && (
               <div className={`sk ${styles.notice}`}>

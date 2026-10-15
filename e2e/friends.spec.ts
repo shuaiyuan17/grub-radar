@@ -82,22 +82,40 @@ test('invite link → sign in → accept → each other’s faces on the cards',
   // …makes a link (no share sheet here: it lands on screen, and in the clipboard if allowed)
   await ana.getByRole('button', { name: 'invite a friend' }).click();
   const linkBox = ana.getByRole('textbox', { name: 'your invite link' });
-  await expect(linkBox).toHaveValue(/\/invite\/[A-Za-z0-9_-]{43}$/);
+  await expect(linkBox).toHaveValue(/\/invite#[A-Za-z0-9_-]{43}$/);
   const link = await linkBox.inputValue();
   await expect(ana.getByText(/^made .* works until /)).toHaveCount(1);
   await noHorizontalScroll(ana);
   await noSeriousA11yIssues(ana);
   await shot(ana, '1-friends-invite-link', project);
 
+  // the token is in the fragment: it must never reach a server, in any request
+  // URL, Referer, or sign-in's returnTo
+  const { pathname, hash } = new URL(link);
+  const token = hash.slice(1);
+  expect(pathname).toBe('/invite');
+  const seen: string[] = [];
+  ben.on('request', (r) => {
+    seen.push(r.url(), r.headers().referer ?? '', r.postData() ?? '');
+  });
+
   // Ben opens it signed out: the wall says there's an invite
-  const path = new URL(link).pathname;
-  await ben.goto(path);
+  await ben.goto(`${pathname}${hash}`);
   await expect(ben.getByText('someone sent you an invite. sign in to accept it.')).toBeVisible();
   await shot(ben, '2-invite-signed-out', project);
 
-  // signs in (dev login stands in for Sign in with Apple), lands back on the link
+  // "Sign in with Apple": returnTo is /invite alone (stopped there: dev login stands in for Apple)
+  let returnTo: string | null = null;
+  await ben.route('**/auth/apple/start**', async (route) => {
+    returnTo = new URL(route.request().url()).searchParams.get('returnTo');
+    await route.fulfill({ status: 200, contentType: 'text/plain', body: 'stopped before Apple' });
+  });
+  await ben.getByRole('button', { name: /Sign in with Apple/ }).click();
+  await expect.poll(() => returnTo).toBe('/invite');
+
+  // back from sign-in at /invite, no fragment: the tab kept the token
   await devLogin(ben, { as: freshUser(`ben-${project}`) });
-  await ben.goto(path);
+  await ben.goto('/invite');
   await expect(ben.getByText('Ana wants to be friends on grub radar.')).toBeVisible();
   await noHorizontalScroll(ben);
   await noSeriousA11yIssues(ben);
@@ -105,6 +123,10 @@ test('invite link → sign in → accept → each other’s faces on the cards',
   await ben.getByRole('button', { name: 'accept' }).click();
   await expect(ben.getByText('you and Ana are friends now.')).toBeVisible();
   await shot(ben, '4-invite-accepted', project);
+  // the only place the token went: the bodies of preview and accept
+  const leaks = seen.filter((v) => v.includes(token) && !v.includes('"token"'));
+  expect(leaks).toEqual([]);
+  expect(seen.filter((v) => v.includes('"token"')).length).toBeGreaterThanOrEqual(2);
 
   // the link is spent: Ana's "links waiting" is empty again
   await ana.reload();
@@ -154,7 +176,7 @@ test('invite link → sign in → accept → each other’s faces on the cards',
   // a used link stays used, even for a third person
   const cyd = await (await browser.newContext(contextOpts)).newPage();
   await devLogin(cyd, { as: freshUser(`cyd-${project}`), demo: false });
-  await cyd.goto(path);
+  await cyd.goto(`${pathname}${hash}`);
   await expect(cyd.getByText(/has been used, revoked or has expired/)).toBeVisible();
 
   await anaCtx.close();

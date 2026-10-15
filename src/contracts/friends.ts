@@ -27,8 +27,13 @@ export const InviteTokenSchema = z
   .string()
   .check(z.regex(/^[A-Za-z0-9_-]{43}$/, 'not an invite link'));
 
-/** Where an invite link points, in the app: `/invite/<token>`. */
-export const invitePath = (token: string) => `/invite/${token}`;
+/**
+ * Where an invite link points, in the app: `/invite#<token>`. The token rides
+ * in the fragment, which browsers never send to a server: not in requests, not
+ * in Referer, not in sign-in's returnTo (which is just `/invite`).
+ */
+export const INVITE_ROUTE = '/invite';
+export const invitePath = (token: string) => `${INVITE_ROUTE}#${token}`;
 
 /** Someone, as other people see them. */
 export const PersonSchema = z.strictObject({
@@ -70,7 +75,7 @@ export type InvitesResponse = z.infer<typeof InvitesResponseSchema>;
 export const CreatedInviteSchema = z.strictObject({
   ...PendingInviteSchema.shape,
   token: InviteTokenSchema,
-  /** `/invite/<token>`: put the app's origin in front. */
+  /** `/invite#<token>`: put the app's origin in front. */
   path: z.string(),
 });
 export type CreatedInvite = z.infer<typeof CreatedInviteSchema>;

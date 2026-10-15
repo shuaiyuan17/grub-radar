@@ -1,4 +1,4 @@
-/* /friends, /friends/:id and /invite/:token */
+/* /friends, /friends/:id and /invite#<token> */
 .main {
   display: flex;
   flex-direction: column;

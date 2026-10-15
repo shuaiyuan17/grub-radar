@@ -54,7 +54,7 @@ me.get('/', async (c) => {
   return c.json(body);
 });
 
-me.patch('/', csrf, async (c) => {
+me.patch('/', csrf, limitWrites, async (c) => {
   const { userId } = sessionUser(c.var.principal);
   const parsed = PatchMeSchema.safeParse(await c.req.json().catch(() => undefined));
   if (!parsed.success)

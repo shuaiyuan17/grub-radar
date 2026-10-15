@@ -124,10 +124,12 @@ invites.post('/', ...write, async (c) => {
 });
 
 /**
- * Who sent a link and what accepting it would do. A POST (with the token in
- * the body) so tokens never sit in URLs, logs or the Referer.
+ * Who sent a link and what accepting it would do. A POST with the token in the
+ * body, so the API never sees it in a URL (request URLs are logged). In the
+ * app the link keeps it in the fragment (`/invite#<token>`), which browsers
+ * never send. Braked like a write: it's the endpoint a token guesser would use.
  */
-invites.post('/preview', csrf, async (c) => {
+invites.post('/preview', csrf, limitWrites, async (c) => {
   const { userId } = sessionUser(c.var.principal);
   const body = await readJson(c, InviteTokenBodySchema);
   if (!body.ok) return body.res;

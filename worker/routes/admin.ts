@@ -18,7 +18,10 @@ export const admin = new Hono<AppEnv>();
 
 admin.use(async (c, next) => {
   const p = c.var.principal;
-  if (p.kind !== 'user' || !(await isAdmin(c.env.DB, c.env, p.userId))) return noSuchEndpoint(c);
+  // untimed: the check must not add a d1_N to Server-Timing, or a non-admin's
+  // 404 would differ from an unknown endpoint's (it would say "this exists")
+  if (p.kind !== 'user' || !(await isAdmin(c.var.untimedDB, c.env, p.userId)))
+    return noSuchEndpoint(c);
   await next();
 });
 

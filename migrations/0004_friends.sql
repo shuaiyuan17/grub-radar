@@ -30,6 +30,7 @@ CREATE TABLE invites (
   expires_at TEXT NOT NULL,
   used_by    TEXT REFERENCES users(id) ON DELETE SET NULL,           -- who accepted it
   used_at    TEXT,
+  claim      TEXT,                           -- random per accept attempt: which request claimed it
   revoked_at TEXT,
   CHECK (used_by IS NULL OR used_by <> user_id)
 );

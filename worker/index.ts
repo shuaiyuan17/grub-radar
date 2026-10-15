@@ -34,6 +34,7 @@ app.use(async (c, next) => {
   const timing = new Timing();
   c.set('timing', timing);
   c.set('deferred', []);
+  c.set('untimedDB', c.env.DB);
   c.env = { ...c.env, DB: timedD1(c.env.DB, timing) };
   await next();
   await Promise.all(c.var.deferred);
