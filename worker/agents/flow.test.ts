@@ -226,11 +226,13 @@ describe('the whole flow: connect, use, disconnect, refused', () => {
     const client = await mcpClient(t.access_token);
     const tools = (await client.listTools()).tools.map((x) => x.name).sort();
     expect(tools).toEqual([
+      'add_dish',
       'add_note',
       'add_spot',
       'find_nearby',
       'list_spots',
       'mark_been',
+      'remove_dish',
       'roll',
       'search_places',
     ]);
@@ -342,7 +344,7 @@ describe('the whole flow: connect, use, disconnect, refused', () => {
     await first.finishAuth(store.callback ?? new URLSearchParams());
     const client = new Client({ name: 'sdk', version: '1' });
     await client.connect(transport());
-    expect((await client.listTools()).tools).toHaveLength(7);
+    expect((await client.listTools()).tools).toHaveLength(9);
     await client.close();
   });
 });

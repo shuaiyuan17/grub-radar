@@ -227,13 +227,13 @@ How to connect (and the rules for doing it): ${origin}/agent-setup.md
 
 - Remote MCP server (streamable HTTP): ${origin}/mcp
 - OAuth 2.1 (discovery from the 401; dynamic client registration and client ID metadata documents). The person approves in a browser.
-- Tools: list_spots, find_nearby, roll, search_places, add_spot, mark_been, add_note
+- Tools: list_spots, find_nearby, roll, search_places, add_spot, mark_been, add_note, add_dish, remove_dish
 
 ## REST
 
 - OpenAPI: ${origin}/openapi.json
 - Auth: \`Authorization: Bearer grub_pat_…\` (a personal token the person makes in Settings) or an OAuth token for ${origin}/api
-- Scopes: spots:read (read), spots:write (add, edit, mark been, notes)
+- Scopes: spots:read (read), spots:write (add, edit, mark been, notes, dishes)
 - Main calls: GET /api/spots, GET /api/spots/nearby?origin=home, POST /api/spots, POST /api/spots/{id}/been, POST /api/spots/{id}/notes, POST /api/roll, GET /api/places/search?q=
 
 ## Privacy
@@ -242,7 +242,7 @@ Home's coordinates are never sent to an agent. For an agent, "home" is the centr
 
 ## What an agent may change
 
-With spots:write: add spots, mark them been, append notes, edit a spot's fields (PATCH). Not its visibility (private vs friends) or the person's notes as a whole (PATCH myNote); those, and removing spots, are the person's alone (403).
+With spots:write: add spots, mark them been, append notes, add or remove dishes to order (only ones the person named), edit a spot's fields (PATCH). Not its visibility (private vs friends) or the person's notes as a whole (PATCH myNote); those, and removing spots, are the person's alone (403).
 
 ## Legal
 
@@ -330,8 +330,10 @@ curl -H "Authorization: Bearer $GRUB_TOKEN" "${origin}/api/spots/nearby?origin=h
 | \`add_spot\` | add a place, by \`applePlaceId\` from search_places (best) or by \`query\` + \`near\`; it's labelled "found by" you |
 | \`mark_been\` | they went: optional verdict good / meh / bad and a note |
 | \`add_note\` | add a dated line to a spot's notes, in their words |
+| \`add_dish\` | add a dish they named to a spot's "dishes to order" (a dish already there changes nothing) |
+| \`remove_dish\` | take a dish off that list, when they ask |
 
-Only mark visits, give verdicts or write notes when the person told you to. Never invent places, verdicts or opening hours.
+Only mark visits, give verdicts, write notes or change dishes to order when the person told you to. Never invent places, verdicts or opening hours.
 
 ## Privacy and terms
 

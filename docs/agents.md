@@ -44,7 +44,7 @@ Personal tokens take `spots:read` and/or `spots:write`.
 
 ## What an agent may write
 
-Add spots, mark them been, append notes, and PATCH a spot's own fields. Never `visibility`
+Add spots, mark them been, append notes, add or remove dishes to order, and PATCH a spot's own fields. Never `visibility`
 (private → friends is the person's call) or `myNote` as a whole (agents append with
 `POST …/notes`): 403. Removing a spot (it takes visits and photos with it) is session-only.
 
@@ -96,6 +96,8 @@ only the SHA-256. Revoking is immediate. They cost no KV.
 | `add_spot`      | `spots:write` | by `applePlaceId`, or a free-text query (adds only a clear match) |
 | `mark_been`     | `spots:write` | been, with an optional verdict, date and note                     |
 | `add_note`      | `spots:write` | append a dated note                                               |
+| `add_dish`      | `spots:write` | add a dish to a spot's "dishes to order" (deduped, ≤ 20)          |
+| `remove_dish`   | `spots:write` | take a dish off that list (matched ignoring case and spacing)     |
 
 Write tools need `spots:write`: a 403 step-up challenge at the HTTP layer, and checked again
 in each tool.

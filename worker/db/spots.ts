@@ -13,8 +13,10 @@
 import { agentName, FOUND_BY_AGENT } from '../../src/contracts/agents';
 import type { ApplePlace } from '../../src/contracts/places';
 import {
+  applyAddDish,
   applyAddNote,
   applyMarkBeen,
+  applyRemoveDish,
   applyPatch,
   changesPlace,
   spotFromInput,
@@ -23,6 +25,7 @@ import {
   type AddExtras,
   type AddNote,
   type AddSpot,
+  type DishInput,
   type MarkBeen,
   type SpotPatch,
 } from '../../src/domain/edits';
@@ -435,6 +438,25 @@ export class D1SpotRepository implements WritableSpotRepository {
     return this.#edit(id, (spot, today) => applyAddNote(spot, input, today));
   }
 
+  /**
+   * `add_dish`: one more dish to order. `added` is false when it was already
+   * there (nothing written, the version stays).
+   */
+  async addDish(id: string, input: DishInput): Promise<{ spot: Spot; added: boolean }> {
+    let added = false;
+    const spot = await this.#edit(id, (s) => {
+      const next = applyAddDish(s, input);
+      added = next !== s;
+      return next;
+    });
+    return { spot, added };
+  }
+
+  /** `remove_dish`: takes a dish off the order list (no_dish if it isn't there). */
+  removeDish(id: string, input: DishInput): Promise<Spot> {
+    return this.#edit(id, (spot) => applyRemoveDish(spot, input));
+  }
+
   /** Your entry, its visits and your photos of it (rows here; bytes via the outbox). */
   async remove(id: string): Promise<void> {
     const db = this.#db;
@@ -463,7 +485,8 @@ export class D1SpotRepository implements WritableSpotRepository {
    * a 409 when the caller pinned a version, else retry from fresh data.
    * A name/location change is written first, guarded by created_by in SQL;
    * the entry update only lands if the place now says what we wanted, so a
-   * refused place edit leaves everything untouched (not_editable).
+   * refused place edit leaves everything untouched (not_editable). An edit
+   * that returns the very spot it was given writes nothing.
    */
   async #edit(
     id: string,
@@ -480,6 +503,8 @@ export class D1SpotRepository implements WritableSpotRepository {
       if (opts.expectVersion !== undefined && opts.expectVersion !== loaded.version)
         throw new SpotOpError('conflict', 'this spot changed since you loaded it');
       const next = apply(loaded.spot, this.#today());
+      // the edit handed back the spot itself: nothing changed, nothing to write
+      if (next === loaded.spot) return loaded.spot;
       const version = loaded.version + 1;
       const placeChanged = changesPlace(loaded.spot, next);
       const at = iso(this.#now());

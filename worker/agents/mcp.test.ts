@@ -150,6 +150,95 @@ describe('tools', () => {
     await client.close();
   });
 
+  it('add_dish and remove_dish edit the dishes to order, deduped', async () => {
+    const client = await mcpClient(token);
+    const [spot] = await mySpots();
+    if (!spot) throw new Error('no spot');
+    const before = spot.version ?? 0;
+    const added = toolJson(
+      await client.callTool({
+        name: 'add_dish',
+        arguments: { id: spot.id, dish: '  Cumin   Lamb Noodles ' },
+      }),
+    ) as { spot: { version: number }; added: boolean };
+    expect(added.added).toBe(true);
+    expect(added.spot.version).toBe(before + 1);
+    // the person sees it on their list
+    let mine = (await mySpots()).find((s) => s.id === spot.id);
+    expect(mine?.order.map((d) => d.dish)).toContain('Cumin Lamb Noodles');
+    expect(mine?.order.find((d) => d.dish === 'Cumin Lamb Noodles')?.tried).toBe(false);
+    expect(mine?.version).toBe(before + 1);
+
+    // the same dish again, in other case and spacing: nothing written
+    const again = toolJson(
+      await client.callTool({
+        name: 'add_dish',
+        arguments: { id: spot.id, dish: 'cumin lamb noodles' },
+      }),
+    ) as { spot: { version: number }; added: boolean };
+    expect(again.added).toBe(false);
+    expect(again.spot.version).toBe(before + 1);
+    mine = (await mySpots()).find((s) => s.id === spot.id);
+    expect(mine?.order.filter((d) => /cumin lamb/i.test(d.dish))).toHaveLength(1);
+
+    // list_spots shows it
+    const listed = toolJson(await client.callTool({ name: 'list_spots', arguments: {} })) as {
+      spots: { id: string; order?: string[] }[];
+    };
+    expect(listed.spots.find((s) => s.id === spot.id)?.order).toContain('Cumin Lamb Noodles');
+
+    const removed = toolJson(
+      await client.callTool({
+        name: 'remove_dish',
+        arguments: { id: spot.id, dish: 'CUMIN LAMB noodles' },
+      }),
+    ) as { spot: { order: { dish: string }[]; version: number } };
+    expect(removed.spot.order.map((d) => d.dish)).not.toContain('Cumin Lamb Noodles');
+    expect(removed.spot.version).toBe(before + 2);
+    mine = (await mySpots()).find((s) => s.id === spot.id);
+    expect(mine?.order.map((d) => d.dish)).not.toContain('Cumin Lamb Noodles');
+
+    const gone = await client.callTool({
+      name: 'remove_dish',
+      arguments: { id: spot.id, dish: 'Cumin Lamb Noodles' },
+    });
+    expect(toolJson(gone)).toMatchObject({ error: { code: 'no_dish' } });
+    const tooLong = await client.callTool({
+      name: 'add_dish',
+      arguments: { id: spot.id, dish: 'x'.repeat(81) },
+    });
+    expect(tooLong.isError).toBe(true);
+    const missing = await client.callTool({
+      name: 'add_dish',
+      arguments: { id: 'p-nope', dish: 'x' },
+    });
+    expect(toolJson(missing)).toMatchObject({ error: { code: 'not_found' } });
+    await client.close();
+  });
+
+  it('add_dish stops at 20 dishes', async () => {
+    const client = await mcpClient(token);
+    const [spot] = await mySpots();
+    if (!spot) throw new Error('no spot');
+    const room = 20 - spot.order.length;
+    for (let i = 0; i < room; i++)
+      expect(
+        toolJson(
+          await client.callTool({
+            name: 'add_dish',
+            arguments: { id: spot.id, dish: `filler ${String(i)}` },
+          }),
+        ),
+      ).toMatchObject({ added: true });
+    const over = await client.callTool({
+      name: 'add_dish',
+      arguments: { id: spot.id, dish: 'one too many' },
+    });
+    expect(toolJson(over)).toMatchObject({ error: { code: 'dishes_full' } });
+    expect((await mySpots()).find((s) => s.id === spot.id)?.order).toHaveLength(20);
+    await client.close();
+  });
+
   it("an agent only ever sees its own person's list", async () => {
     const other = await userSession('u_mcp_other', 'Oz');
     await send('POST', '/api/spots', other, {
@@ -168,6 +257,11 @@ describe('tools', () => {
       arguments: { id: theirs?.id, note: 'x' },
     });
     expect(toolJson(poke)).toMatchObject({ error: { code: 'not_found' } });
+    const dish = await client.callTool({
+      name: 'add_dish',
+      arguments: { id: theirs?.id, dish: 'x' },
+    });
+    expect(toolJson(dish)).toMatchObject({ error: { code: 'not_found' } });
     await client.close();
   });
 });

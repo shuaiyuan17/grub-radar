@@ -269,6 +269,8 @@ describe("an agent's write surface", () => {
       ['add_note', { id: 'p-x', note: 'x' }],
       ['mark_been', { id: 'p-x' }],
       ['add_spot', { applePlaceId: 'IFAKE' }],
+      ['add_dish', { id: 'p-x', dish: 'x' }],
+      ['remove_dish', { id: 'p-x', dish: 'x' }],
     ] as const) {
       const res = await client.callTool({ name, arguments: args });
       expect(res.isError).toBe(true);

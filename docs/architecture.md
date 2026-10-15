@@ -50,15 +50,17 @@ The boundaries are enforced twice:
 The domain operations map 1:1 onto REST endpoints and MCP tools; both call the same
 `worker/services/spots.ts` / `D1SpotRepository`:
 
-| tool            | domain                                             | REST                        |
-| --------------- | -------------------------------------------------- | --------------------------- |
-| `list_spots`    | `SpotRepository.list()`                            | `GET /api/spots`            |
-| `find_nearby`   | `findNearby(spots, { origin, maxMinutes, kinds })` | `GET /api/spots/nearby`     |
-| `roll`          | `roll(candidates, previousId)`                     | `POST /api/roll`            |
-| `search_places` | Apple Maps search (`worker/services/appleMaps.ts`) | `GET /api/places/search`    |
-| `add_spot`      | `WritableSpotRepository.add(AddSpot)`              | `POST /api/spots`           |
-| `mark_been`     | `WritableSpotRepository.markBeen(id, MarkBeen)`    | `POST /api/spots/:id/been`  |
-| `add_note`      | `WritableSpotRepository.addNote(id, AddNote)`      | `POST /api/spots/:id/notes` |
+| tool            | domain                                             | REST                             |
+| --------------- | -------------------------------------------------- | -------------------------------- |
+| `list_spots`    | `SpotRepository.list()`                            | `GET /api/spots`                 |
+| `find_nearby`   | `findNearby(spots, { origin, maxMinutes, kinds })` | `GET /api/spots/nearby`          |
+| `roll`          | `roll(candidates, previousId)`                     | `POST /api/roll`                 |
+| `search_places` | Apple Maps search (`worker/services/appleMaps.ts`) | `GET /api/places/search`         |
+| `add_spot`      | `WritableSpotRepository.add(AddSpot)`              | `POST /api/spots`                |
+| `mark_been`     | `WritableSpotRepository.markBeen(id, MarkBeen)`    | `POST /api/spots/:id/been`       |
+| `add_note`      | `WritableSpotRepository.addNote(id, AddNote)`      | `POST /api/spots/:id/notes`      |
+| `add_dish`      | `D1SpotRepository.addDish(id, DishInput)`          | `PATCH /api/spots/:id` (`order`) |
+| `remove_dish`   | `D1SpotRepository.removeDish(id, DishInput)`       | `PATCH /api/spots/:id` (`order`) |
 
 ## Views and URLs
 

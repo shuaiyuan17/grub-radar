@@ -32,6 +32,8 @@ import {
  *   (edit)    -> SpotPatchSchema + applyPatch
  *   mark_been -> MarkBeenSchema  + applyMarkBeen
  *   add_note  -> AddNoteSchema   + applyAddNote
+ *   add_dish  -> DishInputSchema + applyAddDish
+ *   remove_dish -> DishInputSchema + applyRemoveDish
  */
 
 /** Optional free text: trimmed; an empty string means "not set". */
@@ -174,6 +176,24 @@ export const AddNoteSchema = z.strictObject({
 export type AddNoteInput = z.input<typeof AddNoteSchema>;
 export type AddNote = z.output<typeof AddNoteSchema>;
 
+/**
+ * `add_dish` / `remove_dish`: one dish to order, by name. Runs of whitespace
+ * fold into one space, so it reads the same as it was said.
+ */
+export const DishInputSchema = z.strictObject({
+  dish: z.string().check(
+    z.overwrite((s) => s.replace(/\s+/g, ' ')),
+    z.trim(),
+    z.minLength(1, 'dish is empty'),
+    z.maxLength(LIMITS.dish, 'dish is too long'),
+  ),
+});
+export type DishInputInput = z.input<typeof DishInputSchema>;
+export type DishInput = z.output<typeof DishInputSchema>;
+
+/** Two spellings of one dish compare equal: case and whitespace don't count. */
+export const dishKey = (dish: string) => dish.replace(/\s+/g, ' ').trim().toLowerCase();
+
 export type SpotOpErrorCode =
   | 'not_found'
   | 'note_too_long'
@@ -182,7 +202,9 @@ export type SpotOpErrorCode =
   | 'conflict'
   | 'future_date'
   | 'list_full'
-  | 'no_match';
+  | 'no_match'
+  | 'dishes_full'
+  | 'no_dish';
 
 /** A write that can't happen. The Worker turns `code` into an HTTP error. */
 export class SpotOpError extends Error {
@@ -297,7 +319,7 @@ export function spotFromInput(
     status,
     verdict: status === 'been' ? input.verdict : undefined,
     note: orNone(input.note),
-    order: dedupe(input.order ?? []).map((dish) => ({ dish, tried: false })),
+    order: dedupeDishes((input.order ?? []).map((dish) => ({ dish, tried: false }))),
     why: input.why ? { text: input.why, foundOn: today } : undefined,
     hours: input.hours,
     icon: input.icon ?? defaultIcon(input.kind),
@@ -309,6 +331,17 @@ export function spotFromInput(
 
 function dedupe(items: readonly string[]): string[] {
   return [...new Set(items)];
+}
+
+/** Dishes, first one kept, later ones that differ only in case or whitespace dropped. */
+function dedupeDishes<T extends { dish: string }>(dishes: readonly T[]): T[] {
+  const seen = new Set<string>();
+  return dishes.filter((d) => {
+    const key = dishKey(d.dish);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** Applies an edit. Moving back to "want" drops the verdict. */
@@ -341,7 +374,7 @@ export function applyPatch(spot: Spot, patch: SpotPatch, today: string): Spot {
     verdict: status === 'been' ? verdict : undefined,
     note: patch.note === undefined ? spot.note : orNone(patch.note),
     myNote: patch.myNote === undefined ? spot.myNote : orNone(patch.myNote),
-    order: patch.order ?? spot.order,
+    order: patch.order ? dedupeDishes(patch.order) : spot.order,
     why,
     visibility: patch.visibility ?? spot.visibility,
   });
@@ -373,6 +406,28 @@ export function applyMarkBeen(spot: Spot, input: MarkBeen, today: string): Spot 
 export function applyAddNote(spot: Spot, input: AddNote, today: string): Spot {
   if (input.on) checkNotFuture(input.on, today);
   return finish({ ...spot, myNote: appendNote(spot.myNote, input.on ?? today, input.note) });
+}
+
+/**
+ * One more dish to order (not tried yet). A dish already on the list (in any
+ * case or spacing) changes nothing: the same `spot` comes back, so callers
+ * can tell and skip the write. Throws dishes_full past LIMITS.dishes.
+ */
+export function applyAddDish(spot: Spot, input: DishInput): Spot {
+  const key = dishKey(input.dish);
+  if (spot.order.some((d) => dishKey(d.dish) === key)) return spot;
+  if (spot.order.length >= LIMITS.dishes)
+    throw new SpotOpError('dishes_full', `a spot holds at most ${String(LIMITS.dishes)} dishes`);
+  return finish({ ...spot, order: [...spot.order, { dish: input.dish, tried: false }] });
+}
+
+/** Takes a dish off the list (matched ignoring case and spacing). Throws no_dish if it isn't there. */
+export function applyRemoveDish(spot: Spot, input: DishInput): Spot {
+  const key = dishKey(input.dish);
+  const order = spot.order.filter((d) => dishKey(d.dish) !== key);
+  if (order.length === spot.order.length)
+    throw new SpotOpError('no_dish', 'no dish by that name on this spot');
+  return finish({ ...spot, order });
 }
 
 /**
