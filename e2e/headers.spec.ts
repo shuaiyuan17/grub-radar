@@ -25,7 +25,14 @@ test('static files and SPA routes carry the security headers', async ({ request 
   const html = await home.text();
   const script = /src="(\/assets\/[^"]+\.js)"/.exec(html)?.[1];
   expect(script).toBeTruthy();
-  for (const path of ['/', '/radar', '/place/lucky-thread', script ?? '', '/favicon.svg']) {
+  for (const path of [
+    '/',
+    '/radar',
+    '/place/lucky-thread',
+    script ?? '',
+    '/favicon.svg',
+    '/og.png',
+  ]) {
     const res = await request.get(path);
     expect(res.status(), path).toBe(200);
     const h = res.headers();
