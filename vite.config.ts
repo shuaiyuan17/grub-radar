@@ -7,9 +7,7 @@ import { bootLangScript } from './src/i18n/boot';
 function bootLang(): Plugin {
   return {
     name: 'grub-radar:boot-lang',
-    transformIndexHtml: () => [
-      { tag: 'script', children: bootLangScript(), injectTo: 'head' },
-    ],
+    transformIndexHtml: () => [{ tag: 'script', children: bootLangScript(), injectTo: 'head' }],
   };
 }
 
