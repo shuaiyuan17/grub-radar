@@ -7,11 +7,12 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { AppEnv } from './app';
 import { resolvePrincipal } from './auth/principal';
+import { CorruptSpotError } from './db/spots';
 import { apiError } from './lib/http';
 import { auth } from './routes/auth';
 import { mapkit } from './routes/mapkit';
 import { me } from './routes/me';
-import { spots } from './routes/spots';
+import { rollRoute, spots } from './routes/spots';
 import { VERSION } from './version';
 
 const app = new Hono<AppEnv>();
@@ -47,6 +48,7 @@ app.use('/api/*', resolvePrincipal);
 app.route('/api/mapkit-token', mapkit);
 app.route('/api/me', me);
 app.route('/api/spots', spots);
+app.route('/api/roll', rollRoute);
 
 app.all('/api/*', (c) => apiError(c, 404, 'not_found', 'no such endpoint'));
 app.all('/auth/*', (c) => apiError(c, 404, 'not_found', 'no such endpoint'));
@@ -55,6 +57,8 @@ app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));
 
 app.onError((err, c) => {
   console.error('unhandled', err instanceof Error ? `${err.name}: ${err.message}` : err);
+  if (err instanceof CorruptSpotError)
+    return apiError(c, 500, 'internal', "one of your saved spots couldn't be read");
   return apiError(c, 500, 'internal', 'something broke');
 });
 

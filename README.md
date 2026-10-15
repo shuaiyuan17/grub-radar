@@ -54,7 +54,10 @@ The first `test:e2e` run needs `npx playwright install chromium`.
   - Search looks across every spot (name, cuisine, tags, notes, dishes) regardless of mode.
     It ignores case, accents, apostrophes (straight or curly) and punctuation, so
     `mama kos` finds "Mama Ko's".
-- `/place/:id` one spot.
+- `/place/:id` one spot: mark it been with a rating out of 10, change the rating or move it
+  back to "want to try", tick off and edit "order this", add dated notes, edit, delete.
+- `/add` add a spot by hand (name, kind, where: "use where i am" or `lat, lng`, cuisine,
+  price, cravings, status/rating, one-liner, doodle). `/place/:id/edit` the same form.
 - `/radar` `?reach=0..3` (10 min … road trip), `?kinds=food,coffee`, `?sel=<spot id>`.
 
 **The headline changes with the time of day.** When the page opens it looks at the local
@@ -66,8 +69,15 @@ The picker is `pickHeadline(date, random)` in `src/domain/headlines.ts`.
 
 **from: home / where i am.** "where i am" asks the browser for its location once; if that's
 blocked or times out you get a note and distances stay measured from home. **Home** is yours to
-set from the app ("set your home": use where you are now, or type `lat, lng`). It's saved in
-this browser's `localStorage` only. Until you set one, distances are measured from a demo home
+set from the app ("set your home": use where you are now, or type `lat, lng`). It's saved to
+your account (`user_private`, returned only by `GET /api/me` to your own session). A home
+that v0 left in this browser's `localStorage` is used right away, and you're asked once:
+**save your home to your account?** Yes moves it there and removes it from the device; "keep
+it on this device only" leaves it local and stops asking. On a device where the account
+already has a home, the old device copy is cleared without asking: the account always wins,
+so the device copy would never be read again (asking would offer a choice with no effect).
+Home writes go one at a time; changing home again while one is in flight writes the newest
+choice next, so the server always ends on your latest. Until you set one, distances are measured from a demo home
 in downtown Seattle, and the app says so.
 
 ## Languages: en / 中文
@@ -109,18 +119,23 @@ and draw rings.
 
 ## Add a spot
 
-Append an object to `SEED_SPOTS` in [`src/data/seed.ts`](src/data/seed.ts):
+In the app: **+ add a spot** (desktop header, phone header, or the empty list). Every
+account starts with an empty list; spots live in D1 and are yours alone.
+
+The fictional demo list in [`src/data/seed.ts`](src/data/seed.ts) is for tests and local
+dev only: `POST /api/spots/import-demo` (404 unless `ENVIRONMENT=development`) copies it onto
+the signed-in dev user's list, and Playwright uses it. Seed entries look like this:
 
 ```ts
 {
   id: 'night-owl-pho',            // lowercase-kebab, unique; becomes /place/night-owl-pho
   name: 'Night Owl Pho',
   kind: 'food',                   // food | coffee | bakery
-  cuisine: 'pho',
+  cuisine: 'pho',                 // optional
   price: '$',                     // $ … $$$$
   tags: ['soup', 'late night'],   // first tag = what it is; the rest are modifiers
   status: 'want',                 // want | been (rating 1-10 only when been)
-  note: 'rare beef, extra basil', // ≤ 60 chars, shown in handwriting
+  note: 'rare beef, extra basil', // optional, ≤ 60 chars, shown in handwriting
   order: [{ dish: 'pho tai', tried: false }],
   why: { text: 'open till 3am', foundOn: '2026-10-14' }, // optional
   hours: { closes: '03:00' },     // optional; 24h, or 'sold-out'; days: ['fri'] to limit
@@ -128,8 +143,6 @@ Append an object to `SEED_SPOTS` in [`src/data/seed.ts`](src/data/seed.ts):
   location: { lat: 47.6152, lng: -122.3201 },
 },
 ```
-
-The data is validated with zod when the app loads and in `npm test`, so a typo fails loudly.
 
 ## Privacy: this repo is public
 
@@ -139,8 +152,10 @@ app bundle: signed-out visitors get the login wall and nothing else, and the Wor
 spots only to a session (Playwright checks the DOM and every network response for it).
 
 Your real home is **never** in the code, the config or the build: there is no env var for it.
-You set it in the app and it lives in your browser's `localStorage` on that device. The site
-can be deployed publicly without leaking where you live.
+You set it in the app and it lives in your account's `user_private` row. Only `GET /api/me`
+returns it, to your own session; it's sent only in the body of `PUT /api/me/home`; and
+`find_nearby`/`roll` from `origin=home` leave spot coordinates out of their answers. Worker
+tests grep every other response for it.
 
 ## Hand-drawn look and motion
 
@@ -168,18 +183,28 @@ can be deployed publicly without leaking where you live.
 The site is a single Worker with Static Assets (`wrangler.jsonc`). Files in `dist/client` are
 served by Cloudflare directly; only the paths in `assets.run_worker_first` (`/api/*`,
 `/auth/*`, and the reserved agent paths) run `worker/index.ts` (Hono). D1 (`grub-radar`) holds
-accounts and sessions; spots move there in the next PR.
+accounts, sessions, places and everyone's own list.
 
-| endpoint                       | auth    | what                                                            |
-| ------------------------------ | ------- | --------------------------------------------------------------- |
-| `GET /api/health`              | none    | `{ ok, version }`                                               |
-| `GET /auth/apple/start`        | none    | 302 to Apple (`?returnTo=/same/origin/path`)                    |
-| `POST /auth/callback`          | Apple   | Apple's form_post; 303 back with a session, or `/?signin=…`     |
-| `POST /auth/logout`            | session | 204, session deleted                                            |
-| `GET /api/me`, `PATCH /api/me` | session | `{ user, home, signupOpen }`; change name / avatar emoji        |
-| `GET /api/spots[/:id]`         | session | the demo spots (until spots live in D1)                         |
-| `GET /api/mapkit-token`        | session | 10-minute MapKit JS token with our origin; 20/min per user      |
-| `POST /auth/dev-login`         | secret  | `ENVIRONMENT=development` + localhost + `DEV_LOGIN_SECRET` only |
+| endpoint                       | auth    | what                                                             |
+| ------------------------------ | ------- | ---------------------------------------------------------------- |
+| `GET /api/health`              | none    | `{ ok, version }`                                                |
+| `GET /auth/apple/start`        | none    | 302 to Apple (`?returnTo=/same/origin/path`)                     |
+| `POST /auth/callback`          | Apple   | Apple's form_post; 303 back with a session, or `/?signin=…`      |
+| `POST /auth/logout`            | session | 204, session deleted                                             |
+| `GET /api/me`, `PATCH /api/me` | session | `{ user, home, signupOpen }`; change name / avatar emoji         |
+| `PUT /api/me/home`, `DELETE`   | session | save / clear your home (body `{ lat, lng }`), 204                |
+| `GET /api/spots`               | read    | your list (`Spot[]`)                                             |
+| `GET /api/spots/:id`           | read    | one of your spots, or 404                                        |
+| `GET /api/spots/nearby`        | read    | `find_nearby`: `?origin=home\|lat,lng&maxMinutes&kinds&limit`    |
+| `POST /api/spots`              | write   | `add_spot` (manual: name, kind, location + optional fields), 201 |
+| `PATCH /api/spots/:id`         | write   | edit; `null` clears; stale `version` → 409; to been = visit      |
+| `POST /api/spots/:id/been`     | write   | `mark_been`: `{ rating?, on?, note? }`, records a visit          |
+| `POST /api/spots/:id/notes`    | write   | `add_note`: appends `— YYYY-MM-DD: …` to your notes              |
+| `DELETE /api/spots/:id`        | write   | 204; your entry and visits go (and a manual place only you had)  |
+| `POST /api/roll`               | read    | `roll`: `{ origin, maxMinutes?, kinds?, previousId? }`           |
+| `POST /api/spots/import-demo`  | write   | dev only: the fictional demo spots onto your list                |
+| `GET /api/mapkit-token`        | session | 10-minute MapKit JS token with our origin; 20/min per user       |
+| `POST /auth/dev-login`         | secret  | `ENVIRONMENT=development` + localhost + `DEV_LOGIN_SECRET` only  |
 
 **Sign in with Apple** (`worker/auth/siwa.ts`): web flow with `response_type=code` and
 `response_mode=form_post`. `state` and a hashed `nonce` ride in an HMAC-signed, 10-minute,
@@ -212,9 +237,30 @@ identity row), so simultaneous first sign-ins can't both get in. To pin the owne
 `sub` (`wrangler d1 execute grub-radar --remote --command "SELECT provider_sub FROM
 auth_identities"`) and `wrangler secret put OWNER_APPLE_SUB`.
 
-Each person's data is scoped by their `user_id` on every query; a test checks a second user
-can't see the first's profile or home through any endpoint. (Until spots move to D1, every
-signed-in user sees the same fictional demo spots.)
+Each person's data is scoped by their `user_id` on every query: the Worker builds a
+`D1SpotRepository` for the caller's user and every statement joins through `user_places` for
+that user. Tests check a second user can't read or write the first's spots, notes, ratings or
+home through any endpoint (404s, unchanged rows, no visits recorded). "read"/"write" above
+mean a signed-in person today, or an agent with `spots:read`/`spots:write` once the agent
+door ships; home is session-only.
+
+**Places vs your list**: `places` is global and holds only what a place _is_: name,
+location, address, Apple Place ID, who created it. Apple places (PR 3) will be shared and
+deduped by Apple Place ID. Everything you _say_ about a place (kind, cuisine, price, doodle,
+hours, tags, status, rating, notes, "order this") is on your own `user_places` row, so on a
+shared place each person keeps their own. Only whoever created a manual place can rename or
+move it (enforced in the `UPDATE`; your entry update only lands if the place change did).
+
+**Concurrency**: every `user_places` row has an integer `version`, bumped on every write and
+returned on every spot. Edits read the spot, run the shared domain function
+(`src/domain/edits.ts`) and write back `WHERE version = ?`. The app sends the `version` it
+edited with every `PATCH`; if the spot changed elsewhere meanwhile, that's a **409**, the app
+fetches the latest copy and says "updated somewhere else, try again" (so a stale copy of
+`order` or `tags` never overwrites a newer one). Server-side appends (`/been`, `/notes`)
+retry on their own. The SPA also ignores a write answer older than the copy it already has.
+
+**Brakes**: at most 1000 spots per list (`list_full`, 409), and 60 writes per minute per
+user (`WRITE_LIMITER`, 429) across spot writes and home.
 
 **Secrets** (production, `wrangler secret put`): `APPLE_PRIVATE_KEY` (the ES256 `.p8` as
 PEM), `SESSION_HMAC_KEY` (32+ random bytes) and, optionally, `OWNER_APPLE_SUB`. Locally they live in `.dev.vars`
@@ -235,12 +281,13 @@ run against the production D1 and secrets.
 ```
 src/
   domain/   framework-free TypeScript: Spot schema (zod), travel-time heuristic, sorting and
-            filters, findNearby, roll, pickHeadline, the SpotRepository interface. No React, no DOM.
+            filters, findNearby, roll, pickHeadline, the SpotRepository interface, and the
+            write operations (edits.ts: add_spot / edit / mark_been / add_note). No React, no DOM.
   copy/     editable UI copy (time-of-day headlines, per language).
   i18n/     locales, the typed message catalog, language provider, zh font loading.
   contracts/ wire schemas (zod) shared by the SPA and the Worker.
-  data/     where spots come from: HttpSpotRepository (the app), StaticSpotRepository over
-            the demo seed (tests).
+  data/     where spots come from: HttpSpotRepository (the app), MemorySpotRepository and
+            StaticSpotRepository over the demo seed (tests).
   lib/      React glue: auth, origin (home / geolocation), spots context, radar geometry.
   components/, pages/   the UI.
 worker/     the Cloudflare Worker: auth (SIWA, sessions, CSRF), D1 access, routes. Imports
@@ -256,22 +303,23 @@ boundaries are enforced twice:
 - **ESLint**: `src/domain` can't import React, app code or config, and can't touch browser
   globals (`window`, `location`, `fetch`, `globalThis`, ...). App code can't import the
   seed or the static repository (tests can). `worker/` may import only `src/domain` and
-  `src/contracts` (plus, for now, the demo seed it serves).
+  `src/contracts` (plus the demo seed, for the dev-only import).
 - **TypeScript**: `tsconfig.domain.json` typechecks the domain on its own with no DOM lib, so
   a stray browser API fails `tsc -b`, not just lint.
 
-The domain operations are shaped to map 1:1 onto future API endpoints / MCP tools:
+The domain operations map 1:1 onto REST endpoints now and MCP tools later; both call the
+same `worker/services/spots.ts` / `D1SpotRepository`:
 
-| tool          | domain                                                    | v0      |
-| ------------- | --------------------------------------------------------- | ------- |
-| `find_nearby` | `findNearby(spots, { origin, maxMinutes, kinds })`        | ✅      |
-| `roll`        | `roll(candidates, previousId)`                            | ✅      |
-| `add_spot`    | `WritableSpotRepository.add(input)` (validated by schema) | planned |
-| `mark_been`   | `WritableSpotRepository.markBeen(id, rating?)`            | planned |
-| `add_note`    | `WritableSpotRepository.addNote(id, note)`                | planned |
+| tool          | domain                                             | REST                        |
+| ------------- | -------------------------------------------------- | --------------------------- |
+| `find_nearby` | `findNearby(spots, { origin, maxMinutes, kinds })` | `GET /api/spots/nearby`     |
+| `roll`        | `roll(candidates, previousId)`                     | `POST /api/roll`            |
+| `add_spot`    | `WritableSpotRepository.add(AddSpot)`              | `POST /api/spots`           |
+| `mark_been`   | `WritableSpotRepository.markBeen(id, MarkBeen)`    | `POST /api/spots/:id/been`  |
+| `add_note`    | `WritableSpotRepository.addNote(id, AddNote)`      | `POST /api/spots/:id/notes` |
 
-Next: spots in D1 behind `WritableSpotRepository` over HTTP, then the agent door (OAuth +
-a remote MCP server at `/mcp` exposing the tools above).
+Next: adding spots from Apple Maps POIs, then the agent door (OAuth + a remote MCP server at
+`/mcp` exposing the tools above).
 
 ## Stack
 

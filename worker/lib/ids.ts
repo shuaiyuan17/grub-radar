@@ -15,3 +15,6 @@ export function ulid(now = Date.now()): string {
 }
 
 export const newUserId = () => `u_${ulid()}`;
+/** Place ids double as URL slugs (/place/p-01j…), so they fit SpotSchema's id rule. */
+export const newPlaceId = () => `p-${ulid()}`;
+export const newVisitId = () => `v_${ulid()}`;

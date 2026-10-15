@@ -3,6 +3,8 @@ export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
   MAPKIT_TOKEN_LIMITER: RateLimit;
+  /** 60 writes/min per user (spots + home). */
+  WRITE_LIMITER: RateLimit;
 
   /**
    * "production" on Cloudflare. Dev-only features (dev login, the Apple stub,

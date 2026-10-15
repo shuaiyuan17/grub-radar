@@ -1,5 +1,9 @@
 import { act, render, screen } from '@testing-library/react';
+import { useEffect } from 'react';
 import type { SpotRepository } from '../domain/repository';
+import { MemorySpotRepository } from '../data/memoryRepository';
+import { SpotOpError } from '../domain/edits';
+import type { Spot } from '../domain/spot';
 import { useSpots } from '../lib/spots';
 import { StaticSpotRepository } from '../data/staticRepository';
 import { SpotsProvider } from './SpotsProvider';
@@ -170,5 +174,99 @@ describe('SpotsProvider when the repository changes', () => {
     });
     expect(screen.queryByText('Stale Old Spot')).not.toBeInTheDocument();
     expect(screen.getByText(/Lucky Thread/)).toBeInTheDocument();
+  });
+});
+
+describe('SpotsProvider writes', () => {
+  const base = {
+    id: 'w',
+    name: 'Write Me',
+    kind: 'food' as const,
+    price: '$' as const,
+    tags: [],
+    status: 'want' as const,
+    order: [],
+    icon: 'bowl' as const,
+    location: { lat: 47.6, lng: -122.3 },
+  };
+  interface Grabbed {
+    current: ReturnType<typeof useSpots> | null;
+  }
+  function Grab({ onValue }: { onValue: (v: ReturnType<typeof useSpots>) => void }) {
+    const value = useSpots();
+    useEffect(() => {
+      onValue(value);
+    });
+    return <p>{value.spots.map((s) => `${s.name}@${String(s.version)}`).join(', ')}</p>;
+  }
+  function setup(repo: MemorySpotRepository) {
+    const into: Grabbed = { current: null };
+    render(
+      <SpotsProvider repository={repo}>
+        <Grab
+          onValue={(v) => {
+            into.current = v;
+          }}
+        />
+      </SpotsProvider>,
+    );
+    return into;
+  }
+
+  it('an older answer that arrives late does not overwrite a newer one', async () => {
+    const repo = new MemorySpotRepository([base]);
+    const resolvers: ((s: Spot) => void)[] = [];
+    vi.spyOn(repo, 'update').mockImplementation(() => new Promise<Spot>((r) => resolvers.push(r)));
+    const into = setup(repo);
+    let first!: Promise<Spot>;
+    let second!: Promise<Spot>;
+    act(() => {
+      first = into.current!.actions!.update('w', { note: 'a' });
+      second = into.current!.actions!.update('w', { note: 'b' });
+    });
+    await act(async () => {
+      resolvers[1]!({ ...base, name: 'Newer', version: 3 });
+      await second;
+      resolvers[0]!({ ...base, name: 'Older', version: 2 });
+      await first;
+    });
+    expect(screen.getByText('Newer@3')).toBeInTheDocument();
+  });
+
+  it('a 409 fetches the latest copy, then still reports the error', async () => {
+    const repo = new MemorySpotRepository([base]);
+    const into = setup(repo);
+    expect(screen.getByText('Write Me@1')).toBeInTheDocument();
+    // someone else (another tab, an agent) edits it: the server is at version 2
+    await act(async () => {
+      await repo.update('w', { name: 'Changed Elsewhere' });
+    });
+    const get = vi.spyOn(repo, 'get');
+    await act(async () => {
+      await expect(
+        into.current!.actions!.update('w', { note: 'x', version: 1 }),
+      ).rejects.toMatchObject({ code: 'conflict' });
+    });
+    expect(get).toHaveBeenCalledWith('w');
+    expect(screen.getByText('Changed Elsewhere@2')).toBeInTheDocument();
+    expect((await repo.get('w'))?.note).toBeUndefined(); // the stale edit didn't land
+  });
+
+  it('a 404 (deleted elsewhere) takes it off the list', async () => {
+    const repo = new MemorySpotRepository([base]);
+    const into = setup(repo);
+    vi.spyOn(repo, 'addNote').mockRejectedValue(new SpotOpError('not_found', 'gone'));
+    await act(async () => {
+      await expect(into.current!.actions!.addNote('w', { note: 'x' })).rejects.toThrow('gone');
+    });
+    expect(into.current!.spots).toEqual([]);
+    // and deleting something already gone just tidies up
+    const repo2 = new MemorySpotRepository([base]);
+    const into2 = setup(repo2);
+    await repo2.remove('w');
+    await act(async () => {
+      await into2.current!.actions!.remove('w');
+    });
+    expect(into2.current!.spots).toEqual([]);
   });
 });

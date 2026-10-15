@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import type { MeResponse } from '../contracts/me';
 import {
   AuthContext,
   httpAuthClient,
@@ -6,6 +7,8 @@ import {
   type AuthState,
   type AuthValue,
 } from '../lib/auth';
+
+type MeHome = MeResponse['home'];
 
 /**
  * Asks the Worker who this is (GET /api/me) once per page load and hands the
@@ -59,9 +62,13 @@ export function AuthProvider({
     setState({ status: 'signed-out' });
   }, []);
 
+  const setMeHome = useCallback((home: MeHome) => {
+    setState((s) => (s.status === 'signed-in' ? { ...s, me: { ...s.me, home } } : s));
+  }, []);
+
   const value = useMemo<AuthValue>(
-    () => ({ state, signIn, signOut, markSignedOut }),
-    [state, signIn, signOut, markSignedOut],
+    () => ({ state, signIn, signOut, markSignedOut, setMeHome }),
+    [state, signIn, signOut, markSignedOut, setMeHome],
   );
   return <AuthContext value={value}>{children}</AuthContext>;
 }

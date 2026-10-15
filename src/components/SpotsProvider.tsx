@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { SpotRepository } from '../domain/repository';
+import { isWritable, type SpotRepository } from '../domain/repository';
 import type { Spot } from '../domain/spot';
 import { useT } from '../i18n/context';
-import { SpotsContext } from '../lib/spots';
+import { SpotsContext, type SpotActions } from '../lib/spots';
 
 type Load =
   { state: 'loading' } | { state: 'ready'; spots: Spot[] } | { state: 'error'; error: Error };
+
+/** The server's (or the domain's) error code, if the error carries one. */
+function errorCode(e: unknown): string | undefined {
+  return e instanceof Error && 'code' in e && typeof e.code === 'string' ? e.code : undefined;
+}
+
+/** `a` is an older copy of the same spot than `b` (by the server's version). */
+const isOlder = (a: Spot, b: Spot) =>
+  a.version !== undefined && b.version !== undefined && a.version < b.version;
 
 const asError = (e: unknown) => (e instanceof Error ? e : new Error(String(e)));
 
@@ -59,8 +68,72 @@ export function SpotsProvider({
     };
   }, [repository]);
 
+  // writes go to the repository; its answer replaces (or adds, or drops) the spot here
+  const actions = useMemo<SpotActions | null>(() => {
+    if (!isWritable(repository)) return null;
+    const apply = (change: (spots: Spot[]) => Spot[]) => {
+      setCurrent((c) =>
+        c.repository === repository && c.load.state === 'ready'
+          ? { repository, load: { state: 'ready', spots: change(c.load.spots) } }
+          : c,
+      );
+    };
+    // a newer copy never gets replaced by an older answer that arrives late
+    const accept = (spot: Spot) => {
+      apply((spots) => {
+        const current = spots.find((s) => s.id === spot.id);
+        if (!current) return [...spots, spot];
+        if (isOlder(spot, current)) return spots;
+        return spots.map((s) => (s.id === spot.id ? spot : s));
+      });
+    };
+    const drop = (id: string) => {
+      apply((spots) => spots.filter((s) => s.id !== id));
+    };
+    /**
+     * Runs a write. Its answer replaces the spot here. If the server says the
+     * spot changed elsewhere (409), the fresh copy is fetched so the next try
+     * starts from it; if it's gone (404), it leaves the list. Either way the
+     * error still goes to the caller, which says so.
+     */
+    const run = async (id: string | null, write: Promise<Spot>) => {
+      try {
+        const spot = await write;
+        accept(spot);
+        return spot;
+      } catch (e) {
+        const code = errorCode(e);
+        if (id && code === 'not_found') drop(id);
+        if (id && code === 'conflict') {
+          const fresh = await repository.get(id).catch(() => undefined);
+          if (fresh) accept(fresh);
+          else if (fresh === null) drop(id);
+        }
+        throw e;
+      }
+    };
+    return {
+      add: (input) => run(null, repository.add(input)),
+      update: (id, patch) => run(id, repository.update(id, patch)),
+      markBeen: (id, input) => run(id, repository.markBeen(id, input)),
+      addNote: (id, input) => run(id, repository.addNote(id, input)),
+      remove: async (id) => {
+        try {
+          await repository.remove(id);
+        } catch (e) {
+          if (errorCode(e) !== 'not_found') throw e;
+          // already gone (deleted elsewhere): that's what we wanted
+        }
+        drop(id);
+      },
+    };
+  }, [repository]);
+
   const spots = load.state === 'ready' ? load.spots : null;
-  const value = useMemo(() => (spots ? { repository, spots } : null), [repository, spots]);
+  const value = useMemo(
+    () => (spots ? { repository, spots, actions } : null),
+    [repository, spots, actions],
+  );
 
   if (load.state === 'error') {
     return (

@@ -1,0 +1,151 @@
+.block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.block > .panel {
+  align-self: stretch;
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.section h2 {
+  font-size: 20px;
+  font-weight: 800;
+}
+.panel {
+  --fill: var(--card);
+  border-radius: var(--r-panel);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 520px;
+}
+.panelTitle {
+  font-size: 20px;
+  font-weight: 800;
+}
+.confirm {
+  --fill: var(--tint-pink);
+}
+.label {
+  font-weight: 700;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+.inline {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.grow {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.muted {
+  color: var(--pencil);
+  font-size: 14px;
+}
+
+.orderList {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.orderList li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  min-height: 36px;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  min-height: 36px;
+}
+.nextTime {
+  font-family: var(--font-note);
+  font-size: 19px;
+  color: var(--note-red);
+}
+.remove {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pencil);
+  flex-shrink: 0;
+}
+.remove:hover {
+  color: var(--note-red);
+}
+
+.entries {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.entries li {
+  display: flex;
+  flex-direction: column;
+}
+.date {
+  font-size: 12.5px;
+  color: var(--pencil);
+  font-weight: 600;
+}
+.myNote {
+  font-family: var(--font-note);
+  font-size: 22px;
+  line-height: 1.15;
+  color: var(--note-red);
+}
+.noteForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.noteArea {
+  font-family: var(--font-note);
+  font-size: 21px;
+  line-height: 1.2;
+  color: var(--note-red);
+}
+
+.admin {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 6px;
+  border-top: 2px dashed var(--rule);
+}
+.smallBtn {
+  --sx: 2px;
+  --sy: 3px;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: var(--r-btn);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}

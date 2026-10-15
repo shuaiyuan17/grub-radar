@@ -12,6 +12,20 @@ export const ERROR_CODES = [
   'rate_limited',
   'csrf',
   'internal',
+  /** The spot changed under you (two writes at once); fetch it and try again. */
+  'conflict',
+  /** Your notes for one spot are full (LIMITS.myNote). */
+  'note_too_long',
+  /** A rating on a spot you haven't been to. */
+  'rating_needs_been',
+  /** The place itself (name, location, …) isn't yours to edit. */
+  'not_editable',
+  /** origin=home, but no home is saved. */
+  'no_home',
+  /** A visit or note dated in the future. */
+  'future_date',
+  /** The list already holds LIMITS.spots spots. */
+  'list_full',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

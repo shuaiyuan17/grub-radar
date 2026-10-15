@@ -146,15 +146,28 @@ export function RadarPage() {
                     {selected.spot.name}
                   </Link>
                   <div className={styles.cardMeta}>
-                    <span lang={dataLang(selected.spot)}>{selected.spot.cuisine}</span> ·{' '}
-                    {t.minutes(selected.travel.minutes)} {t.travelMode[selected.travel.mode]}
+                    {selected.spot.cuisine ? (
+                      <span lang={dataLang(selected.spot)}>{selected.spot.cuisine}</span>
+                    ) : (
+                      t.kinds[selected.spot.kind]
+                    )}{' '}
+                    · {t.minutes(selected.travel.minutes)} {t.travelMode[selected.travel.mode]}
                   </div>
-                  <div className={`note ${styles.cardNote}`} lang={dataLang(selected.spot)}>
-                    {selected.spot.note}
-                  </div>
+                  {selected.spot.note && (
+                    <div className={`note ${styles.cardNote}`} lang={dataLang(selected.spot)}>
+                      {selected.spot.note}
+                    </div>
+                  )}
                 </div>
                 <GoLink spot={selected.spot} travel={selected.travel} />
               </article>
+            ) : spots.length === 0 ? (
+              <p className={styles.hint}>
+                {t.radarEmpty}{' '}
+                <Link viewTransition to="/add">
+                  {t.addFirst}
+                </Link>
+              </p>
             ) : (
               <p className={styles.hint}>{t.radarHint}</p>
             )}

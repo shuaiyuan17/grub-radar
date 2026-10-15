@@ -49,16 +49,21 @@ export function SpotCard({
           </Link>
         </h3>
         <div className={styles.meta}>
-          <span lang={lang}>{spot.cuisine}</span> · {spot.price}
+          {spot.cuisine ? <span lang={lang}>{spot.cuisine}</span> : t.kinds[spot.kind]} ·{' '}
+          {spot.price}
         </div>
       </div>
       <div className={styles.time}>
         <span className={styles.minutes}>{t.minutes(travel.minutes)}</span>
         <span className={styles.how}>{t.travelMode[travel.mode]}</span>
       </div>
-      <p className={`note ${styles.note}`} lang={lang}>
-        {spot.note}
-      </p>
+      {spot.note ? (
+        <p className={`note ${styles.note}`} lang={lang}>
+          {spot.note}
+        </p>
+      ) : (
+        <span className={styles.note} aria-hidden="true" />
+      )}
       <span className={styles.rule} aria-hidden="true" />
       <div className={styles.foot}>
         <span className={styles.badge}>

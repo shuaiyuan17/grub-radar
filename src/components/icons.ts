@@ -31,4 +31,5 @@ export const UI_ICONS = {
   search: 'M10.5 4.5a6 6 0 1 1 0 12a6 6 0 1 1 0-12z M15 15l5 5',
   back: 'M14.5 5.5L8 12l6.5 6.5',
   close: 'M6.5 6l11 12 M17.5 6.5L6 17.5',
+  plus: 'M12 4.5c.2 5 .1 10-.2 15 M4.5 12.2c5-.3 10-.3 15 .1',
 } as const;

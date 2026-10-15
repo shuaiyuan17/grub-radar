@@ -12,6 +12,8 @@ export interface AuthValue {
   signOut: () => Promise<void>;
   /** The server said 401 somewhere: show the wall. */
   markSignedOut: () => void;
+  /** Home was saved or cleared on the server: keep `me.home` in step. */
+  setMeHome: (home: MeResponse['home']) => void;
 }
 
 export const AuthContext = createContext<AuthValue | null>(null);

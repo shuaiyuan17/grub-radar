@@ -28,6 +28,7 @@ import { useI18n } from '../i18n/context';
 import { useOrigin } from '../lib/origin';
 import { roll } from '../domain/roll';
 import { getPageHeadline } from '../lib/pageHeadline';
+import { useSpots } from '../lib/spots';
 import { useSpotViews } from '../lib/useSpotViews';
 import styles from './ListPage.module.css';
 
@@ -40,6 +41,7 @@ export function ListPage() {
   const { from, origin, chooseHere } = useOrigin();
   const { t, locale } = useI18n();
   const views = useSpotViews();
+  const { spots } = useSpots();
 
   // picked once per page load from the local time (see domain/headlines.ts)
   const opening = getPageHeadline(locale);
@@ -115,6 +117,15 @@ export function ListPage() {
       <div className={`phone-only ${styles.phoneHeader}`}>
         <Logo />
         <div className={styles.phoneHeaderBtns}>
+          <Link
+            viewTransition
+            to="/add"
+            className={`sk press ${styles.iconBtn} ${styles.addBtn}`}
+            aria-label={t.addSpotAria}
+          >
+            <Ink />
+            <Icon name="plus" size={22} strokeWidth={2.6} />
+          </Link>
           <button
             type="button"
             className={`sk press ${styles.iconBtn}`}
@@ -146,100 +157,130 @@ export function ListPage() {
         <FromToggle />
       </div>
 
-      {searchOpen && (
-        <div id="search-phone-row" className="phone-only">
-          <SearchBox
-            id="search-phone"
-            autoFocus
-            value={q}
-            onChange={(value) => {
-              update({ q: value, roll: null });
+      {spots.length === 0 ? (
+        <EmptyList />
+      ) : (
+        <>
+          {searchOpen && (
+            <div id="search-phone-row" className="phone-only">
+              <SearchBox
+                id="search-phone"
+                autoFocus
+                value={q}
+                onChange={(value) => {
+                  update({ q: value, roll: null });
+                }}
+              />
+            </div>
+          )}
+
+          <div className={styles.titleRow}>
+            <Headline
+              parts={
+                mode === opening.defaultMode ? opening.parts : parseHeadline(t.modeHeadlines[mode])
+              }
+              className={styles.title}
+              draw={drawHeadline}
+            />
+            <ModeSwitch
+              mode={mode}
+              onChange={(m) => {
+                update({ mode: m, tag: null, roll: null, q: null });
+              }}
+            />
+          </div>
+
+          <ChipRow
+            chips={result.chips}
+            value={result.tag}
+            onChange={(tag) => {
+              update({ tag, roll: null });
             }}
           />
-        </div>
+
+          <div className={styles.columns}>
+            <section aria-label={t.placesLabel} className={styles.listCol}>
+              <div className={styles.countRow}>
+                <span className={styles.count} aria-live="polite">
+                  {countLabel}
+                </span>
+                <span className="phone-only">
+                  <DiceButton onRoll={rollDice} disabled={n === 0} />
+                </span>
+              </div>
+
+              <div className="phone-only">
+                <RollResult view={rolled} onClear={clearRoll} />
+              </div>
+
+              {n === 0 ? (
+                <p className={`note ${styles.empty}`}>
+                  {result.searching ? t.noMatch(q.trim()) : t.empty[mode](emptyMinutes)}
+                </p>
+              ) : (
+                // keyed by mode + chip so the cards stagger in again when they change
+                <ul
+                  className={styles.cards}
+                  key={`${mode}|${result.tag}|${String(result.searching)}`}
+                >
+                  {result.items.map((v, i) => (
+                    <li key={v.spot.id} className="enter" style={{ '--i': i }}>
+                      <SpotCard view={v} index={i} onPoint={setPointedId} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <aside aria-label={t.asideLabel} className={`desktop-only ${styles.aside}`}>
+              {/* top of the aside so the pick is on screen right after rolling */}
+              <RollResult view={rolled} onClear={clearRoll} />
+              <div className={`sk ${styles.radarCard}`}>
+                <Ink />
+                <div className={styles.radarCardHead}>
+                  <h2>{t.around[from]}</h2>
+                  <span className="note">{t.ringsNote}</span>
+                </div>
+                <Radar
+                  views={views}
+                  from={from}
+                  className={styles.miniRadar}
+                  highlightId={pointedId ?? rolled?.spot.id ?? null}
+                />
+                <Link viewTransition to="/radar" className={styles.radarLink}>
+                  {t.openRadar}
+                </Link>
+              </div>
+              <div className={styles.diceWrap}>
+                <DiceButton big onRoll={rollDice} disabled={n === 0} />
+              </div>
+            </aside>
+          </div>
+        </>
       )}
-
-      <div className={styles.titleRow}>
-        <Headline
-          parts={
-            mode === opening.defaultMode ? opening.parts : parseHeadline(t.modeHeadlines[mode])
-          }
-          className={styles.title}
-          draw={drawHeadline}
-        />
-        <ModeSwitch
-          mode={mode}
-          onChange={(m) => {
-            update({ mode: m, tag: null, roll: null, q: null });
-          }}
-        />
-      </div>
-
-      <ChipRow
-        chips={result.chips}
-        value={result.tag}
-        onChange={(tag) => {
-          update({ tag, roll: null });
-        }}
-      />
-
-      <div className={styles.columns}>
-        <section aria-label={t.placesLabel} className={styles.listCol}>
-          <div className={styles.countRow}>
-            <span className={styles.count} aria-live="polite">
-              {countLabel}
-            </span>
-            <span className="phone-only">
-              <DiceButton onRoll={rollDice} disabled={n === 0} />
-            </span>
-          </div>
-
-          <div className="phone-only">
-            <RollResult view={rolled} onClear={clearRoll} />
-          </div>
-
-          {n === 0 ? (
-            <p className={`note ${styles.empty}`}>
-              {result.searching ? t.noMatch(q.trim()) : t.empty[mode](emptyMinutes)}
-            </p>
-          ) : (
-            // keyed by mode + chip so the cards stagger in again when they change
-            <ul className={styles.cards} key={`${mode}|${result.tag}|${String(result.searching)}`}>
-              {result.items.map((v, i) => (
-                <li key={v.spot.id} className="enter" style={{ '--i': i }}>
-                  <SpotCard view={v} index={i} onPoint={setPointedId} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <aside aria-label={t.asideLabel} className={`desktop-only ${styles.aside}`}>
-          {/* top of the aside so the pick is on screen right after rolling */}
-          <RollResult view={rolled} onClear={clearRoll} />
-          <div className={`sk ${styles.radarCard}`}>
-            <Ink />
-            <div className={styles.radarCardHead}>
-              <h2>{t.around[from]}</h2>
-              <span className="note">{t.ringsNote}</span>
-            </div>
-            <Radar
-              views={views}
-              from={from}
-              className={styles.miniRadar}
-              highlightId={pointedId ?? rolled?.spot.id ?? null}
-            />
-            <Link viewTransition to="/radar" className={styles.radarLink}>
-              {t.openRadar}
-            </Link>
-          </div>
-          <div className={styles.diceWrap}>
-            <DiceButton big onRoll={rollDice} disabled={n === 0} />
-          </div>
-        </aside>
-      </div>
 
       <BottomNav />
     </main>
+  );
+}
+
+/** A brand-new list: say so warmly, and point at the one thing to do. */
+function EmptyList() {
+  const { t } = useI18n();
+  return (
+    <section className={`sk ${styles.emptyCard}`} aria-labelledby="empty-title">
+      <Ink />
+      <Headline
+        id="empty-title"
+        className={styles.emptyTitle}
+        parts={parseHeadline(t.emptyTitle)}
+      />
+      <p className={`note ${styles.emptyBody}`}>{t.emptyBody}</p>
+      <Link viewTransition to="/add" className={`sk press ${styles.emptyCta}`}>
+        <Ink />
+        <Icon name="plus" size={20} strokeWidth={2.6} />
+        {t.addFirst}
+      </Link>
+    </section>
   );
 }

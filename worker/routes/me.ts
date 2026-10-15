@@ -1,11 +1,12 @@
 import { Hono } from 'hono';
 import { PatchMeSchema, type MeResponse } from '../../src/contracts/me';
+import { HomeSchema } from '../../src/contracts/spots';
 import type { AppEnv } from '../app';
 import { csrf } from '../auth/csrf';
-import { requireSession, sessionUser } from '../auth/principal';
+import { limitWrites, requireSession, sessionUser } from '../auth/principal';
 import { clearSessionCookie } from '../auth/session';
-import { getHome, getUser, signupOpen, updateUser } from '../db/users';
-import { apiError } from '../lib/http';
+import { clearHome, getHome, getUser, setHome, signupOpen, updateUser } from '../db/users';
+import { apiError, readJson } from '../lib/http';
 
 export const me = new Hono<AppEnv>();
 
@@ -34,4 +35,22 @@ me.patch('/', csrf, async (c) => {
   const user = await updateUser(c.env.DB, userId, parsed.data);
   if (!user) return apiError(c, 401, 'unauthorized', 'sign in first');
   return c.json(user);
+});
+
+/**
+ * Home: session only (agents never reach it), always in the body. Body is
+ * `{ lat, lng }`; 204 either way, nothing echoed back.
+ */
+me.put('/home', csrf, limitWrites, async (c) => {
+  const { userId } = sessionUser(c.var.principal);
+  const body = await readJson(c, HomeSchema);
+  if (!body.ok) return body.res;
+  await setHome(c.env.DB, userId, body.data);
+  return c.body(null, 204);
+});
+
+me.delete('/home', csrf, limitWrites, async (c) => {
+  const { userId } = sessionUser(c.var.principal);
+  await clearHome(c.env.DB, userId);
+  return c.body(null, 204);
 });

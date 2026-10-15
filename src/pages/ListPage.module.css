@@ -23,6 +23,9 @@
   align-items: center;
   justify-content: center;
 }
+.addBtn {
+  --fill: var(--hl);
+}
 .iconBtn[aria-expanded='true'] {
   --fill: var(--hl);
 }
@@ -72,6 +75,43 @@
   font-size: 24px;
   padding: 24px 4px;
 }
+.emptyCard {
+  --fill: var(--card);
+  border-radius: var(--r-panel);
+  padding: 28px 22px 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  transform: rotate(-0.6deg);
+}
+.emptyTitle {
+  font-size: 30px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.emptyBody {
+  font-size: 24px;
+  line-height: 1.15;
+}
+.emptyCta {
+  --fill: var(--ink);
+  --sh: var(--tomato);
+  min-height: 52px;
+  padding: 0 20px;
+  border-radius: var(--r-btn);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--card);
+  font-weight: 800;
+  font-size: 17px;
+  text-decoration: none;
+}
+.emptyCta:hover {
+  color: var(--card);
+}
 .aside {
   display: flex;
   flex-direction: column;
@@ -118,6 +158,13 @@
 @media (min-width: 960px) {
   .main {
     gap: 28px;
+  }
+  .emptyCard {
+    max-width: 640px;
+    padding: 40px 40px 44px;
+  }
+  .emptyTitle {
+    font-size: 44px;
   }
   .titleRow {
     flex-direction: row;

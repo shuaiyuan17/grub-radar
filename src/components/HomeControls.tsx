@@ -109,3 +109,33 @@ export function HomeEditor() {
     </section>
   );
 }
+
+/** The one-time question: save this device's old home to your account? */
+export function HomeConsent() {
+  const { homeConsent, acceptHomeConsent, declineHomeConsent } = useOrigin();
+  const t = useT();
+  const id = useId();
+  if (!homeConsent) return null;
+  return (
+    <section className={`sk ${styles.panel}`} aria-labelledby={`${id}-title`}>
+      <Ink />
+      <h2 id={`${id}-title`} className={styles.consentTitle}>
+        {t.homeConsentTitle}
+      </h2>
+      <p className={styles.small}>{t.homeConsentBody}</p>
+      <div className={styles.row}>
+        <button
+          type="button"
+          className={`sk press ${styles.btn} ${styles.primary}`}
+          onClick={acceptHomeConsent}
+        >
+          <Ink />
+          {t.homeConsentYes}
+        </button>
+        <button type="button" className={`tap ${styles.linkBtn}`} onClick={declineHomeConsent}>
+          {t.homeConsentNo}
+        </button>
+      </div>
+    </section>
+  );
+}

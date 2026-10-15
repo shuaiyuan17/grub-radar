@@ -6,6 +6,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { exportJWK, generateKeyPair, SignJWT, type JWK, type JWTPayload } from 'jose';
 import { vi } from 'vitest';
+import { createSession } from '../auth/session';
 import { APPLE_ISSUER } from '../auth/siwa';
 
 export const ORIGIN = 'https://grub.test';
@@ -151,5 +152,26 @@ export function tokenResponse(idToken: string, extra: Record<string, unknown> = 
     refresh_token: 'rt.fictional',
     id_token: idToken,
     ...extra,
+  });
+}
+
+/** A fresh user with a session; returns the Cookie header value. */
+export async function userSession(id: string, name = id): Promise<string> {
+  await env.DB.prepare(
+    "INSERT INTO users (id, display_name, created_at, last_login_at) VALUES (?, ?, 'x', 'x')",
+  )
+    .bind(id, name)
+    .run();
+  const { token } = await createSession(env.DB, id, undefined);
+  return `__Host-grub_session=${token}`;
+}
+
+/** A JSON write from the SPA (CSRF headers included). */
+export function send(method: string, path: string, cookie: string, body?: unknown) {
+  return call(path, {
+    method,
+    cookie,
+    headers: writeHeaders,
+    body: body === undefined ? '{}' : JSON.stringify(body),
   });
 }
