@@ -28,6 +28,7 @@ import {
 import type { WritableSpotRepository } from '../../src/domain/repository';
 import { LIMITS, SpotSchema, type Kind, type Spot, type Verdict } from '../../src/domain/spot';
 import { newPlaceId, newVisitId } from '../lib/ids';
+import { deleteSpotPhotosStatement, keysFromResult } from './photos';
 import { userIdRef, type UserRef } from './users';
 import { iso, isoDate } from '../lib/time';
 
@@ -147,16 +148,29 @@ export class D1SpotRepository implements WritableSpotRepository {
   readonly #userId: string;
   readonly #foundBy: string;
   readonly #now: () => number;
+  readonly #photosDeleted: ((keys: string[]) => void) | undefined;
 
   /**
    * @param foundBy stamped on spots this principal adds: 'me' for the person,
    *   the client name for agents (PR 5).
+   * @param photosDeleted told the R2 keys of photos a removed spot took with
+   *   it (already on the deletion outbox), so the caller can sweep them now.
+   *   Without it the cron sweeps them within the hour.
    */
-  constructor(db: D1Database, userId: string, opts: { foundBy?: string; now?: () => number } = {}) {
+  constructor(
+    db: D1Database,
+    userId: string,
+    opts: {
+      foundBy?: string;
+      now?: () => number;
+      photosDeleted?: (keys: string[]) => void;
+    } = {},
+  ) {
     this.#db = db;
     this.#userId = userId;
     this.#foundBy = opts.foundBy ?? 'me';
     this.#now = opts.now ?? Date.now;
+    this.#photosDeleted = opts.photosDeleted;
   }
 
   async list(): Promise<Spot[]> {
@@ -392,9 +406,11 @@ export class D1SpotRepository implements WritableSpotRepository {
     return this.#edit(id, (spot, today) => applyAddNote(spot, input, today));
   }
 
+  /** Your entry, its visits and your photos of it (rows here; bytes via the outbox). */
   async remove(id: string): Promise<void> {
     const db = this.#db;
-    const [, removed] = await db.batch([
+    const [photos, , removed] = await db.batch([
+      deleteSpotPhotosStatement(db, this.#userId, id),
       db.prepare('DELETE FROM visits WHERE user_id = ? AND place_id = ?').bind(this.#userId, id),
       db
         .prepare('DELETE FROM user_places WHERE user_id = ? AND place_id = ?')
@@ -408,6 +424,8 @@ export class D1SpotRepository implements WritableSpotRepository {
         .bind(id, this.#userId, id),
     ]);
     if (!removed?.meta.changes) throw new SpotOpError('not_found', 'no such spot');
+    const keys = keysFromResult(photos);
+    if (keys.length) this.#photosDeleted?.(keys);
   }
 
   /**

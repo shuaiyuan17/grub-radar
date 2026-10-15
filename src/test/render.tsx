@@ -11,6 +11,8 @@ import type { SpotRepository } from '../domain/repository';
 import type { AuthClient, AuthState } from '../lib/auth';
 import type { FriendTake } from '../contracts/friends';
 import { FriendsClientContext, type FriendsClient } from '../lib/friends';
+import { PhotosClientContext, type PhotosClient } from '../lib/photos';
+import type { Photo, PlacePhotosResponse } from '../contracts/photos';
 import { HomeClientContext, type HomeClient } from '../lib/homeClient';
 import { PlaceSearchClientContext, type PlaceSearchClient } from '../lib/placeSearch';
 import { SpotSourceContext } from '../lib/spotSource';
@@ -81,6 +83,50 @@ export function fakeFriendsClient(takes: Record<string, FriendTake[]> = {}) {
   } satisfies FriendsClient;
 }
 
+/**
+ * A PhotosClient that never touches the network (nor a canvas): `byPlace`
+ * answers GET /api/photos; prepare is a pass-through, upload reports 50% then
+ * 100% and stores; everything is a spy you can re-stub.
+ */
+export function fakePhotosClient(byPlace: Record<string, Partial<PlacePhotosResponse>> = {}) {
+  const usage = { bytes: 0, maxBytes: 200 * 1024 * 1024, perSpot: 6 };
+  let n = 0;
+  return {
+    forPlace: vi.fn<PhotosClient['forPlace']>((placeId) =>
+      Promise.resolve({ mine: [], friends: {}, usage, ...byPlace[placeId] }),
+    ),
+    prepare: vi.fn<PhotosClient['prepare']>((file) =>
+      Promise.resolve({ blob: file, type: 'image/webp', width: 1600, height: 1200 }),
+    ),
+    upload: vi.fn<PhotosClient['upload']>((_place, prepared, onProgress) => {
+      onProgress(0.5);
+      onProgress(1);
+      n += 1;
+      const photo: Photo = {
+        id: `ph_${String(n).padStart(26, '0')}`,
+        width: prepared.width,
+        height: prepared.height,
+        bytes: prepared.blob.size,
+        createdAt: '2026-10-15T12:00:00.000Z',
+        url: `/api/photos/ph_${String(n).padStart(26, '0')}`,
+      };
+      return Promise.resolve(photo);
+    }),
+    remove: vi.fn<PhotosClient['remove']>(() => Promise.resolve()),
+    caption: vi.fn<PhotosClient['caption']>((id, caption) =>
+      Promise.resolve({
+        id,
+        width: 1600,
+        height: 1200,
+        bytes: 1000,
+        createdAt: '2026-10-15T12:00:00.000Z',
+        url: `/api/photos/${id}`,
+        ...(caption ? { caption } : {}),
+      }),
+    ),
+  } satisfies PhotosClient;
+}
+
 /** The demo spots, writable in memory (same domain edits as the Worker). */
 export const demoRepository = () =>
   new MemorySpotRepository(SEED_SPOTS, { today: () => '2026-10-14' });
@@ -99,6 +145,7 @@ export function renderAt(
     home?: LatLng | null;
     placeSearch?: PlaceSearchClient;
     friends?: FriendsClient;
+    photos?: PhotosClient;
   } = {},
 ) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -107,6 +154,7 @@ export function renderAt(
   const homeClient = opts.homeClient ?? fakeHomeClient();
   const repository = opts.repository ?? demoRepository();
   const friends = opts.friends ?? fakeFriendsClient();
+  const photos = opts.photos ?? fakePhotosClient();
   const auth =
     'auth' in opts
       ? opts.auth
@@ -118,13 +166,16 @@ export function renderAt(
     homeClient,
     repository,
     friends,
+    photos,
     ...render(
       <AuthProvider client={client} initial={auth}>
         <HomeClientContext value={homeClient}>
           <PlaceSearchClientContext value={opts.placeSearch ?? fakePlaceSearch()}>
             <SpotSourceContext value={repository}>
               <FriendsClientContext value={friends}>
-                <RouterProvider router={router} />
+                <PhotosClientContext value={photos}>
+                  <RouterProvider router={router} />
+                </PhotosClientContext>
               </FriendsClientContext>
             </SpotSourceContext>
           </PlaceSearchClientContext>

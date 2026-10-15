@@ -32,7 +32,14 @@ const snapshot = async () =>
 let before: Record<string, unknown[]> = {};
 
 beforeAll(async () => {
-  for (const t of ['invites', 'friendships', ...[...TABLES].reverse(), 'd1_migrations'])
+  for (const t of [
+    'photo_deletions',
+    'photos',
+    'invites',
+    'friendships',
+    ...[...TABLES].reverse(),
+    'd1_migrations',
+  ])
     await env.DB.exec(`DROP TABLE IF EXISTS ${t}`);
   await applyD1Migrations(env.DB, upTo(3));
 
@@ -78,11 +85,11 @@ beforeAll(async () => {
 });
 
 describe('migration 0004: friends + invites', () => {
-  it('is applied, and is the last one', async () => {
+  it('is applied (0005 and later keep it: see migration0005.test.ts)', async () => {
     const names = (await all('SELECT name FROM d1_migrations ORDER BY id')).map(
       (r) => (r as { name: string }).name,
     );
-    expect(names.at(-1)).toBe('0004_friends.sql');
+    expect(names).toContain('0004_friends.sql');
   });
 
   it('leaves every existing row exactly as it was', async () => {

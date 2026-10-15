@@ -27,7 +27,9 @@ export function contentSecurityPolicy(html: string): string {
     `script-src 'self' ${hashes.join(' ')}`.trim(),
     // React sets style via the CSSOM, which CSP doesn't block; no inline <style>
     "style-src 'self'",
-    "img-src 'self' data:",
+    // blob: for the local preview of a photo while it uploads (an object URL of
+    // the already re-encoded file); photos themselves come from /api/photos ('self')
+    "img-src 'self' data: blob:",
     "font-src 'self'",
     "connect-src 'self'",
     "object-src 'none'",

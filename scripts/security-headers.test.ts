@@ -25,6 +25,16 @@ describe('security headers', () => {
     expect(csp).toContain("object-src 'none'");
   });
 
+  it('lets images come from this origin, data: and blob: (upload previews), nowhere else', () => {
+    const csp = contentSecurityPolicy(html);
+    expect(csp).toContain("img-src 'self' data: blob:;");
+    // blob: is for images only: never for scripts, styles, frames or connections
+    const directives = csp.split('; ');
+    expect(directives.filter((d) => d.includes('blob:'))).toEqual(["img-src 'self' data: blob:"]);
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("connect-src 'self'");
+  });
+
   it('applies to every path', () => {
     const file = headersFile(html);
     expect(file.split('\n')[0]).toBe('/*');

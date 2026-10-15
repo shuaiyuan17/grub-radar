@@ -233,6 +233,36 @@ accounts, sessions, places and everyone's own list.
 | `POST /api/invites/preview`     | session  | `{ token }` → who sent it, `open`/`own`/`friends`; 410 if spent |
 | `POST /api/invites/accept`      | session  | `{ token }` → friends both ways now (201), already (200)        |
 | `GET /api/admin/stats`          | admin    | users, sign-ups per day, per-person counts; else a plain 404    |
+| `GET /api/photos?place=`        | session  | your photos of a spot + friends' (who share it) + your usage    |
+| `POST /api/photos?place=`       | session  | raw WebP/JPEG body, ≤ 1 MB, no EXIF/XMP → 201; 6/spot, 200 MB   |
+| `GET /api/photos/:id`           | session  | the image (`no-cache` + ETag): owner or friends; else a 404     |
+| `PATCH /api/photos/:id`         | session  | `{ caption }` (≤ 140, `''` clears) on one of yours              |
+| `DELETE /api/photos/:id`        | session  | one of yours, row and R2 bytes; 204                             |
+
+**Photos** (`worker/routes/photos.ts`, `worker/db/photos.ts`, migration 0005). Bytes live
+in the private R2 bucket `grub-radar-photos` (binding `PHOTOS`, no public URL) under
+`u/<user>/<place>/<id>`; D1's `photos` table is the index and decides who may see what,
+with the same rule as friends' spots (owner, or a friend while that spot is `friends`).
+Anyone else, signed in or not, gets the same 404 as a photo that doesn't exist. Served
+with `Cache-Control: private, no-cache`, `ETag` and `Vary: Cookie`: every view revalidates
+through the access check (a cheap 304), so losing access takes effect at once.
+The browser shrinks every photo first (`src/lib/photoProcess.ts`: EXIF orientation
+applied, ≤ 1600px, WebP or JPEG fallback, ~150-300 KB), and re-encoding through a canvas
+drops all metadata, the GPS position included. The Worker doesn't trust that: it reads the
+container (`worker/lib/imageGuard.ts`), checks type and size from the headers, and is an
+allowlist: for JPEG only an exact, thumbnail-free JFIF APP0 (never JFXX) and Adobe's APP14 pass, every other APPn
+and COM is refused (the app strips what canvas encoders add: Chrome's ICC APP2, Safari's
+EXIF APP1 and APP13); for WebP, EXIF/XMP chunks and flags are refused. Caps (6 per spot, 200 MB per
+person) are checked inside the `INSERT`, so parallel uploads can't overshoot; uploads also
+have their own limiter (20/min). R2 can't join a D1 transaction, so R2 keys go through an
+outbox, `photo_deletions`. An upload is staged: its key goes on the outbox as pending, the
+bytes go to R2, then one batch inserts the photo row and takes the pending row out (or, if
+refused, makes it due now). A trigger queues the key of every deleted photo row (one photo,
+a spot, a place, or an account by cascade). The sweeper deletes due keys (pending ones only
+after 15 minutes) right after the request (`waitUntil`) and hourly from the cron trigger,
+giving up after 10 failures, and never deletes bytes a photos row still points at: a
+committed upload whose answer was lost keeps its photo, a rolled-back one is swept.
+`purgeUserPhotos` also sweeps an account's bytes by prefix.
 
 **Sign in with Apple** (`worker/auth/siwa.ts`): web flow with `response_type=code` and
 `response_mode=form_post`. `state` and a hashed `nonce` ride in an HMAC-signed, 10-minute,

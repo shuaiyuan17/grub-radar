@@ -16,9 +16,12 @@ import { auth } from './routes/auth';
 import { friendPlacesPrefetch, friends, friendsPrefetch, invites } from './routes/friends';
 import { mapkit } from './routes/mapkit';
 import { me, mePrefetch } from './routes/me';
+import { isPhotoUpload, photos, photosPrefetch } from './routes/photos';
 import { places, placesSearchPrefetch } from './routes/places';
 import { rollRoute, spots, spotsPrefetch } from './routes/spots';
 import { VERSION } from './version';
+import { sweepPhotoDeletions } from './db/photos';
+import type { Env } from './env';
 
 const app = new Hono<AppEnv>();
 
@@ -56,16 +59,16 @@ app.use(async (c, next) => {
   // JSON and redirects need nothing; static files keep the CSP from _headers
   if (!h.has('Content-Security-Policy'))
     h.set('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
-  if (timed(c.req.path)) h.set('Cache-Control', 'no-store');
+  // API answers are never cached, unless the route says otherwise (a photo: private, long)
+  if (timed(c.req.path) && !h.has('Cache-Control')) h.set('Cache-Control', 'no-store');
 });
 
-app.use(
-  '*',
-  bodyLimit({
-    maxSize: 64 * 1024,
-    onError: (c) => apiError(c, 413, 'bad_request', 'request body too large'),
-  }),
-);
+const smallBodies = bodyLimit({
+  maxSize: 64 * 1024,
+  onError: (c) => apiError(c, 413, 'bad_request', 'request body too large'),
+});
+// a photo upload has its own limit (1 MB, in routes/photos.ts); everything else, 64 KB
+app.use((c, next) => (isPhotoUpload(c.req) ? next() : smallBodies(c, next)));
 
 app.get('/api/health', (c) => c.json({ ok: true, version: VERSION }));
 app.route('/auth', auth);
@@ -78,6 +81,7 @@ app.use(
     // the body (an add by `query`?) isn't read yet, so every add gets it: one row, same batch
     if (c.req.path === '/api/places/search') return placesSearchPrefetch(c.env);
     if (c.req.path === '/api/spots' && c.req.method === 'POST') return placesSearchPrefetch(c.env);
+    if (c.req.path.startsWith('/api/photos')) return photosPrefetch(c, c.env);
     if (c.req.method !== 'GET') return null;
     if (c.req.path === '/api/me') return mePrefetch(c.env);
     if (c.req.path === '/api/spots') return spotsPrefetch(c.env);
@@ -93,6 +97,7 @@ app.route('/api/spots', spots);
 app.route('/api/roll', rollRoute);
 app.route('/api/friends', friends);
 app.route('/api/invites', invites);
+app.route('/api/photos', photos);
 // owner-only; to everyone else, the same 404 as the line below
 app.route('/api/admin', admin);
 
@@ -108,4 +113,18 @@ app.onError((err, c) => {
   return apiError(c, 500, 'internal', 'something broke');
 });
 
-export default app;
+/**
+ * Cron (wrangler.jsonc triggers.crons, hourly): delete the photo bytes still
+ * on the deletion outbox (anything a request's own sweep didn't finish, and
+ * everything an account deletion cascaded).
+ */
+const scheduled: ExportedHandlerScheduledHandler<Env> = (_controller, env, ctx) => {
+  ctx.waitUntil(
+    sweepPhotoDeletions(env.DB, env.PHOTOS, { limit: 5000 }).then((r) => {
+      if (r.deleted || r.failed) console.log('photo sweep', r);
+    }),
+  );
+};
+
+// the Hono app (fetch, and app.request for tests) plus the cron handler
+export default Object.assign(app, { scheduled });
