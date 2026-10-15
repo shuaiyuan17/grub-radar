@@ -1,0 +1,258 @@
+/* ---------------------------------------------------------------------------
+   Sketch kit tokens (copied from the owner's mockup "sketch kit" frame).
+   wobbly on the outside, crisp on the inside.
+--------------------------------------------------------------------------- */
+:root {
+  /* ink + paper */
+  --paper: #f7f3ea;
+  --card: #fffdf8;
+  --ink: #1e1b18;
+  --pencil: #5a534b;
+  --hl: #ffd84a; /* highlighter */
+  --tomato: #e0583a;
+  --note-red: #a8361c;
+  --dot-grid: #ddd5c4;
+
+  /* supporting tints used across the frames */
+  --tint-yellow: #ffefa8;
+  --tint-pink: #f8d2c6;
+  --tint-sand: #ede6d6;
+  --sticky: #fff3b8;
+  --dice-red: #7a2914;
+  --rule: #cfc6b3;
+  --placeholder: #6b6359;
+
+  /* kind colours (radar). Never the only signal: dots also differ in shape. */
+  --kind-food: var(--tomato);
+  --kind-coffee: var(--ink);
+  --kind-bakery: var(--hl);
+
+  /* type */
+  --font-ui: 'Shantell Sans', 'Chalkboard SE', 'Comic Sans MS', cursive;
+  --font-note: 'Caveat', cursive;
+
+  /* wobbly radii: never the same corner twice */
+  --r-card: 18px 24px 16px 22px / 22px 16px 24px 18px;
+  --r-panel: 22px 28px 20px 26px / 26px 20px 28px 22px;
+  --r-seg: 20px 26px 18px 24px / 24px 18px 26px 20px;
+  --r-seg-on: 16px 20px 14px 18px / 18px 14px 20px 16px;
+  --r-tile: 14px 18px 12px 16px / 16px 12px 18px 14px;
+  --r-btn: 14px 18px 12px 20px / 18px 12px 20px 14px;
+  --r-tag: 12px 16px 10px 14px / 14px 10px 16px 12px;
+  --r-pill: 999px 800px 900px 700px / 700px 900px 800px 999px;
+  --r-round: 50% 46% 52% 48% / 48% 52% 46% 50%;
+  --r-go: 48% 52% 46% 54% / 54% 46% 52% 48%;
+  --r-blob: 52% 48% 45% 55% / 55% 45% 55% 45%;
+  --r-dot: 50% 45% 55% 48%;
+
+  --page-pad: 20px;
+  --bottom-nav-space: 110px;
+  --desktop: 960px; /* documentation only; media queries can't read vars */
+
+  color-scheme: light;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--ink);
+  background-color: var(--paper);
+  background-image: radial-gradient(circle, var(--dot-grid) 1.1px, transparent 1.5px);
+  background-size: 20px 20px;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (min-width: 960px) {
+  body {
+    background-size: 22px 22px;
+  }
+}
+
+a {
+  color: var(--ink);
+}
+a:hover {
+  color: var(--note-red);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3,
+p,
+ul {
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 3px dashed var(--note-red);
+  outline-offset: 3px;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Sketch primitives
+   .sk     wobble: the border lives on ::after and an SVG turbulence filter
+           displaces it, so text stays sharp.
+   .sk     ink shadow: a hard offset on ::before, wobbled with another seed.
+   .flat   no shadow.
+   .press  hover lifts, active slides the shadow under.
+   .boil   3 seeds swapped ~6fps. logo + dice only; off with reduced motion.
+   Knobs: --fill --bw --bs --sh --sx --sy
+--------------------------------------------------------------------------- */
+.sk {
+  position: relative;
+  isolation: isolate;
+}
+.sk::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--fill, var(--card));
+  border: var(--bw, 2.5px) var(--bs, solid) var(--ink);
+  border-radius: inherit;
+  filter: url('#wob');
+}
+.sk::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--sh, var(--ink));
+  transform: translate(var(--sx, 3px), var(--sy, 4px));
+  filter: url('#wob2');
+}
+.flat::before {
+  display: none;
+}
+.boil::after {
+  animation: boil 0.5s steps(1) infinite;
+}
+@keyframes boil {
+  0% {
+    filter: url('#wob');
+  }
+  33% {
+    filter: url('#wob2');
+  }
+  66% {
+    filter: url('#wob3');
+  }
+}
+.press {
+  transition: transform 0.12s ease;
+}
+.press::before {
+  transition: transform 0.12s ease;
+}
+.press:hover {
+  transform: translate(-1px, -1px);
+}
+.press:active {
+  transform: translate(2px, 3px);
+}
+.press:active::before {
+  transform: translate(0, 0);
+}
+.lift {
+  transition: transform 0.18s ease;
+}
+.lift:hover {
+  transform: rotate(-0.6deg) translateY(-2px);
+}
+
+/* highlighter swipe behind a word */
+.hl {
+  background: linear-gradient(
+      100deg,
+      transparent 1%,
+      var(--hl) 2.5%,
+      var(--hl) 97%,
+      transparent 99%
+    )
+    0 80% / 100% 58% no-repeat;
+  padding: 0 4px;
+  margin: 0 -2px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.note {
+  font-family: var(--font-note);
+  color: var(--note-red);
+}
+
+.noscroll {
+  scrollbar-width: none;
+}
+.noscroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* Responsive visibility helpers: one DOM, two layouts. */
+@media (max-width: 959.98px) {
+  .desktop-only {
+    display: none !important;
+  }
+}
+@media (min-width: 960px) {
+  .phone-only {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boil::after {
+    animation: none;
+  }
+  .press,
+  .press::before,
+  .lift {
+    transition: none;
+  }
+  .press:hover,
+  .lift:hover {
+    transform: none;
+  }
+}

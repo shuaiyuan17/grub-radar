@@ -1,0 +1,140 @@
+.radar {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+}
+
+.radar .ring {
+  position: absolute;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  left: 50%;
+  top: 50%;
+  transition: opacity 0.25s ease;
+}
+.ring0 {
+  --fill: var(--card);
+  --bw: 2px;
+}
+.ring1 {
+  --fill: rgba(255, 253, 248, 0.7);
+  --bw: 2px;
+}
+.ring2 {
+  --fill: rgba(255, 253, 248, 0.55);
+  --bw: 2px;
+}
+.ring3 {
+  --fill: transparent;
+  --bw: 2px;
+  --bs: dashed;
+}
+
+.label {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0 4px;
+  font-family: var(--font-note);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 20px;
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: opacity 0.25s ease;
+}
+
+.radar .home {
+  --fill: var(--hl);
+  --bw: 2px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: var(--r-blob);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.home svg {
+  width: 55%;
+  height: 55%;
+}
+
+.dot {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    opacity 0.25s ease,
+    transform 0.2s ease;
+}
+.dot:hover {
+  transform: translate(-50%, -50%) scale(1.15);
+}
+.dot:focus-visible {
+  outline-offset: 0;
+  border-radius: 50%;
+}
+.radar .selRing {
+  --fill: transparent;
+  --bw: 2.5px;
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+.out {
+  opacity: 0.22;
+}
+
+.staticDot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+}
+
+/* kind marks: colour AND shape */
+.mark {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--ink);
+  flex-shrink: 0;
+}
+.small {
+  width: 14px;
+  height: 14px;
+}
+.tiny {
+  width: 12px;
+  height: 12px;
+}
+.food {
+  background: var(--kind-food);
+  border-radius: var(--r-dot);
+}
+.coffee {
+  background: var(--kind-coffee);
+  border-radius: 3px 4px 3px 5px;
+}
+.bakery {
+  background: var(--kind-bakery);
+  border-radius: 2px;
+  transform: rotate(45deg) scale(0.88);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring,
+  .label,
+  .dot {
+    transition: none;
+  }
+  .dot:hover {
+    transform: translate(-50%, -50%);
+  }
+}
