@@ -1,4 +1,4 @@
-import { bearingDeg, distanceKm, kmToMiles } from './geo';
+import { bearingDeg, distanceKm, isLatLng, kmToMiles, parseLatLng } from './geo';
 
 describe('distanceKm', () => {
   it('is zero for the same point', () => {
@@ -36,4 +36,51 @@ describe('bearingDeg', () => {
 
 it('converts km to miles', () => {
   expect(kmToMiles(1.609344)).toBeCloseTo(1, 9);
+});
+
+describe('parseLatLng', () => {
+  it.each([
+    ['47.61,-122.33', { lat: 47.61, lng: -122.33 }],
+    [' 47.61 , -122.33 ', { lat: 47.61, lng: -122.33 }],
+    ['47.61 -122.33', { lat: 47.61, lng: -122.33 }],
+    ['-90,180', { lat: -90, lng: 180 }],
+    ['+1.5,.25', { lat: 1.5, lng: 0.25 }],
+  ])('parses %j', (raw, expected) => {
+    expect(parseLatLng(raw)).toEqual(expected);
+  });
+
+  it.each([
+    '',
+    '   ',
+    '47.61,', // Number('') is 0: must not become lng 0
+    ',-122.33',
+    '47.61',
+    '47.61,-122.33,5',
+    '91,0',
+    '0,181',
+    'abc,def',
+    '1e3,2',
+    'Infinity,0',
+    'NaN,0',
+    '0x10,0',
+  ])('rejects %j', (raw) => {
+    expect(parseLatLng(raw)).toBeNull();
+  });
+});
+
+describe('isLatLng', () => {
+  it('accepts real coordinates', () => {
+    expect(isLatLng({ lat: 47.6, lng: -122.3 })).toBe(true);
+  });
+  it.each([
+    null,
+    undefined,
+    'x',
+    {},
+    { lat: '47', lng: 1 },
+    { lat: NaN, lng: 0 },
+    { lat: 0, lng: 200 },
+  ])('rejects %j', (v) => {
+    expect(isLatLng(v)).toBe(false);
+  });
 });

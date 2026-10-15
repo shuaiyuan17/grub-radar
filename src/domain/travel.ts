@@ -45,10 +45,15 @@ export function driveMinutes(crowKm: number): number {
   return DRIVE_OVERHEAD_MINUTES + (cityKm / CITY_KMH) * 60 + (highwayKm / HIGHWAY_KMH) * 60;
 }
 
+/** Walk if it takes MAX_WALK_MINUTES or less (inclusive), otherwise drive. */
+export function chooseMode(walkMin: number): TravelMode {
+  return walkMin <= MAX_WALK_MINUTES ? 'walk' : 'drive';
+}
+
 export function estimateFromKm(crowKm: number): TravelEstimate {
   const km = Math.max(0, crowKm);
   const walk = walkMinutes(km);
-  const mode: TravelMode = walk <= MAX_WALK_MINUTES ? 'walk' : 'drive';
+  const mode = chooseMode(walk);
   const raw = mode === 'walk' ? walk : driveMinutes(km);
   return { mode, minutes: Math.max(1, Math.round(raw)), km, miles: kmToMiles(km) };
 }

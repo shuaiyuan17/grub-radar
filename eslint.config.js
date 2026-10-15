@@ -6,6 +6,13 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
+// Everything the browser adds on top of plain JavaScript (window, document,
+// location, fetch, localStorage, ...) plus globalThis: off limits in src/domain.
+const browserOnlyGlobals = [
+  ...Object.keys(globals.browser).filter((name) => !(name in globals.builtin)),
+  'globalThis',
+];
+
 export default defineConfig([
   globalIgnores(['dist', 'coverage', 'playwright-report', 'test-results']),
   {
@@ -42,8 +49,8 @@ export default defineConfig([
   },
   {
     // The domain is framework-free so it can move behind an API / MCP server.
-    files: ['src/domain/**/*.ts'],
-    ignores: ['**/*.test.ts'],
+    files: ['src/domain/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}'],
     languageOptions: { globals: {} },
     rules: {
       'no-restricted-imports': [
@@ -52,13 +59,27 @@ export default defineConfig([
           patterns: [
             { group: ['react', 'react-*', 'react/*'], message: 'src/domain must not use React.' },
             {
-              group: ['**/lib/**', '**/components/**', '**/pages/**', '**/data/**', '**/config'],
+              group: [
+                '**/lib/**',
+                '**/components/**',
+                '**/pages/**',
+                '**/data/**',
+                '**/config',
+                '**/config.ts',
+                '**/config.js',
+              ],
               message: 'src/domain must not depend on the app or the data source.',
             },
           ],
         },
       ],
-      'no-restricted-globals': ['error', 'window', 'document', 'navigator', 'localStorage'],
+      'no-restricted-globals': [
+        'error',
+        ...browserOnlyGlobals.map((name) => ({
+          name,
+          message: 'src/domain is framework-free: no browser globals.',
+        })),
+      ],
     },
   },
   {

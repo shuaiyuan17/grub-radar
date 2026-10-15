@@ -1,5 +1,5 @@
 import type { Spot } from './spot';
-import { byTravelTime, type SpotView } from './spotView';
+import { byDistance, type SpotView } from './spotView';
 
 export const MODES = ['near', 'weekend', 'coffee'] as const;
 export type Mode = (typeof MODES)[number];
@@ -38,7 +38,7 @@ export const MODE_DEFS: Record<Mode, ModeDef> = {
   weekend: {
     label: 'weekend',
     headline: ["it's the weekend. ", 'go further', '.'],
-    sortLabel: 'by drive time',
+    sortLabel: 'closest first',
     emptyHint: 'no far-flung ideas yet.',
     includes: (v) => v.spot.kind !== 'coffee' && v.travel.minutes > WEEKEND_MIN_MINUTES,
   },
@@ -54,7 +54,7 @@ export const MODE_DEFS: Record<Mode, ModeDef> = {
 export const ALL = 'all';
 
 export function spotsForMode(views: readonly SpotView[], mode: Mode): SpotView[] {
-  return views.filter(MODE_DEFS[mode].includes).sort(byTravelTime);
+  return views.filter(MODE_DEFS[mode].includes).sort(byDistance);
 }
 
 /**
@@ -75,15 +75,23 @@ export function chipsFor(spots: readonly Spot[]): string[] {
   return [ALL, ...primary, ...secondary.filter((t) => !primary.includes(t))];
 }
 
-function normalize(text: string): string {
+/**
+ * Search normalisation: drop accents, lowercase, fold every apostrophe
+ * (including the iPhone's curly ’) away so "ko's", "ko’s" and "kos" match,
+ * and turn other punctuation into spaces.
+ */
+export function normalizeSearch(text: string): string {
   return text
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/['’‘`´ʼ]/g, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
 }
 
 function haystack(s: Spot): string {
-  return normalize(
+  return normalizeSearch(
     [
       s.name,
       s.cuisine,
@@ -99,7 +107,7 @@ function haystack(s: Spot): string {
 
 /** Every whitespace-separated word of the query must appear somewhere. */
 export function matchesQuery(spot: Spot, query: string): boolean {
-  const words = normalize(query).split(/\s+/).filter(Boolean);
+  const words = normalizeSearch(query).split(' ').filter(Boolean);
   if (words.length === 0) return true;
   const hay = haystack(spot);
   return words.every((w) => hay.includes(w));
@@ -127,7 +135,7 @@ export function listSpots(views: readonly SpotView[], { mode, tag, q }: ListQuer
   const query = q.trim();
   if (query) {
     return {
-      items: views.filter((v) => matchesQuery(v.spot, query)).sort(byTravelTime),
+      items: views.filter((v) => matchesQuery(v.spot, query)).sort(byDistance),
       chips: [],
       tag: ALL,
       searching: true,

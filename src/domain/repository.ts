@@ -9,6 +9,12 @@ export interface SpotRepository {
   list(): Promise<Spot[]>;
   /** null when there's no spot with that id. */
   get(id: string): Promise<Spot | null>;
+  /**
+   * Optional, for sources that already have the data in memory (the bundled
+   * seed): hand it over synchronously so the UI can skip a loading state.
+   * Throws if the data is invalid.
+   */
+  snapshot?(): Spot[];
 }
 
 /**

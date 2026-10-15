@@ -32,3 +32,29 @@ export function bearingDeg(a: LatLng, b: LatLng): number {
 }
 
 export const kmToMiles = (km: number) => km / KM_PER_MILE;
+
+const inRange = (lat: number, lng: number) =>
+  Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+
+/** Type guard for anything that claims to be a LatLng (e.g. from storage). */
+export function isLatLng(value: unknown): value is LatLng {
+  if (typeof value !== 'object' || value === null) return false;
+  const { lat, lng } = value as Record<string, unknown>;
+  return typeof lat === 'number' && typeof lng === 'number' && inRange(lat, lng);
+}
+
+/**
+ * Parses "47.61, -122.33" (comma and/or spaces between). Strict: exactly two
+ * non-empty numbers, finite, latitude within ±90 and longitude within ±180.
+ * Returns null otherwise ("47.61," is not lng 0).
+ */
+export function parseLatLng(raw: string): LatLng | null {
+  const parts = raw.trim().split(/\s*,\s*|\s+/);
+  if (parts.length !== 2) return null;
+  const [a, b] = parts;
+  const numeric = /^[+-]?(\d+(\.\d*)?|\.\d+)$/;
+  if (!a || !b || !numeric.test(a) || !numeric.test(b)) return null;
+  const lat = Number(a);
+  const lng = Number(b);
+  return inRange(lat, lng) ? { lat, lng } : null;
+}

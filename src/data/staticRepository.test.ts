@@ -19,7 +19,13 @@ describe('StaticSpotRepository', () => {
     expect((await repo.list()).length).toBe(a.length + 1);
   });
 
-  it('validates whatever it is given', () => {
-    expect(() => new StaticSpotRepository([{ id: 'x' }])).toThrow(/Invalid spots data/);
+  it('validates lazily: bad data rejects list() and throws from snapshot(), not on import', async () => {
+    const bad = new StaticSpotRepository([{ id: 'x' }]);
+    await expect(bad.list()).rejects.toThrow(/Invalid spots data/);
+    expect(() => bad.snapshot()).toThrow(/Invalid spots data/);
+  });
+
+  it('snapshot() returns the same spots synchronously', async () => {
+    expect(repo.snapshot()).toEqual(await repo.list());
   });
 });

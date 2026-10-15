@@ -1,6 +1,6 @@
 import type { LatLng } from './geo';
 import { KINDS, type Kind, type Spot } from './spot';
-import { byTravelTime, toSpotViews, type SpotView } from './spotView';
+import { byDistance, toSpotViews, type SpotView } from './spotView';
 
 export interface FindNearbyQuery {
   origin: LatLng;
@@ -11,7 +11,8 @@ export interface FindNearbyQuery {
 }
 
 /**
- * Spots reachable from `origin` within `maxMinutes`, closest first.
+ * Spots reachable from `origin` within `maxMinutes` (estimated travel time),
+ * closest first by distance.
  * The future `find_nearby` tool is this function over repository.list().
  */
 export function findNearby(
@@ -20,5 +21,5 @@ export function findNearby(
 ): SpotView[] {
   return toSpotViews(spots, origin)
     .filter((v) => kinds.includes(v.spot.kind) && v.travel.minutes <= maxMinutes)
-    .sort(byTravelTime);
+    .sort(byDistance);
 }

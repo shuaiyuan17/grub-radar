@@ -1,4 +1,5 @@
 import {
+  chooseMode,
   CITY_KM,
   DETOUR_FACTOR,
   DRIVE_OVERHEAD_MINUTES,
@@ -27,6 +28,12 @@ describe('travel-time heuristic', () => {
   it('walks right up to the walk limit, drives just past it', () => {
     expect(estimateFromKm(walkLimitKm - 0.001).mode).toBe('walk');
     expect(estimateFromKm(walkLimitKm + 0.001).mode).toBe('drive');
+  });
+
+  it('walks at exactly the limit (inclusive), drives a hair over it', () => {
+    expect(chooseMode(MAX_WALK_MINUTES)).toBe('walk');
+    expect(chooseMode(MAX_WALK_MINUTES + 1e-9)).toBe('drive');
+    expect(chooseMode(0)).toBe('walk');
   });
 
   it('never estimates less than a minute, even at zero distance', () => {

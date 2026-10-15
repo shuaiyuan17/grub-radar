@@ -5,11 +5,11 @@ const origin = { lat: 47.6101, lng: -122.3344 };
 const spots = await new StaticSpotRepository().list();
 
 describe('findNearby', () => {
-  it('returns everything, closest first, with no limits', () => {
+  it('returns everything, closest first by distance, with no limits', () => {
     const all = findNearby(spots, { origin });
     expect(all).toHaveLength(spots.length);
-    const minutes = all.map((v) => v.travel.minutes);
-    expect(minutes).toEqual([...minutes].sort((a, b) => a - b));
+    const km = all.map((v) => v.travel.km);
+    expect(km).toEqual([...km].sort((a, b) => a - b));
   });
 
   it('respects maxMinutes (inclusive)', () => {

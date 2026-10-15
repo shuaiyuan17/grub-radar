@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import type { SpotRepository } from '../domain/repository';
 import { useSpots } from '../lib/spots';
+import { StaticSpotRepository } from '../data/staticRepository';
 import { SpotsProvider } from './SpotsProvider';
 
 function Names() {
@@ -49,5 +50,26 @@ describe('SpotsProvider', () => {
       </SpotsProvider>,
     );
     expect(await screen.findByRole('alert')).toHaveTextContent('offline');
+  });
+});
+
+describe('SpotsProvider with the static repository', () => {
+  it('renders immediately, with no loading state', () => {
+    render(
+      <SpotsProvider repository={new StaticSpotRepository()}>
+        <Names />
+      </SpotsProvider>,
+    );
+    expect(screen.queryByText('unfolding the map…')).not.toBeInTheDocument();
+    expect(screen.getByText(/Lucky Thread Noodle Bar/)).toBeInTheDocument();
+  });
+
+  it('shows invalid seed data as an error instead of crashing', () => {
+    render(
+      <SpotsProvider repository={new StaticSpotRepository([{ id: 'Bad Id' }])}>
+        <Names />
+      </SpotsProvider>,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(/Invalid spots data/);
   });
 });

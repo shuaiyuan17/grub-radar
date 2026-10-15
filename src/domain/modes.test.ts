@@ -1,7 +1,7 @@
 import { StaticSpotRepository } from '../data/staticRepository';
-import { chipsFor, listSpots, matchesQuery, spotsForMode } from './modes';
+import { chipsFor, listSpots, matchesQuery, normalizeSearch, spotsForMode } from './modes';
 import type { Spot } from './spot';
-import { toSpotViews } from './spotView';
+import { byDistance, toSpotViews } from './spotView';
 
 const origin = { lat: 47.6101, lng: -122.3344 };
 const spots = await new StaticSpotRepository().list();
@@ -9,15 +9,19 @@ const views = toSpotViews(spots, origin);
 const names = (vs: { spot: Spot }[]) => vs.map((v) => v.spot.name);
 
 describe('modes', () => {
-  it('near me = food within 20 minutes, closest first', () => {
+  it('near me = food within 20 minutes, closest first by actual distance', () => {
     const near = spotsForMode(views, 'near');
+    // Mama Ko's is a 14 min walk but only 0.9 km away, so it comes before
+    // Ondo (8 min drive, 1.6 km): "closest first" means closest.
     expect(names(near)).toEqual([
       'Lucky Thread Noodle Bar',
+      "Mama Ko's Dumpling Window",
       'Ondo Soup House',
       'Two Fires Taqueria',
       'Brine & Bun',
-      "Mama Ko's Dumpling Window",
     ]);
+    const km = near.map((v) => v.travel.km);
+    expect(km).toEqual([...km].sort((a, b) => a - b));
   });
 
   it('weekend = further than 20 minutes, no coffee', () => {
@@ -29,16 +33,19 @@ describe('modes', () => {
   it('coffee = coffee and bakeries within 30 minutes', () => {
     expect(names(spotsForMode(views, 'coffee'))).toEqual([
       'Little Ember Coffee',
-      'Fig & Fern',
-      'Slow Wave Roasters',
+      'Slow Wave Roasters', // 18 min walk, 1.1 km
+      'Fig & Fern', // 8 min drive, 1.4 km
     ]);
   });
 
-  it('breaks travel-time ties by name', () => {
-    const near = spotsForMode(views, 'near');
-    const [a, b] = near; // both 8 min
-    expect(a?.travel.minutes).toBe(b?.travel.minutes);
-    expect(a!.spot.name.localeCompare(b!.spot.name)).toBeLessThan(0);
+  it('breaks distance ties by name', () => {
+    const twin = views.map((v) => ({ ...v, travel: { ...v.travel, km: 1 } }));
+    const sorted = [...twin].sort(byDistance);
+    expect(names(sorted)).toEqual(
+      names(sorted)
+        .slice()
+        .sort((a, b) => a.localeCompare(b)),
+    );
   });
 });
 
@@ -93,6 +100,17 @@ describe('matchesQuery', () => {
   );
   it('needs every word', () => {
     expect(matchesQuery(lucky, 'noodles tacos')).toBe(false);
+  });
+  it.each(['mama kos', "Mama Ko's", 'mama ko’s', 'KO`S', 'dumpling-window', 'brine & bun'])(
+    'folds apostrophes and punctuation: %j',
+    (q) => {
+      const hit = spots.filter((s) => matchesQuery(s, q)).map((s) => s.id);
+      expect(hit.length).toBe(1);
+    },
+  );
+  it('normalises the way it says', () => {
+    expect(normalizeSearch('  Mama Ko’s — Dumpling Window!  ')).toBe('mama kos dumpling window');
+    expect(normalizeSearch('Gruyère & Ham')).toBe('gruyere ham');
   });
   it('ignores accents', () => {
     const butter = spots.find((s) => s.id === 'butter-ladder')!;

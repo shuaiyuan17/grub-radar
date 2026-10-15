@@ -1,4 +1,5 @@
-import { z } from 'zod';
+// zod/mini: same validation, tree-shakable functional API, much smaller bundle
+import { z } from 'zod/mini';
 
 export const KINDS = ['food', 'coffee', 'bakery'] as const;
 export const ICONS = [
@@ -15,40 +16,45 @@ export const ICONS = [
 
 const slug = z
   .string()
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'ids are lowercase-kebab-case, e.g. "lucky-thread"');
+  .check(
+    z.regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'ids are lowercase-kebab-case, e.g. "lucky-thread"'),
+  );
+const text = (max?: number) =>
+  max === undefined
+    ? z.string().check(z.trim(), z.minLength(1))
+    : z.string().check(z.trim(), z.minLength(1), z.maxLength(max));
+const between = (min: number, max: number) => z.number().check(z.gte(min), z.lte(max));
 
 export const SpotSchema = z
-  .object({
+  .strictObject({
     id: slug,
-    name: z.string().trim().min(1),
+    name: text(),
     kind: z.enum(KINDS),
     /** Short, lowercase: "hand-pulled noodles". */
-    cuisine: z.string().trim().min(1),
+    cuisine: text(),
     price: z.enum(['$', '$$', '$$$', '$$$$']),
     /** Lowercase craving tags; they become the filter chips. */
-    tags: z.array(z.string().trim().toLowerCase().min(1)),
+    tags: z.array(z.string().check(z.trim(), z.toLowerCase(), z.minLength(1))),
     status: z.enum(['been', 'want']),
     /** Out of 10. Only for places you've been. */
-    rating: z.number().int().min(1).max(10).optional(),
+    rating: z.optional(z.int().check(z.gte(1), z.lte(10))),
     /** The one-liner in your handwriting voice. */
-    note: z.string().trim().min(1).max(60),
-    order: z.array(z.object({ dish: z.string().trim().min(1), tried: z.boolean() })),
+    note: text(60),
+    order: z.array(z.strictObject({ dish: text(), tried: z.boolean() })),
     /** Written by the agent that found the place. */
-    why: z.object({ text: z.string().trim().min(1), foundOn: z.iso.date() }).optional(),
-    myNote: z.string().trim().min(1).optional(),
+    why: z.optional(z.strictObject({ text: text(), foundOn: z.iso.date() })),
+    myNote: z.optional(text()),
     /** Free text, e.g. "10pm". */
-    openTill: z.string().trim().min(1).optional(),
+    openTill: z.optional(text()),
     icon: z.enum(ICONS),
-    location: z.object({
-      lat: z.number().min(-90).max(90),
-      lng: z.number().min(-180).max(180),
-    }),
+    location: z.strictObject({ lat: between(-90, 90), lng: between(-180, 180) }),
   })
-  .strict()
-  .refine((s) => s.rating === undefined || s.status === 'been', {
-    message: 'only rate places you have been to',
-    path: ['rating'],
-  });
+  .check(
+    z.refine((s) => s.rating === undefined || s.status === 'been', {
+      message: 'only rate places you have been to',
+      path: ['rating'],
+    }),
+  );
 
 export type SpotInput = z.input<typeof SpotSchema>;
 export type Spot = z.output<typeof SpotSchema>;
