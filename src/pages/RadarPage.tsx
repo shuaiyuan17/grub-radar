@@ -4,7 +4,7 @@ import { GoLink } from '../components/bits';
 import { BottomNav, DiceButton } from '../components/controls';
 import { FoodTile } from '../components/Icon';
 import { KindMark, Radar } from '../components/Radar';
-import { KINDS, type Kind } from '../domain/spot';
+import { dataLang, KINDS, type Kind } from '../domain/spot';
 import { useOrigin } from '../lib/origin';
 import { roll } from '../domain/roll';
 import { findNearby } from '../domain/nearby';
@@ -138,16 +138,19 @@ export function RadarPage() {
                   <Link
                     viewTransition
                     className={styles.cardName}
+                    lang={dataLang(selected.spot)}
                     to={`/place/${selected.spot.id}`}
                     state={{ back: location.pathname + location.search }}
                   >
                     {selected.spot.name}
                   </Link>
                   <div className={styles.cardMeta}>
-                    {selected.spot.cuisine} · {t.minutes(selected.travel.minutes)}{' '}
-                    {t.travelMode[selected.travel.mode]}
+                    <span lang={dataLang(selected.spot)}>{selected.spot.cuisine}</span> ·{' '}
+                    {t.minutes(selected.travel.minutes)} {t.travelMode[selected.travel.mode]}
                   </div>
-                  <div className={`note ${styles.cardNote}`}>{selected.spot.note}</div>
+                  <div className={`note ${styles.cardNote}`} lang={dataLang(selected.spot)}>
+                    {selected.spot.note}
+                  </div>
                 </div>
                 <GoLink spot={selected.spot} travel={selected.travel} />
               </article>

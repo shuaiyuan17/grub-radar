@@ -2,6 +2,7 @@ import { Ink } from './Ink';
 import { useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
 import { ALL, MODES, type Mode } from '../domain/modes';
+import { dataLang } from '../domain/spot';
 import { useI18n, useT } from '../i18n/context';
 import { LOCALES, type Locale } from '../i18n/locales';
 import { useOrigin } from '../lib/origin';
@@ -228,6 +229,7 @@ export function RollResult({ view, onClear }: { view: SpotView | null; onClear: 
             <Link
               viewTransition
               className={styles.rollName}
+              lang={dataLang(view.spot)}
               to={`/place/${view.spot.id}`}
               state={{ back: location.pathname + location.search }}
             >
@@ -235,7 +237,7 @@ export function RollResult({ view, onClear }: { view: SpotView | null; onClear: 
             </Link>
             <div className={styles.rollMeta}>
               {t.minutes(view.travel.minutes)} {t.travelMode[view.travel.mode]} ·{' '}
-              {view.spot.cuisine}
+              <span lang={dataLang(view.spot)}>{view.spot.cuisine}</span>
             </div>
           </div>
           <GoLink spot={view.spot} travel={view.travel} />

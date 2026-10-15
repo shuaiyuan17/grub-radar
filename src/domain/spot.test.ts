@@ -1,5 +1,5 @@
 import { SEED_SPOTS } from '../data/seed';
-import { parseSpots, type SpotInput } from './spot';
+import { dataLang, parseSpots, type SpotInput } from './spot';
 
 const valid: SpotInput = {
   id: 'test-spot',
@@ -28,8 +28,23 @@ describe('spot schema', () => {
     ['rating on a want-to-try', { rating: 8 }],
     ['unknown field', { secret: 'nope' }],
     ['overlong note', { note: 'x'.repeat(61) }],
+    ['free-text hours', { hours: { closes: '10pm' } }],
+    ['25 oclock', { hours: { closes: '25:00' } }],
+    ['unknown day', { hours: { closes: '22:00', days: ['someday'] } }],
+    ['empty days', { hours: { closes: '22:00', days: [] } }],
+    ['old openTill field', { openTill: '10pm' }],
+    ['unknown data lang', { lang: 'fr' }],
   ])('rejects %s', (_, patch) => {
     expect(() => parseSpots([{ ...valid, ...patch }])).toThrow(/Invalid spots data/);
+  });
+
+  it('accepts structured hours and a data language', () => {
+    const [spot] = parseSpots([
+      { ...valid, hours: { closes: 'sold-out', days: ['sat'] }, lang: 'zh-Hans' },
+    ]);
+    expect(spot?.hours).toEqual({ closes: 'sold-out', days: ['sat'] });
+    expect(dataLang(spot!)).toBe('zh-Hans');
+    expect(dataLang(valid)).toBe('en');
   });
 
   it('rejects duplicate ids', () => {

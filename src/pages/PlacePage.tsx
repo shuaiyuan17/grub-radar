@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from 'react-router';
 import { Icon } from '../components/Icon';
 import { appleMapsUrl } from '../domain/maps';
 import { parseHeadline } from '../domain/headlines';
+import { dataLang } from '../domain/spot';
 import { useT } from '../i18n/context';
 import { Headline } from '../components/bits';
 import { useOrigin } from '../lib/origin';
@@ -74,12 +75,16 @@ export function PlacePage() {
   const { spot, travel, ring } = view;
   const [nameA, nameB] = splitName(spot.name);
   const nearness = ring === 0 ? t.nearness[from] : ring === 3 ? t.roadTrip : null;
-  const tags = [
-    spot.cuisine,
-    spot.price,
-    ...spot.tags.filter((tag) => tag !== spot.cuisine).map((tag) => t.tags[tag] ?? tag),
+  // spot text is data in its own language; translated labels use the UI's
+  const lang = dataLang(spot);
+  const tags: { text: string; lang?: string }[] = [
+    { text: spot.cuisine, lang },
+    { text: spot.price },
+    ...spot.tags
+      .filter((tag) => tag !== spot.cuisine)
+      .map((tag) => (t.tags[tag] ? { text: t.tags[tag] } : { text: tag, lang })),
   ];
-  if (nearness) tags.push(nearness);
+  if (nearness) tags.push({ text: nearness });
 
   return (
     <main id="main" className={styles.main}>
@@ -151,21 +156,23 @@ export function PlacePage() {
             </div>
             <div className={`sk flat ${styles.stat}`}>
               <Ink />
-              <dt>{spot.openTill ? t.stats.openTill : t.stats.kind}</dt>
-              <dd>{spot.openTill ?? t.kinds[spot.kind]}</dd>
+              <dt>{spot.hours ? t.stats.openTill : t.stats.kind}</dt>
+              <dd>{spot.hours ? t.hours(spot.hours) : t.kinds[spot.kind]}</dd>
             </div>
           </dl>
         </div>
 
         <div className={styles.colB}>
           <div className={styles.titleBlock}>
-            <h1 className={styles.title}>
+            <h1 className={styles.title} lang={lang}>
               {nameA && `${nameA} `}
               <span className="hl">{nameB}</span>
             </h1>
             <ul className={styles.tags} aria-label={t.aboutSpot}>
-              {tags.map((t) => (
-                <li key={t}>{t}</li>
+              {tags.map((tag) => (
+                <li key={tag.text} lang={tag.lang}>
+                  {tag.text}
+                </li>
               ))}
             </ul>
           </div>
@@ -177,7 +184,9 @@ export function PlacePage() {
                 <h2 id="why" className={styles.kicker}>
                   {t.whyTitle}
                 </h2>
-                <p className={styles.whyText}>{spot.why.text}</p>
+                <p className={styles.whyText} lang={lang}>
+                  {spot.why.text}
+                </p>
                 <p className={styles.whyBy}>{t.foundBy(t.formatDate(spot.why.foundOn))}</p>
               </div>
             </section>
@@ -191,7 +200,7 @@ export function PlacePage() {
                   <li key={o.dish}>
                     <CheckBox checked={o.tried} variant={i} />
                     <span>
-                      {o.dish}
+                      <span lang={lang}>{o.dish}</span>
                       {o.tried ? (
                         <span className="visually-hidden">{t.hadIt}</span>
                       ) : (
@@ -209,7 +218,10 @@ export function PlacePage() {
 
           <section aria-labelledby="mine" className={styles.section}>
             <h2 id="mine">{t.myNote}</h2>
-            <p className={styles.myNote}>
+            <p
+              className={styles.myNote}
+              lang={spot.myNote || spot.status === 'been' ? lang : undefined}
+            >
               {spot.myNote ?? (spot.status === 'been' ? spot.note : t.noNoteYet)}
             </p>
           </section>

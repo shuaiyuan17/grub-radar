@@ -91,3 +91,23 @@ describe('detectLocale', () => {
     expect(isLocale('zh')).toBe(false);
   });
 });
+
+describe('opening hours', () => {
+  it.each([
+    [{ closes: '22:00' }, '10pm', '22:00'],
+    [{ closes: '22:30' }, '10:30pm', '22:30'],
+    [{ closes: '00:00' }, 'midnight', '午夜'],
+    [{ closes: '12:00' }, 'noon', '12:00'],
+    [{ closes: '09:15' }, '9:15am', '09:15'],
+    [{ closes: '23:00', days: ['fri' as const] }, '11pm (fri)', '23:00（周五）'],
+    [
+      { closes: '23:00', days: ['fri' as const, 'sat' as const] },
+      '11pm (fri, sat)',
+      '23:00（周五、周六）',
+    ],
+    [{ closes: 'sold-out' as const }, 'sold out', '卖完为止'],
+  ])('%j -> en %s / zh %s', (hours, enText, zhText) => {
+    expect(en.hours(hours)).toBe(enText);
+    expect(zh.hours(hours)).toBe(zhText);
+  });
+});

@@ -1,4 +1,4 @@
-import type { Kind } from '../domain/spot';
+import type { Day, Hours, Kind } from '../domain/spot';
 import { formatMiles, formatMinutes, type TravelMode } from '../domain/travel';
 import type { Mode } from '../domain/modes';
 import type { From } from '../lib/origin';
@@ -11,6 +11,25 @@ import type { Locale } from './locales';
  * that get the yellow highlighter. Spot data (names, cuisines, notes) is
  * not translated.
  */
+/** "22:00" -> "10pm", "22:30" -> "10:30pm", "00:00" -> "midnight", "12:00" -> "noon". */
+function enClock(hhmm: string): string {
+  const [h = 0, m = 0] = hhmm.split(':').map(Number);
+  if (h === 0 && m === 0) return 'midnight';
+  if (h === 12 && m === 0) return 'noon';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'am' : 'pm'}`;
+}
+
+const ZH_DAYS: Record<Day, string> = {
+  mon: '周一',
+  tue: '周二',
+  wed: '周三',
+  thu: '周四',
+  fri: '周五',
+  sat: '周六',
+  sun: '周日',
+};
+
 const en = {
   langGroup: 'Language',
   skip: 'skip to content',
@@ -121,6 +140,10 @@ const en = {
   nearness: { home: 'near home', here: 'near you' } satisfies Record<From, string>,
   roadTrip: 'road trip',
   stats: { fromHome: 'from home', fromHere: 'from here', openTill: 'open till', kind: 'kind' },
+  /** Closing time, e.g. "10pm", "midnight", "11pm (fri)", "sold out". */
+  hours: (h: Hours) =>
+    (h.closes === 'sold-out' ? 'sold out' : enClock(h.closes)) +
+    (h.days ? ` (${h.days.join(', ')})` : ''),
   noPhoto: 'no photo yet',
   whyTitle: "why it's on the list",
   foundBy: (date: string) => `found by your agent · ${date}`,
@@ -287,6 +310,9 @@ const zh: Messages = {
   nearness: { home: '离家近', here: '离你近' },
   roadTrip: '自驾游',
   stats: { fromHome: '离家', fromHere: '离你', openTill: '营业到', kind: '种类' },
+  hours: (h) =>
+    (h.closes === 'sold-out' ? '卖完为止' : h.closes === '00:00' ? '午夜' : h.closes) +
+    (h.days ? `（${h.days.map((d) => ZH_DAYS[d]).join('、')}）` : ''),
   noPhoto: '还没有照片',
   whyTitle: '为什么在清单上',
   foundBy: (date) => `由你的 agent 发现 · ${date}`,

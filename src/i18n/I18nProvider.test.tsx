@@ -96,5 +96,42 @@ describe('language', () => {
     expect(screen.getByRole('region', { name: '点这些' })).toHaveTextContent('下次');
     expect(screen.getByRole('link', { name: '回到列表' })).toBeInTheDocument();
     expect(screen.getByText(/由你的 agent 发现 · 2026年9月12日/)).toBeInTheDocument();
+    expect(screen.getByText('22:00')).toBeInTheDocument(); // structured hours, zh format
+  });
+
+  it('marks english spot data with lang="en" inside the zh page', async () => {
+    localStorage.setItem(LANG_KEY, 'zh-Hans');
+    renderAt('/place/lucky-thread');
+    const h1 = await screen.findByRole('heading', { level: 1 });
+    expect(h1).toHaveAttribute('lang', 'en');
+    expect(screen.getByText('hand-pulled noodles')).toHaveAttribute('lang', 'en');
+    expect(screen.getByText(/noodles pulled to order/)).toHaveAttribute('lang', 'en');
+    expect(screen.getByText('cumin lamb biang biang')).toHaveAttribute('lang', 'en');
+    // translated chrome stays in the page language
+    expect(screen.getByText('离家近')).not.toHaveAttribute('lang');
+    expect(screen.getByText('辣')).not.toHaveAttribute('lang');
+  });
+
+  it('marks data on list cards and the radar card too', async () => {
+    localStorage.setItem(LANG_KEY, 'zh-Hans');
+    const { unmount } = renderAt('/');
+    const card = (await screen.findAllByRole('article'))[0]!;
+    expect(within(card).getByRole('link', { name: 'Lucky Thread Noodle Bar' })).toHaveAttribute(
+      'lang',
+      'en',
+    );
+    expect(within(card).getByText('cumin lamb, extra chili. trust.')).toHaveAttribute('lang', 'en');
+    unmount();
+    renderAt('/radar?sel=hilltop-smokehouse');
+    const radarCard = await screen.findByRole('article', { name: 'Hilltop Smokehouse' });
+    expect(within(radarCard).getByText('saturday brisket sells out early')).toHaveAttribute(
+      'lang',
+      'en',
+    );
+  });
+
+  it('shows english hours in english', async () => {
+    renderAt('/place/two-fires');
+    expect(await screen.findByText('midnight')).toBeInTheDocument();
   });
 });

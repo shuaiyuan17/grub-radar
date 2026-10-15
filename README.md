@@ -115,7 +115,7 @@ Append an object to `SEED_SPOTS` in [`src/data/seed.ts`](src/data/seed.ts):
   note: 'rare beef, extra basil', // ≤ 60 chars, shown in handwriting
   order: [{ dish: 'pho tai', tried: false }],
   why: { text: 'open till 3am', foundOn: '2026-10-14' }, // optional
-  openTill: '3am',                // optional
+  hours: { closes: '03:00' },     // optional; 24h, or 'sold-out'; days: ['fri'] to limit
   icon: 'soup',                   // bowl dumpling taco cup soup bun flame fish croissant
   location: { lat: 47.6152, lng: -122.3201 },
 },
