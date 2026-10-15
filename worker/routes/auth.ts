@@ -17,6 +17,7 @@ import {
 import {
   exchangeCode,
   nameFromUserField,
+  publicOrigin,
   readStateCookie,
   redirectUri,
   SiwaError,
@@ -112,14 +113,17 @@ auth.get('/finish', (c) => c.redirect('/', 303));
  */
 auth.post('/finish', async (c) => {
   const timing = c.var.timing;
-  // the form is on our own page: a browser that says otherwise isn't it
+  // the form is on our own page: a browser that says otherwise isn't it. Without
+  // Sec-Fetch-Site, the Origin must be ours; with neither, no.
   const site = c.req.header('sec-fetch-site');
+  const origin = c.req.header('origin');
+  const sameOrigin =
+    site !== undefined
+      ? site === 'same-origin'
+      : origin !== undefined && origin === publicOrigin(c.env, c.req.url);
   const form = await c.req.parseBody();
   const sent = typeof form.t === 'string' ? form.t : undefined;
-  const pending =
-    site === undefined || site === 'same-origin'
-      ? await openPending(c.env, getCookie(c, PENDING_COOKIE), sent)
-      : null;
+  const pending = sameOrigin ? await openPending(c.env, getCookie(c, PENDING_COOKIE), sent) : null;
   if (!pending) {
     // like the state: a request without the matching `t` leaves the cookie alone
     console.warn('sign in with apple failed', 'missing, forged, expired or mismatched hand-off');
@@ -161,6 +165,14 @@ auth.post('/finish', async (c) => {
   } catch (e) {
     // reasons only: never the code, tokens or form body
     console.warn('sign in with apple failed', e instanceof SiwaError ? e.message : e);
+    // Apple's code is single use: invalid_grant on an otherwise valid hand-off
+    // most likely means a second submit lost the race to the first, which may
+    // already have signed this browser in. Go where that one went; if it
+    // didn't, the wall shows and a retry is one tap.
+    if (e instanceof SiwaError && e.appleError === 'invalid_grant') {
+      timing.note('signin_outcome', 'code_already_used');
+      return c.redirect(pending.returnTo, 303);
+    }
     return backTo(c, 'failed');
   }
 });

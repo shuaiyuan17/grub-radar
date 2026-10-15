@@ -217,8 +217,8 @@ CSS) submits a same-origin POST form to `/auth/finish` with the hand-off value `
 body, never in a URL; a "continue" button is the no-JS fallback. What crosses over (code, nonce hash, returnTo, previous
 session, Apple's one-time `user` field) is AES-GCM-sealed in a two-minute `__Host-grub_signin`
 cookie (HttpOnly, Secure, Lax) bound to that random `t`; `/auth/finish`
-refuses (and leaves alone) anything without the matching `t` or not `Sec-Fetch-Site:
-same-origin`, a GET there just goes home, and the cookie is cleared on first use (`worker/auth/pending.ts`). It then exchanges the code with a
+refuses (and leaves alone) anything without the matching `t`, or not `Sec-Fetch-Site:
+same-origin` (without that header: an `Origin` equal to `PUBLIC_ORIGIN`; neither is a no), a GET there just goes home, and the cookie is cleared on first use (`worker/auth/pending.ts`). It then exchanges the code with a
 fresh 5-minute ES256 client secret **while** loading Apple's JWKS, verifies the id_token
 (RS256; `iss`, `aud`, `exp`, nonce), and finds or creates the user by Apple `sub` and starts
 the session in one D1 batch. Apple sends the person's name only on the first authorization;

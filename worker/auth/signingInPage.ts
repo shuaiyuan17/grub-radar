@@ -60,8 +60,13 @@ form{margin:0}
 @media (prefers-reduced-motion:reduce){.sweep,.blip{animation:none}}
 `;
 
-/** The only script on the page: submit the hand-off form. Its hash goes in the CSP. */
-export const SIGNING_IN_SCRIPT = "document.getElementById('go').submit();";
+/**
+ * The only script on the page: drop the fallback button for good (so nobody
+ * can submit a second time while the first is still with Apple), then submit
+ * the hand-off form. Its hash goes in the CSP.
+ */
+export const SIGNING_IN_SCRIPT =
+  "document.getElementById('more').remove();document.getElementById('go').submit();";
 
 const sha256B64 = (text: string) =>
   crypto.subtle
@@ -119,7 +124,7 @@ export function signingInPage(locale: PageLocale, finish: string): string {
 <p>${esc(t.sub)}</p>
 <form id="go" method="POST" action="/auth/finish">
 <input type="hidden" name="t" value="${esc(finish)}">
-<button type="submit">${esc(t.stuck)}</button>
+<button id="more" type="submit">${esc(t.stuck)}</button>
 </form>
 </main>
 <script>${SIGNING_IN_SCRIPT}</script>

@@ -167,10 +167,13 @@ export type TokenResponse = z.infer<typeof TokenResponse>;
 
 export class SiwaError extends Error {
   readonly reason: string;
-  constructor(reason: string, message?: string) {
+  /** Apple's own error code, when Apple sent one (e.g. "invalid_grant"). */
+  readonly appleError: string | undefined;
+  constructor(reason: string, message?: string, appleError?: string) {
     super(message ?? reason);
     this.name = 'SiwaError';
     this.reason = reason;
+    this.appleError = appleError;
   }
 }
 
@@ -207,7 +210,7 @@ export async function exchangeCode(
     } catch {
       // not JSON
     }
-    throw new SiwaError('token_exchange', `Apple token endpoint: ${error}`);
+    throw new SiwaError('token_exchange', `Apple token endpoint: ${error}`, error);
   }
   try {
     return TokenResponse.parse(JSON.parse(text));

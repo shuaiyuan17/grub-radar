@@ -7,6 +7,7 @@
 import { env, exports } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetAppleKeys } from '../auth/appleKeys';
+import app from '../index';
 import { PENDING_COOKIE } from '../auth/pending';
 import { SIGNING_IN_SCRIPT, SIGNING_IN_STYLE } from '../auth/signingInPage';
 import {
@@ -111,7 +112,9 @@ describe('POST /auth/callback: the "signing you in…" page', () => {
     expect(html).toContain(`<style>${SIGNING_IN_STYLE}</style>`);
     expect(html).toContain(`<input type="hidden" name="t" value="${t}">`);
     // the no-JS fallback: a real submit button in the same form
-    expect(html).toMatch(/<button type="submit">[^<]+<\/button>\s*<\/form>/);
+    expect(html).toMatch(/<button id="more" type="submit">[^<]+<\/button>\s*<\/form>/);
+    // the script drops that button for good before it submits
+    expect(SIGNING_IN_SCRIPT).toMatch(/getElementById\('more'\)\.remove\(\);.*\.submit\(\);$/);
     const hash = async (text: string) =>
       btoa(
         String.fromCharCode(
@@ -249,6 +252,88 @@ describe('POST /auth/finish', () => {
     }
     expect(mock.calls).toHaveLength(0);
     expect((await finish(t, cookie)).headers.get('location')).toBe('/radar');
+  });
+
+  it('without Sec-Fetch-Site, needs an Origin that is ours (and refuses neither)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { t, cookie, mock } = await handoff();
+    const bare = (origin?: string) =>
+      exports.default.fetch(
+        new Request('https://grub.test/auth/finish', {
+          method: 'POST',
+          redirect: 'manual',
+          headers: {
+            'content-type': 'application/x-www-form-urlencoded',
+            cookie,
+            ...(origin ? { origin } : {}),
+          },
+          body: new URLSearchParams({ t }).toString(),
+        }),
+      );
+    for (const origin of [undefined, 'https://evil.example', 'null']) {
+      const res = await bare(origin);
+      expect(res.headers.get('location'), String(origin)).toBe('/?signin=failed');
+      expect(setCookieLine(res, PENDING_COOKIE), String(origin)).toBeUndefined();
+    }
+    expect(mock.calls).toHaveLength(0);
+    expect((await bare('https://grub.test')).headers.get('location')).toBe('/radar');
+  });
+
+  it('in production that Origin is PUBLIC_ORIGIN, not whatever host the request came in on', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { t, cookie } = await handoff();
+    const prod = { ...env, ENVIRONMENT: 'production' };
+    const post = (origin: string) =>
+      app.request(
+        'https://grub.test/auth/finish',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded', cookie, origin },
+          body: new URLSearchParams({ t }).toString(),
+        },
+        prod,
+      );
+    expect((await post('https://grub.test')).headers.get('location')).toBe('/?signin=failed');
+    expect((await post(env.PUBLIC_ORIGIN)).headers.get('location')).toBe('/radar');
+  });
+
+  it('Apple says invalid_grant (the code was already spent): go to returnTo, not the error page', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const start = await startSignIn('/radar');
+    mockApple(apple, () => Response.json({ error: 'invalid_grant' }, { status: 400 }));
+    const page = await postCallback({ code: 'c', state: start.state }, start.cookie);
+    const res = await followHandoff(page);
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toBe('/radar');
+    expect(cookieFrom(res, '__Host-grub_session')).toBeNull();
+    expect(await countRows('sessions')).toBe(0);
+    // any other Apple error is still a plain failure
+    vi.restoreAllMocks();
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const again = await startSignIn('/radar');
+    mockApple(apple, () => Response.json({ error: 'invalid_client' }, { status: 400 }));
+    const failed = await followHandoff(
+      await postCallback({ code: 'c', state: again.state }, again.cookie),
+    );
+    expect(failed.headers.get('location')).toBe('/?signin=failed');
+  });
+
+  it('a double submit: one signs in, the loser lands on returnTo too', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const start = await startSignIn('/radar');
+    let spent = false;
+    mockApple(apple, async () => {
+      if (spent) return Response.json({ error: 'invalid_grant' }, { status: 400 });
+      spent = true;
+      return tokenResponse(await apple.idToken({ nonce: start.nonce }));
+    });
+    const page = await postCallback({ code: 'c', state: start.state }, start.cookie);
+    const t = (await handoffValue(page)) ?? '';
+    const cookie = cookieFrom(page, PENDING_COOKIE) ?? '';
+    const [a, b] = await Promise.all([finish(t, cookie), finish(t, cookie)]);
+    expect([a.headers.get('location'), b.headers.get('location')]).toEqual(['/radar', '/radar']);
+    expect([a, b].filter((r) => cookieFrom(r, '__Host-grub_session'))).toHaveLength(1);
+    expect(await countRows('sessions')).toBe(1);
   });
 
   it('refuses a missing, forged or tampered hand-off cookie', async () => {
