@@ -33,7 +33,7 @@ jobs:
       - name: D1 migrations apply cleanly, in order
         run: |
           npm run db:migrate:local
-          npx wrangler d1 migrations list grub-radar --local | tee /tmp/migrations.txt
+          npx wrangler d1 migrations list DB --local | tee /tmp/migrations.txt
           grep -q "No migrations to apply" /tmp/migrations.txt
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
