@@ -99,8 +99,11 @@ export function setCookieLine(res: Response, name: string): string | undefined {
 }
 
 /** GET /auth/apple/start, returning what the browser would hold. */
-export async function startSignIn(returnTo = '/') {
-  const res = await call(`/auth/apple/start?returnTo=${encodeURIComponent(returnTo)}`);
+export async function startSignIn(returnTo = '/', sessionCookie?: string) {
+  // a same-site GET: the browser sends the Lax session cookie here, if it has one
+  const res = await call(`/auth/apple/start?returnTo=${encodeURIComponent(returnTo)}`, {
+    cookie: sessionCookie,
+  });
   const location = new URL(res.headers.get('location') ?? 'about:blank');
   const cookie = cookieFrom(res, '__Host-grub_siwa');
   return {

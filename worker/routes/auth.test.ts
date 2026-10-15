@@ -261,15 +261,20 @@ describe('POST /auth/callback', () => {
   it('signing in again ends the session this browser already had', async () => {
     const first = cookieFrom((await signIn()).res, '__Host-grub_session')!;
     const mock = appleAnswers();
-    const start = await startSignIn();
+    // the browser sends its session cookie on the same-site GET to /auth/apple/start...
+    const start = await startSignIn('/', first);
     mock.setNonce(start.nonce);
-    const again = await postCallback(
-      { code: 'c', state: start.state },
-      `${start.cookie}; ${first}`,
-    );
+    // ...but not on Apple's cross-site form_post (SameSite=Lax): only the state cookie
+    const again = await postCallback({ code: 'c', state: start.state }, start.cookie);
     expect(cookieFrom(again, '__Host-grub_session')).not.toBe(first);
     expect(await countRows('sessions')).toBe(1);
     expect((await call('/api/me', { cookie: first })).status).toBe(401);
+  });
+
+  it('a sign-in started without a session revokes nothing', async () => {
+    await signIn();
+    await signIn();
+    expect(await countRows('sessions')).toBe(2);
   });
 
   it('refuses an id_token minted for a different nonce (replayed token)', async () => {

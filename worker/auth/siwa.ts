@@ -49,6 +49,12 @@ const StatePayload = z.strictObject({
   nonceHash: z.string(),
   returnTo: z.string(),
   iat: z.number(),
+  /**
+   * The session id (SHA-256 of the token) this browser had when it started
+   * signing in. The callback can't see the Lax session cookie (Apple's POST
+   * is cross-site), so it learns which session to end from here.
+   */
+  prevSession: z.optional(z.string()),
 });
 export type StatePayload = z.infer<typeof StatePayload>;
 
@@ -61,6 +67,7 @@ export async function startAuthorize(
   env: Env,
   requestUrl: string,
   returnTo: string,
+  prevSession?: string,
   now = Date.now(),
 ): Promise<AuthorizeStart> {
   const state = randomToken(32);
@@ -70,6 +77,7 @@ export async function startAuthorize(
     nonceHash: await sha256Hex(nonce),
     returnTo: safeReturnTo(returnTo),
     iat: now,
+    ...(prevSession ? { prevSession } : {}),
   };
   const url = new URL('/auth/authorize', appleBase(env));
   url.searchParams.set('client_id', env.APPLE_CLIENT_ID);

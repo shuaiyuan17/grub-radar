@@ -26,12 +26,16 @@ import {
 } from '../auth/siwa';
 import { ensureDevUser, signInWithApple } from '../db/users';
 import { isDevelopment } from '../env';
+import { sha256Hex } from '../lib/crypto';
 import { apiError } from '../lib/http';
 
 export const auth = new Hono<AppEnv>();
 
 auth.get('/apple/start', async (c) => {
-  const start = await startAuthorize(c.env, c.req.url, c.req.query('returnTo') ?? '/');
+  // a same-site GET, so the Lax session cookie is here (unlike on the callback)
+  const token = readSessionCookie(c);
+  const prevSession = token && token.length <= 100 ? await sha256Hex(token) : undefined;
+  const start = await startAuthorize(c.env, c.req.url, c.req.query('returnTo') ?? '/', prevSession);
   // SameSite=None: Apple's callback is a cross-site POST, which never carries Lax cookies.
   setCookie(c, STATE_COOKIE, start.cookie, {
     path: '/',
@@ -79,7 +83,8 @@ auth.post('/callback', async (c) => {
     });
     if (outcome.kind === 'closed') return backTo(c, 'closed');
 
-    await revokeSessionToken(c.env.DB, readSessionCookie(c));
+    // the session this browser had when it set off to Apple (carried in the signed state)
+    if (state.prevSession) await deleteSession(c.env.DB, state.prevSession);
     const { token } = await createSession(c.env.DB, outcome.userId, c.req.header('user-agent'));
     setSessionCookie(c, token);
     return c.redirect(state.returnTo, 303);
