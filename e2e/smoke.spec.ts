@@ -18,8 +18,19 @@ async function noSeriousA11yIssues(page: Page) {
   ).toEqual([]);
 }
 
+/** Freeze the page clock and make Math.random() predictable, so the headline is too. */
+async function pinTime(page: Page, date: Date) {
+  await page.clock.setFixedTime(date);
+  await page.addInitScript(() => {
+    Math.random = () => 0;
+  });
+}
+
+const WEEKDAY_DINNER = new Date(2026, 9, 14, 19, 0); // Wednesday 19:00 local
+
 test('list -> place -> back -> radar', async ({ page }, info) => {
   const phone = info.project.name === 'phone';
+  await pinTime(page, WEEKDAY_DINNER);
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('what are we eating tonight?');
   await expect(page.getByRole('article')).toHaveCount(5);
@@ -70,7 +81,18 @@ test('deep links work (SPA routing) and the dice rolls', async ({ page }) => {
   await expect(page.getByRole('article')).toHaveCount(1);
 });
 
+test('weekend daytime opens on weekend ideas', async ({ page }) => {
+  await pinTime(page, new Date(2026, 9, 17, 11, 0)); // Saturday 11:00 local
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText("it's the weekend. go further.");
+  await expect(page.getByRole('button', { name: 'weekend' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+});
+
 test('keyboard users can reach a card and see focus', async ({ page }) => {
+  await pinTime(page, WEEKDAY_DINNER);
   await page.goto('/');
   await expect(page.getByRole('article').first()).toBeVisible();
   for (let i = 0; i < 25; i++) {

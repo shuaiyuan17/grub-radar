@@ -17,7 +17,10 @@ export const COFFEE_MAX_MINUTES = 30;
 
 interface ModeDef {
   label: string;
-  /** Headline split so the middle part gets the highlighter. */
+  /**
+   * Headline when you pick this mode yourself (split so the middle gets the
+   * highlighter). The page's opening mode uses the time-of-day headline instead.
+   */
   headline: readonly [string, string, string];
   sortLabel: string;
   emptyHint: string;
@@ -27,21 +30,21 @@ interface ModeDef {
 export const MODE_DEFS: Record<Mode, ModeDef> = {
   near: {
     label: 'near me',
-    headline: ['what are we', 'eating', ' tonight?'],
+    headline: ['what are we ', 'eating', ' tonight?'],
     sortLabel: 'closest first',
     emptyHint: `nothing within ${NEAR_MAX_MINUTES} min. try weekend, or search.`,
     includes: (v) => v.spot.kind === 'food' && v.travel.minutes <= NEAR_MAX_MINUTES,
   },
   weekend: {
     label: 'weekend',
-    headline: ["it's the weekend.", 'go further', '.'],
+    headline: ["it's the weekend. ", 'go further', '.'],
     sortLabel: 'by drive time',
     emptyHint: 'no far-flung ideas yet.',
     includes: (v) => v.spot.kind !== 'coffee' && v.travel.minutes > WEEKEND_MIN_MINUTES,
   },
   coffee: {
     label: 'coffee',
-    headline: ['first,', 'coffee', '.'],
+    headline: ['first, ', 'coffee', '.'],
     sortLabel: 'closest first',
     emptyHint: `no coffee within ${COFFEE_MAX_MINUTES} min. that's a problem.`,
     includes: (v) => v.spot.kind !== 'food' && v.travel.minutes <= COFFEE_MAX_MINUTES,

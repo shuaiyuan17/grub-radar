@@ -44,6 +44,13 @@ The first `test:e2e` run needs `npx playwright install chromium`.
 - `/place/:id` one spot.
 - `/radar` `?reach=0..3` (10 min … road trip), `?kinds=food,coffee`, `?sel=<spot id>`.
 
+**The headline changes with the time of day.** When the page opens it looks at the local
+clock, picks a slot (breakfast 5–11, lunch 11–14, afternoon 14–17, dinner 17–21, late night
+21–5, and weekend daytime Sat/Sun 9–17) and a random line from that slot, once per page load.
+Weekend daytime also opens the list in **weekend** mode. The copy lives in
+[`src/copy/headlines.ts`](src/copy/headlines.ts); wrap the highlighted words in `*asterisks*`.
+The picker is `pickHeadline(date, random)` in `src/domain/headlines.ts`.
+
 **from: home / where i am.** Home is a configured origin. "where i am" asks the browser for its
 location once; if that's blocked or times out you get a note and distances stay measured from home.
 
@@ -108,7 +115,8 @@ deploys, or keep that deployment private.
 ```
 src/
   domain/   framework-free TypeScript: Spot schema (zod), travel-time heuristic, sorting and
-            filters, findNearby, roll, the SpotRepository interface. No React, no DOM.
+            filters, findNearby, roll, pickHeadline, the SpotRepository interface. No React, no DOM.
+  copy/     editable UI copy (time-of-day headlines).
   data/     where spots come from. v0: StaticSpotRepository over the in-repo seed.
   lib/      React glue: origin (home / geolocation), spots context, radar geometry.
   components/, pages/   the UI.

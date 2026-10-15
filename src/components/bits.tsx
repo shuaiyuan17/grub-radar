@@ -60,7 +60,7 @@ export function GoLink({
   );
 }
 
-/** "what are we [eating] tonight?" */
+/** "what are we [eating] tonight?" (spacing lives in the parts) */
 export function Headline({
   parts,
   className,
@@ -73,7 +73,8 @@ export function Headline({
   const [pre, hl, post] = parts;
   return (
     <h1 className={className} id={id}>
-      {pre} <span className="hl">{hl}</span>
+      {pre}
+      <span className="hl">{hl}</span>
       {post}
     </h1>
   );

@@ -16,6 +16,7 @@ import { SpotCard } from '../components/SpotCard';
 import { ALL, isMode, listSpots, MODE_DEFS, type Mode } from '../domain/modes';
 import { useOrigin } from '../lib/origin';
 import { roll } from '../domain/roll';
+import { getPageHeadline } from '../lib/pageHeadline';
 import { useSpotViews } from '../lib/useSpotViews';
 import styles from './ListPage.module.css';
 
@@ -26,8 +27,10 @@ export function ListPage() {
   const { from, chooseHere } = useOrigin();
   const views = useSpotViews();
 
+  // picked once per page load from the local time (see domain/headlines.ts)
+  const opening = getPageHeadline();
   const modeParam = params.get('mode');
-  const mode: Mode = isMode(modeParam) ? modeParam : 'near';
+  const mode: Mode = isMode(modeParam) ? modeParam : opening.defaultMode;
   const q = params.get('q') ?? '';
   const rollId = params.get('roll');
   const result = listSpots(views, { mode, tag: params.get('tag') ?? ALL, q });
@@ -44,7 +47,7 @@ export function ListPage() {
           if (
             v === null ||
             v === '' ||
-            (k === 'mode' && v === 'near') ||
+            (k === 'mode' && v === opening.defaultMode) ||
             (k === 'tag' && v === ALL)
           ) {
             next.delete(k);
@@ -120,7 +123,10 @@ export function ListPage() {
       )}
 
       <div className={styles.titleRow}>
-        <Headline parts={def.headline} className={styles.title} />
+        <Headline
+          parts={mode === opening.defaultMode ? opening.parts : def.headline}
+          className={styles.title}
+        />
         <ModeSwitch
           mode={mode}
           onChange={(m) => {

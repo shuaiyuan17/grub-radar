@@ -1,4 +1,5 @@
 import { act, screen, within } from '@testing-library/react';
+import { getPageHeadline, resetPageHeadline } from '../lib/pageHeadline';
 import { fakeGeolocation, renderAt } from '../test/render';
 
 const cardNames = () =>
@@ -123,5 +124,48 @@ describe('list page', () => {
       geo.timeout();
     });
     expect(screen.getByRole('status')).toHaveTextContent(/couldn't find you/);
+  });
+});
+
+describe('time-of-day headline', () => {
+  it('opens weekend daytime in weekend mode with weekend copy', async () => {
+    resetPageHeadline();
+    getPageHeadline(
+      () => new Date(2026, 9, 17, 11), // Saturday 11:00
+      () => 0,
+    );
+    const { user, router } = renderAt('/');
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(
+      "it's the weekend. go further.",
+    );
+    expect(screen.getByRole('button', { name: 'weekend' })).toHaveAttribute('aria-pressed', 'true');
+    expect(cardNames()[0]).toBe('Harbor Night Market');
+    // picking near me yourself sticks in the URL, since it's not today's default
+    await user.click(screen.getByRole('button', { name: 'near me' }));
+    expect(router.state.location.search).toBe('?mode=near');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      'what are we eating tonight?',
+    );
+  });
+
+  it('uses the slot copy, highlighting the marked words', async () => {
+    resetPageHeadline();
+    getPageHeadline(
+      () => new Date(2026, 9, 14, 23), // Wednesday 23:00
+      () => 0,
+    );
+    renderAt('/');
+    const h1 = await screen.findByRole('heading', { level: 1 });
+    expect(h1).toHaveTextContent('late night bite?');
+    expect(h1.querySelector('.hl')).toHaveTextContent('late night');
+  });
+
+  it('does not change on re-render or navigation', async () => {
+    const { user } = renderAt('/');
+    const h1 = await screen.findByRole('heading', { level: 1 });
+    const text = h1.textContent;
+    await user.click(screen.getByRole('link', { name: 'Ondo Soup House' }));
+    await user.click(await screen.findByRole('link', { name: 'Back to the list' }));
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(text);
   });
 });

@@ -10,6 +10,7 @@
  *   add_note    -> WritableSpotRepository.addNote  (planned)
  */
 export * from './geo';
+export * from './headlines';
 export * from './maps';
 export * from './modes';
 export * from './nearby';
