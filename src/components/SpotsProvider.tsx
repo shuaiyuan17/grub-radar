@@ -32,17 +32,27 @@ export function SpotsProvider({
   children: ReactNode;
   repository?: SpotRepository;
 }) {
-  const [load, setLoad] = useState<Load>(() => initialLoad(repository));
+  // load state belongs to one repository; when the prop changes, start over
+  // from the new one (React's "adjust state on prop change" pattern)
+  const [current, setCurrent] = useState(() => ({ repository, load: initialLoad(repository) }));
+  let load = current.load;
+  if (current.repository !== repository) {
+    load = initialLoad(repository);
+    setCurrent({ repository, load });
+  }
 
   useEffect(() => {
-    if (repository.snapshot) return; // already have it
+    if (repository.snapshot) return; // synchronous: initialLoad already has it
     let live = true;
+    const settle = (next: Load) => {
+      if (live) setCurrent((c) => (c.repository === repository ? { repository, load: next } : c));
+    };
     repository.list().then(
       (spots) => {
-        if (live) setLoad({ state: 'ready', spots });
+        settle({ state: 'ready', spots });
       },
       (error: unknown) => {
-        if (live) setLoad({ state: 'error', error: asError(error) });
+        settle({ state: 'error', error: asError(error) });
       },
     );
     return () => {
