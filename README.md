@@ -71,8 +71,13 @@ The picker is `pickHeadline(date, random)` in `src/domain/headlines.ts`.
 blocked or times out you get a note and distances stay measured from home. **Home** is yours to
 set from the app ("set your home": use where you are now, or type `lat, lng`). It's saved to
 your account (`user_private`, returned only by `GET /api/me` to your own session). A home
-that v0 left in this browser's `localStorage` is moved to the account on the first signed-in
-load and removed from the device. Until you set one, distances are measured from a demo home
+that v0 left in this browser's `localStorage` is used right away, and you're asked once:
+**save your home to your account?** Yes moves it there and removes it from the device; "keep
+it on this device only" leaves it local and stops asking. On a device where the account
+already has a home, the old device copy is cleared without asking: the account always wins,
+so the device copy would never be read again (asking would offer a choice with no effect).
+Home writes go one at a time; changing home again while one is in flight writes the newest
+choice next, so the server always ends on your latest. Until you set one, distances are measured from a demo home
 in downtown Seattle, and the app says so.
 
 ## Languages: en / 中文
@@ -192,7 +197,7 @@ accounts, sessions, places and everyone's own list.
 | `GET /api/spots/:id`           | read    | one of your spots, or 404                                        |
 | `GET /api/spots/nearby`        | read    | `find_nearby`: `?origin=home\|lat,lng&maxMinutes&kinds&limit`    |
 | `POST /api/spots`              | write   | `add_spot` (manual: name, kind, location + optional fields), 201 |
-| `PATCH /api/spots/:id`         | write   | edit; `null` clears; back to "want" drops the rating             |
+| `PATCH /api/spots/:id`         | write   | edit; `null` clears; stale `version` → 409; to been = visit      |
 | `POST /api/spots/:id/been`     | write   | `mark_been`: `{ rating?, on?, note? }`, records a visit          |
 | `POST /api/spots/:id/notes`    | write   | `add_note`: appends `— YYYY-MM-DD: …` to your notes              |
 | `DELETE /api/spots/:id`        | write   | 204; your entry and visits go (and a manual place only you had)  |
@@ -239,12 +244,23 @@ home through any endpoint (404s, unchanged rows, no visits recorded). "read"/"wr
 mean a signed-in person today, or an agent with `spots:read`/`spots:write` once the agent
 door ships; home is session-only.
 
-**Places vs your list**: `places` is global (Apple places will be shared and deduped by
-Apple Place ID); `user_places` is your entry (status, rating, notes, tags, order). The name,
-kind, location, cuisine and price of a manual place can only be changed by whoever created
-it (enforced in the `UPDATE`); everything on your entry is always yours. Edits read the spot,
-run the shared domain function (`src/domain/edits.ts`) and write back guarded by
-`updated_at`, so two writes at once retry instead of losing one.
+**Places vs your list**: `places` is global and holds only what a place _is_: name,
+location, address, Apple Place ID, who created it. Apple places (PR 3) will be shared and
+deduped by Apple Place ID. Everything you _say_ about a place (kind, cuisine, price, doodle,
+hours, tags, status, rating, notes, "order this") is on your own `user_places` row, so on a
+shared place each person keeps their own. Only whoever created a manual place can rename or
+move it (enforced in the `UPDATE`; your entry update only lands if the place change did).
+
+**Concurrency**: every `user_places` row has an integer `version`, bumped on every write and
+returned on every spot. Edits read the spot, run the shared domain function
+(`src/domain/edits.ts`) and write back `WHERE version = ?`. The app sends the `version` it
+edited with every `PATCH`; if the spot changed elsewhere meanwhile, that's a **409**, the app
+fetches the latest copy and says "updated somewhere else, try again" (so a stale copy of
+`order` or `tags` never overwrites a newer one). Server-side appends (`/been`, `/notes`)
+retry on their own. The SPA also ignores a write answer older than the copy it already has.
+
+**Brakes**: at most 1000 spots per list (`list_full`, 409), and 60 writes per minute per
+user (`WRITE_LIMITER`, 429) across spot writes and home.
 
 **Secrets** (production, `wrangler secret put`): `APPLE_PRIVATE_KEY` (the ES256 `.p8` as
 PEM), `SESSION_HMAC_KEY` (32+ random bytes) and, optionally, `OWNER_APPLE_SUB`. Locally they live in `.dev.vars`

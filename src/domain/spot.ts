@@ -43,6 +43,8 @@ export const LIMITS = {
   /** One appended note entry. */
   entry: 500,
   myNote: 2000,
+  /** Spots on one person's list. */
+  spots: 1000,
 } as const;
 
 export const PRICES = ['$', '$$', '$$$', '$$$$'] as const;
@@ -54,8 +56,32 @@ export const TagSchema = z
   .string()
   .check(z.trim(), z.toLowerCase(), z.minLength(1), z.maxLength(LIMITS.tag));
 export const TagsSchema = z.array(TagSchema).check(z.maxLength(LIMITS.tags));
-export const DishSchema = z.strictObject({ dish: text(LIMITS.dish), tried: z.boolean() });
-export const OrderSchema = z.array(DishSchema).check(z.maxLength(LIMITS.dishes));
+const DISH_ID = /^d[1-9]\d{0,5}$/;
+/** A dish to order. `id` is stable across edits ("d1", "d2", …); new dishes may omit it. */
+export const DishSchema = z.strictObject({
+  id: z.optional(z.string().check(z.regex(DISH_ID, 'dish ids look like "d3"'))),
+  dish: text(LIMITS.dish),
+  tried: z.boolean(),
+});
+
+/** Gives every dish without an id the next free "d<n>", keeping existing ids. */
+export function withDishIds<T extends { id?: string }>(
+  order: readonly T[],
+): (T & { id: string })[] {
+  let next = 1 + Math.max(0, ...order.map((o) => (o.id ? Number(o.id.slice(1)) : 0)));
+  const seen = new Set<string>();
+  return order.map((o) => {
+    let id = o.id;
+    if (!id || seen.has(id)) id = `d${String(next++)}`;
+    seen.add(id);
+    return { ...o, id };
+  });
+}
+
+export const OrderSchema = z.pipe(
+  z.array(DishSchema).check(z.maxLength(LIMITS.dishes)),
+  z.transform((order) => withDishIds(order)),
+);
 export const WhySchema = z.strictObject({ text: text(LIMITS.why), foundOn: z.iso.date() });
 
 export const HoursSchema = z.strictObject({
@@ -95,6 +121,11 @@ export const SpotSchema = z
     lang: z.optional(z.enum(DATA_LANGS)),
     icon: z.enum(ICONS),
     location: LatLngSchema,
+    /**
+     * Bumped by the server on every write to this spot. Send it back with an
+     * edit and a stale copy gets a 409 instead of overwriting newer data.
+     */
+    version: z.optional(z.int().check(z.gte(1))),
   })
   .check(
     z.refine((s) => s.rating === undefined || s.status === 'been', {

@@ -183,6 +183,11 @@ const en = {
   pageNotFound: 'nothing on the *radar* here.',
   pageNotFoundBody: 'wrong turn. happens to the best of us.',
 
+  homeConsentTitle: 'save your home to your account?',
+  homeConsentBody:
+    'this device remembers a home from before. in your account it stays private: only you see it, never agents or anyone else.',
+  homeConsentYes: 'save it',
+  homeConsentNo: 'keep it on this device only',
   homeTitle: "where's home?",
   homePrivacy: 'saved to your account and private: only you see it, never agents or anyone else.',
   homeNow: (lat: string, lng: string) => ` now: ${lat}, ${lng}.`,
@@ -246,8 +251,10 @@ const en = {
   apiErrors: {
     note_too_long: 'your notes for this spot are full.',
     rating_needs_been: 'rate it once you’ve been.',
-    not_editable: 'this place’s details aren’t yours to change.',
-    conflict: 'it changed while saving. try again.',
+    not_editable: 'only whoever added this place can change its name or location.',
+    conflict: 'this spot was updated somewhere else. here’s the latest; try again.',
+    future_date: 'that date hasn’t happened yet.',
+    list_full: 'your list is full (1000 spots). time to clear out a few?',
     not_found: 'that spot is gone.',
     rate_limited: 'slow down a little, then try again.',
     unknown: 'couldn’t save that. try again?',
@@ -448,6 +455,11 @@ const zh: Messages = {
   pageNotFound: '*雷达*上没有这一页。',
   pageNotFoundBody: '走错路了，谁都会的。',
 
+  homeConsentTitle: '把家保存到你的账号？',
+  homeConsentBody:
+    '这台设备记着之前设置的家。存到账号里也只有你自己看得到，agent 和其他人都看不到。',
+  homeConsentYes: '保存',
+  homeConsentNo: '只留在这台设备上',
   homeTitle: '家在哪儿？',
   homePrivacy: '保存在你的账号里，只有你自己看得到，agent 和其他人都看不到。',
   homeNow: (lat, lng) => ` 现在：${lat}, ${lng}。`,
@@ -510,8 +522,10 @@ const zh: Messages = {
   apiErrors: {
     note_too_long: '这家店的笔记写满了。',
     rating_needs_been: '去过之后再打分。',
-    not_editable: '这家店的基本信息不归你改。',
-    conflict: '保存时它刚好被改了，再试一次。',
+    not_editable: '只有添加这家店的人能改它的名字和位置。',
+    conflict: '这家店刚在别处更新过，已显示最新内容，再试一次。',
+    future_date: '那天还没到呢。',
+    list_full: '清单满了（1000 家），删掉几家吧？',
     not_found: '这家店已经不在了。',
     rate_limited: '慢一点，等会儿再试。',
     unknown: '没保存成功，再试一次？',

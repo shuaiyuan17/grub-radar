@@ -120,6 +120,8 @@ function SpotForm({ spot }: { spot?: Spot }) {
           icon,
           tags,
           note: v.note.trim() || null,
+          // edited from this copy: if it changed elsewhere meanwhile, the server says 409
+          version: spot.version,
         };
         saved = await actions.update(spot.id, patch);
       } else {

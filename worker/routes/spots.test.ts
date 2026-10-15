@@ -413,3 +413,91 @@ describe('signed out', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('CSRF on every write route (a valid session is not enough)', () => {
+  let cookie = '';
+  let id = '';
+  beforeAll(async () => {
+    cookie = await userSession('u_csrf', 'Cass');
+    id = (await spotOf(await send('POST', '/api/spots', cookie, NEW_SPOT))).id;
+  });
+
+  // [method, label, path, body]
+  const routes: [string, string, () => string, unknown][] = [
+    ['POST', '/api/spots', () => '/api/spots', NEW_SPOT],
+    ['PATCH', '/api/spots/:id', () => `/api/spots/${id}`, { note: 'pwned' }],
+    ['POST', '/api/spots/:id/been', () => `/api/spots/${id}/been`, { rating: 1 }],
+    ['POST', '/api/spots/:id/notes', () => `/api/spots/${id}/notes`, { note: 'pwned' }],
+    ['DELETE', '/api/spots/:id', () => `/api/spots/${id}`, {}],
+    ['POST', '/api/roll', () => '/api/roll', { origin: { lat: 47.61, lng: -122.33 } }],
+    ['POST', '/api/spots/import-demo', () => '/api/spots/import-demo', {}],
+    ['PUT', '/api/me/home', () => '/api/me/home', A_HOME],
+    ['DELETE', '/api/me/home', () => '/api/me/home', {}],
+  ];
+
+  it.each(routes.map(([method, label, path, body]) => ({ method, label, path, body })))(
+    '$method $label from another site is 403 and changes nothing',
+    async ({ method, path, body }) => {
+      const before = await (await call(`/api/spots/${id}`, { cookie })).text();
+      for (const headers of [
+        { ...writeHeaders, 'sec-fetch-site': 'cross-site' },
+        { 'content-type': 'application/json', 'sec-fetch-site': 'same-origin' }, // no X-Grub-Request
+      ]) {
+        const res = await call(path(), { method, cookie, headers, body: JSON.stringify(body) });
+        expect(res.status).toBe(403);
+        expect((await errorOf(res)).code).toBe('csrf');
+      }
+      expect(await (await call(`/api/spots/${id}`, { cookie })).text()).toBe(before);
+      expect(await (await call('/api/spots', { cookie })).json()).toHaveLength(1);
+    },
+  );
+});
+
+describe('versions, dates and brakes over HTTP', () => {
+  it('PATCH with a stale version is a 409 and changes nothing', async () => {
+    const cookie = await userSession('u_ver', 'Vera');
+    const spot = await spotOf(await send('POST', '/api/spots', cookie, NEW_SPOT));
+    const ok = await send('PATCH', `/api/spots/${spot.id}`, cookie, {
+      tags: ['a'],
+      version: spot.version,
+    });
+    expect((await spotOf(ok)).version).toBe(2);
+    const stale = await send('PATCH', `/api/spots/${spot.id}`, cookie, {
+      tags: ['b'],
+      version: spot.version,
+    });
+    expect(stale.status).toBe(409);
+    expect((await errorOf(stale)).code).toBe('conflict');
+    expect((await spotOf(await call(`/api/spots/${spot.id}`, { cookie }))).tags).toEqual(['a']);
+  });
+
+  it('a future visit date is a 400', async () => {
+    const cookie = await userSession('u_future', 'Fay');
+    const spot = await spotOf(await send('POST', '/api/spots', cookie, NEW_SPOT));
+    const res = await send('POST', `/api/spots/${spot.id}/been`, cookie, { on: '2099-01-01' });
+    expect(res.status).toBe(400);
+    expect((await errorOf(res)).code).toBe('future_date');
+  });
+
+  it('roll refuses an absurd previousId', async () => {
+    const cookie = await userSession('u_prev', 'Pre');
+    const res = await send('POST', '/api/roll', cookie, {
+      origin: 'home',
+      previousId: 'x'.repeat(101),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('writes are braked per user (60/min), reads are not', async () => {
+    const cookie = await userSession('u_spam', 'Sam');
+    const other = await userSession('u_calm', 'Cal');
+    const statuses: number[] = [];
+    for (let i = 0; i < 65; i++)
+      statuses.push((await send('PUT', '/api/me/home', cookie, A_HOME)).status);
+    expect(statuses.filter((s) => s === 204).length).toBeLessThanOrEqual(60);
+    expect(statuses.at(-1)).toBe(429);
+    expect((await send('POST', '/api/spots', cookie, NEW_SPOT)).status).toBe(429);
+    expect((await call('/api/spots', { cookie })).status).toBe(200);
+    expect((await send('POST', '/api/spots', other, NEW_SPOT)).status).toBe(201);
+  });
+});

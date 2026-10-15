@@ -108,22 +108,47 @@ test('a new account: empty list, add a spot, been + rating, a note, edit, delete
   await expect(page.getByRole('heading', { name: 'nothing on your radar yet.' })).toBeVisible();
 });
 
-test('home moves from this device to the account, once', async ({ page }) => {
+test('a home left on this device moves to the account only after a yes', async ({ page }) => {
   await devLogin(page, { as: freshUser('home'), demo: true });
   // a v0 home on this device (fictional)
   await page.evaluate(() => {
     localStorage.setItem('grub-radar:home', JSON.stringify({ lat: 47.6062, lng: -122.3245 }));
   });
   await page.goto('/');
+  const ask = page.getByRole('region', { name: 'save your home to your account?' });
+  await expect(ask).toBeVisible();
+  // used right away, even before answering
+  await expect(page.getByRole('article').first()).toContainText("Mama Ko's Dumpling Window");
+  await ask.getByRole('button', { name: 'save it' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'moved your home' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('grub-radar:home'))).toBeNull();
-  await expect(page.getByRole('article').first()).toContainText("Mama Ko's Dumpling Window");
 
-  // the account has it now: a reload (no device copy) still measures from it, quietly
+  // the account has it now: a reload (no device copy) measures from it, and doesn't ask
   await page.reload();
   await expect(page.getByRole('article').first()).toContainText("Mama Ko's Dumpling Window");
   await expect(page.getByText(/from a demo home/)).toHaveCount(0);
-  await expect(page.getByRole('status').filter({ hasText: 'moved your home' })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'save your home to your account?' })).toHaveCount(
+    0,
+  );
+});
+
+test('"keep it on this device only" sends nothing to the account', async ({ page }) => {
+  await devLogin(page, { as: freshUser('home-local'), demo: true });
+  await page.evaluate(() => {
+    localStorage.setItem('grub-radar:home', JSON.stringify({ lat: 47.6062, lng: -122.3245 }));
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'keep it on this device only' }).click();
+  await page.reload();
+  await expect(page.getByRole('article').first()).toContainText("Mama Ko's Dumpling Window");
+  await expect(page.getByRole('region', { name: 'save your home to your account?' })).toHaveCount(
+    0,
+  );
+  const home = await page.evaluate(async () => {
+    const me = (await (await fetch('/api/me')).json()) as { home: unknown };
+    return me.home;
+  });
+  expect(home).toBeNull();
 });
 
 test("one account can't see another's spots", async ({ browser }) => {

@@ -1,7 +1,7 @@
 import { useId, useState, type SyntheticEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { LIMITS, dataLang, type Spot } from '../domain/spot';
-import { parseNoteEntries } from '../domain/edits';
+import { parseNoteEntries, type SpotPatch } from '../domain/edits';
 import { useT } from '../i18n/context';
 import { saveErrorMessage } from '../lib/errors';
 import { localDate, useSpots, type SpotActions } from '../lib/spots';
@@ -137,9 +137,11 @@ export function StatusEditor({ spot }: { spot: Spot }) {
             value={rating}
             onChange={(r) => {
               setRating(r);
-              void run((a) => a.update(spot.id, { rating: r })).then((ok) => {
-                if (ok) setOpen(false);
-              });
+              void run((a) => a.update(spot.id, { rating: r, version: spot.version })).then(
+                (ok) => {
+                  if (ok) setOpen(false);
+                },
+              );
             }}
           />
           <SaveError error={error} />
@@ -151,9 +153,11 @@ export function StatusEditor({ spot }: { spot: Spot }) {
                 disabled={busy}
                 onClick={() => {
                   setRating(null);
-                  void run((a) => a.update(spot.id, { rating: null })).then((ok) => {
-                    if (ok) setOpen(false);
-                  });
+                  void run((a) => a.update(spot.id, { rating: null, version: spot.version })).then(
+                    (ok) => {
+                      if (ok) setOpen(false);
+                    },
+                  );
                 }}
               >
                 {t.clearRating}
@@ -186,7 +190,9 @@ export function StatusEditor({ spot }: { spot: Spot }) {
             type="button"
             className={linkButtonClass}
             disabled={busy}
-            onClick={() => void run((a) => a.update(spot.id, { status: 'want' }))}
+            onClick={() =>
+              void run((a) => a.update(spot.id, { status: 'want', version: spot.version }))
+            }
           >
             {t.backToWant}
           </button>
@@ -230,7 +236,9 @@ export function OrderEditor({ spot }: { spot: Spot }) {
   const lang = dataLang(spot);
   const full = spot.order.length >= LIMITS.dishes;
 
-  const save = (order: Spot['order']) => run((a) => a.update(spot.id, { order }));
+  // the whole list, made from this copy; its version makes a stale copy a 409, not an overwrite
+  const save = (order: NonNullable<SpotPatch['order']>) =>
+    run((a) => a.update(spot.id, { order, version: spot.version }));
 
   const add = async (e: SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -251,7 +259,7 @@ export function OrderEditor({ spot }: { spot: Spot }) {
       ) : (
         <ul className={styles.orderList}>
           {spot.order.map((o, i) => (
-            <li key={o.dish}>
+            <li key={o.id}>
               {canWrite ? (
                 <button
                   type="button"
@@ -260,7 +268,9 @@ export function OrderEditor({ spot }: { spot: Spot }) {
                   className={`tap ${styles.check}`}
                   disabled={busy}
                   onClick={() =>
-                    void save(spot.order.map((x, j) => (j === i ? { ...x, tried: !x.tried } : x)))
+                    void save(
+                      spot.order.map((x) => (x.id === o.id ? { ...x, tried: !x.tried } : x)),
+                    )
                   }
                 >
                   <CheckBox checked={o.tried} variant={i} />
@@ -283,7 +293,7 @@ export function OrderEditor({ spot }: { spot: Spot }) {
                   className={`tap ${styles.remove}`}
                   aria-label={t.removeDish(o.dish)}
                   disabled={busy}
-                  onClick={() => void save(spot.order.filter((_, j) => j !== i))}
+                  onClick={() => void save(spot.order.filter((x) => x.id !== o.id))}
                 >
                   <Icon name="close" size={14} strokeWidth={2.4} />
                 </button>

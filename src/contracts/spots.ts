@@ -64,7 +64,7 @@ export const RollBodySchema = z.strictObject({
   origin: OriginSchema,
   maxMinutes: z.optional(positive),
   kinds: z.optional(KindsSchema),
-  previousId: z.optional(z.string()),
+  previousId: z.optional(z.string().check(z.maxLength(100))),
 });
 export type RollBody = z.infer<typeof RollBodySchema>;
 

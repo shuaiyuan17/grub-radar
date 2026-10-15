@@ -22,6 +22,10 @@ export const ERROR_CODES = [
   'not_editable',
   /** origin=home, but no home is saved. */
   'no_home',
+  /** A visit or note dated in the future. */
+  'future_date',
+  /** The list already holds LIMITS.spots spots. */
+  'list_full',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

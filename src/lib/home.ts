@@ -45,3 +45,29 @@ export function clearHome(store: Storage | null = storage()): void {
     // nothing to do
   }
 }
+
+/** Set when you chose to keep this device's old home here instead of in your account. */
+export const HOME_DEVICE_ONLY_KEY = 'grub-radar:home-device-only';
+
+export function homeIsDeviceOnly(store: Storage | null = storage()): boolean {
+  try {
+    return store?.getItem(HOME_DEVICE_ONLY_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setHomeDeviceOnly(on: boolean, store: Storage | null = storage()): void {
+  try {
+    if (on) store?.setItem(HOME_DEVICE_ONLY_KEY, '1');
+    else store?.removeItem(HOME_DEVICE_ONLY_KEY);
+  } catch {
+    // nothing to do
+  }
+}
+
+/** Forget everything this device knows about home (the account is the source of truth). */
+export function clearDeviceHome(store: Storage | null = storage()): void {
+  clearHome(store);
+  setHomeDeviceOnly(false, store);
+}

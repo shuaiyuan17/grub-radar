@@ -9,7 +9,7 @@ import {
 import { AccountMenu } from '../components/AccountMenu';
 import { Logo } from '../components/bits';
 import { FromToggle, LangToggle, OriginNotice, SearchBox } from '../components/controls';
-import { HomeEditor } from '../components/HomeControls';
+import { HomeConsent, HomeEditor } from '../components/HomeControls';
 import { Icon } from '../components/Icon';
 import { Ink } from '../components/Ink';
 import { OriginProvider } from '../components/OriginProvider';
@@ -77,6 +77,7 @@ export function Layout() {
           <AccountMenu />
         </header>
         <OriginNotice />
+        <HomeConsent />
         <HomeEditor />
         <SpotsProvider repository={repository}>
           <Outlet />

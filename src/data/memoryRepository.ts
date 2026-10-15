@@ -23,7 +23,8 @@ export class MemorySpotRepository implements WritableSpotRepository {
   readonly #today: () => string;
 
   constructor(input: unknown = [], opts: { today?: () => string } = {}) {
-    this.#spots = parseSpots(input);
+    // versions like the server's: 1 when stored, +1 on every write
+    this.#spots = parseSpots(input).map((s) => ({ ...s, version: s.version ?? 1 }));
     this.#today = opts.today ?? (() => new Date().toISOString().slice(0, 10));
   }
 
@@ -40,7 +41,10 @@ export class MemorySpotRepository implements WritableSpotRepository {
   }
 
   add(input: AddSpot): Promise<Spot> {
-    const spot = spotFromInput(`p-mem-${String(++this.#seq)}`, input, this.#today());
+    const spot = {
+      ...spotFromInput(`p-mem-${String(++this.#seq)}`, input, this.#today()),
+      version: 1,
+    };
     this.#spots = [...this.#spots, spot];
     return Promise.resolve(spot);
   }
@@ -68,7 +72,7 @@ export class MemorySpotRepository implements WritableSpotRepository {
     const current = this.#spots.find((s) => s.id === id);
     if (!current) return Promise.reject(new SpotOpError('not_found', 'no such spot'));
     try {
-      const next = apply(current);
+      const next = { ...apply(current), version: (current.version ?? 1) + 1 };
       this.#spots = this.#spots.map((s) => (s.id === id ? next : s));
       return Promise.resolve(next);
     } catch (e) {

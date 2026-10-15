@@ -66,6 +66,19 @@ export function requireScope(scope: Scope): MiddlewareHandler<AppEnv> {
   };
 }
 
+/**
+ * Per-user brake on writes (WRITE_LIMITER: 60/min). Run after the auth check,
+ * so the key is always a real user. 429 past the limit.
+ */
+export const limitWrites: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const p = c.var.principal;
+  if (p.kind !== 'anonymous') {
+    const { success } = await c.env.WRITE_LIMITER.limit({ key: `write:${p.userId}` });
+    if (!success) return apiError(c, 429, 'rate_limited', 'slow down');
+  }
+  await next();
+};
+
 /** The user whose data this request acts on, and how to label what it adds. */
 export function actingUser(p: Principal): { userId: string; foundBy: string } {
   if (p.kind === 'anonymous') throw new Error('requireScope must run first');

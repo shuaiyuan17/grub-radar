@@ -1,9 +1,14 @@
 /**
  * Spots in D1: `places ⋈ user_places` for one user. Every statement is scoped
  * by that user's id, so a repository built for user A can't see or touch B's
- * list. Edits run the shared domain functions (src/domain/edits.ts) on the
- * current spot and write the result back, guarded by `updated_at` so two
- * writes at once can't silently lose one.
+ * list. `places` holds only what a place *is* (name, where); everything you
+ * say about it lives on your `user_places` row.
+ *
+ * Edits run the shared domain functions (src/domain/edits.ts) on the current
+ * spot and write the result back guarded by the row's integer `version`
+ * (`WHERE version = ?`, then +1), so two writes at once can't silently lose
+ * one: the loser retries from fresh data, or gets a 409 if the caller said
+ * which version it edited.
  */
 import {
   applyAddNote,
@@ -19,7 +24,7 @@ import {
   type SpotPatch,
 } from '../../src/domain/edits';
 import type { WritableSpotRepository } from '../../src/domain/repository';
-import { SpotSchema, type Spot } from '../../src/domain/spot';
+import { LIMITS, SpotSchema, type Spot } from '../../src/domain/spot';
 import { newPlaceId, newVisitId } from '../lib/ids';
 import { iso, isoDate } from '../lib/time';
 
@@ -28,13 +33,13 @@ interface Row {
   name: string;
   lat: number;
   lng: number;
+  created_by: string | null;
+  apple_place_id: string | null;
   kind: string;
   cuisine: string;
   price: string;
   icon: string;
   hours_json: string | null;
-  created_by: string | null;
-  apple_place_id: string | null;
   status: string;
   rating: number | null;
   note: string;
@@ -44,13 +49,13 @@ interface Row {
   why_text: string | null;
   why_found_on: string | null;
   lang: string | null;
-  updated_at: string;
+  version: number;
 }
 
 // explicit columns, always joined through user_places for this user
-const SELECT = `SELECT p.id, p.name, p.lat, p.lng, p.kind, p.cuisine, p.price, p.icon, p.hours_json,
-  p.created_by, p.apple_place_id, up.status, up.rating, up.note, up.my_note, up.order_json,
-  up.tags_json, up.why_text, up.why_found_on, up.lang, up.updated_at
+const SELECT = `SELECT p.id, p.name, p.lat, p.lng, p.created_by, p.apple_place_id,
+  up.kind, up.cuisine, up.price, up.icon, up.hours_json, up.status, up.rating, up.note, up.my_note,
+  up.order_json, up.tags_json, up.why_text, up.why_found_on, up.lang, up.version
   FROM user_places up JOIN places p ON p.id = up.place_id
   WHERE up.user_id = ?`;
 
@@ -59,25 +64,28 @@ const json = (s: string | null): unknown => (s === null ? undefined : JSON.parse
 /** A row as a Spot, or null (logged) if it doesn't pass SpotSchema. */
 function toSpot(r: Row): Spot | null {
   try {
-    const candidate: Record<string, unknown> = {
-      id: r.id,
-      name: r.name,
-      kind: r.kind,
-      cuisine: r.cuisine || undefined,
-      price: r.price,
-      tags: json(r.tags_json),
-      status: r.status,
-      rating: r.rating ?? undefined,
-      note: r.note || undefined,
-      order: json(r.order_json),
-      why: r.why_text && r.why_found_on ? { text: r.why_text, foundOn: r.why_found_on } : undefined,
-      myNote: r.my_note ?? undefined,
-      hours: json(r.hours_json),
-      lang: r.lang ?? undefined,
-      icon: r.icon,
-      location: { lat: r.lat, lng: r.lng },
-    };
-    const parsed = SpotSchema.safeParse(withoutUndefined(candidate));
+    const parsed = SpotSchema.safeParse(
+      withoutUndefined({
+        id: r.id,
+        name: r.name,
+        kind: r.kind,
+        cuisine: r.cuisine || undefined,
+        price: r.price,
+        tags: json(r.tags_json),
+        status: r.status,
+        rating: r.rating ?? undefined,
+        note: r.note || undefined,
+        order: json(r.order_json),
+        why:
+          r.why_text && r.why_found_on ? { text: r.why_text, foundOn: r.why_found_on } : undefined,
+        myNote: r.my_note ?? undefined,
+        hours: json(r.hours_json),
+        lang: r.lang ?? undefined,
+        icon: r.icon,
+        location: { lat: r.lat, lng: r.lng },
+        version: r.version,
+      }),
+    );
     if (parsed.success) return parsed.data;
   } catch {
     // bad JSON column: fall through
@@ -89,9 +97,7 @@ function toSpot(r: Row): Spot | null {
 
 interface Loaded {
   spot: Spot;
-  updatedAt: string;
-  /** Only the creator of a manual place may change the place itself. */
-  placeEditable: boolean;
+  version: number;
 }
 
 const MAX_ATTEMPTS = 3;
@@ -113,10 +119,6 @@ export class D1SpotRepository implements WritableSpotRepository {
     this.#now = opts.now ?? Date.now;
   }
 
-  get userId() {
-    return this.#userId;
-  }
-
   async list(): Promise<Spot[]> {
     const { results } = await this.#db
       .prepare(`${SELECT} ORDER BY up.created_at, p.id`)
@@ -136,40 +138,47 @@ export class D1SpotRepository implements WritableSpotRepository {
       .first<Row>();
     if (!row) return null;
     const spot = toSpot(row);
-    if (!spot) return null;
-    return {
-      spot,
-      updatedAt: row.updated_at,
-      placeEditable: row.apple_place_id === null && row.created_by === this.#userId,
-    };
+    return spot ? { spot, version: row.version } : null;
   }
 
   #today() {
     return isoDate(this.#now());
   }
 
+  /** `cond` (SQL) holds while this user's list is below LIMITS.spots. */
+  #underCap() {
+    return {
+      sql: `(SELECT COUNT(*) FROM user_places WHERE user_id = ?) < ${String(LIMITS.spots)}`,
+      bind: [this.#userId],
+    };
+  }
+
   async add(input: AddSpot): Promise<Spot> {
     const id = newPlaceId();
-    const spot = spotFromInput(id, input, this.#today());
+    const spot = { ...spotFromInput(id, input, this.#today()), version: 1 };
     const at = iso(this.#now());
     const db = this.#db;
+    const cap = this.#underCap();
     const stmts = [
+      // the place only if the list has room; the entry only if the place went in
       db
         .prepare(
-          `INSERT INTO places (id, name, lat, lng, kind, cuisine, price, icon, hours_json, created_by, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO places (id, name, lat, lng, created_by, created_at, updated_at)
+           SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${cap.sql}`,
         )
-        .bind(...placeValues(spot), this.#userId, at, at),
+        .bind(...placeValues(spot), this.#userId, at, at, ...cap.bind),
       db
         .prepare(
-          `INSERT INTO user_places (user_id, place_id, status, rating, note, my_note, order_json, tags_json,
-             why_text, why_found_on, lang, found_by, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO user_places (user_id, place_id, ${LIST_COLUMNS}, found_by, version, created_at, updated_at)
+           SELECT ?, ?, ${LIST_MARKS}, ?, 1, ?, ? WHERE EXISTS (SELECT 1 FROM places WHERE id = ?)`,
         )
-        .bind(this.#userId, id, ...listValues(spot), this.#foundBy, at, at),
+        .bind(this.#userId, id, ...listValues(spot), this.#foundBy, at, at, id),
     ];
-    if (spot.status === 'been') stmts.push(this.#visit(id, this.#today(), spot.rating, null, at));
-    await db.batch(stmts);
+    if (spot.status === 'been')
+      stmts.push(this.#visit(id, this.#today(), spot.rating, null, at, 1));
+    const [place] = await db.batch(stmts);
+    if (!place?.meta.changes)
+      throw new SpotOpError('list_full', `a list holds at most ${String(LIMITS.spots)} spots`);
     return spot;
   }
 
@@ -181,35 +190,42 @@ export class D1SpotRepository implements WritableSpotRepository {
   async importDemo(spots: readonly Spot[]): Promise<number> {
     const at = iso(this.#now());
     const db = this.#db;
+    const cap = this.#underCap();
     const stmts = spots.flatMap((s) => [
       db
         .prepare(
-          `INSERT OR IGNORE INTO places (id, name, lat, lng, kind, cuisine, price, icon, hours_json, created_by, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR IGNORE INTO places (id, name, lat, lng, created_by, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(...placeValues(s), this.#userId, at, at),
       db
         .prepare(
-          `INSERT OR IGNORE INTO user_places (user_id, place_id, status, rating, note, my_note, order_json, tags_json,
-             why_text, why_found_on, lang, found_by, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'demo', ?, ?)`,
+          `INSERT OR IGNORE INTO user_places (user_id, place_id, ${LIST_COLUMNS}, found_by, version, created_at, updated_at)
+           SELECT ?, ?, ${LIST_MARKS}, 'demo', 1, ?, ? WHERE ${cap.sql}`,
         )
-        .bind(this.#userId, s.id, ...listValues(s), at, at),
+        .bind(this.#userId, s.id, ...listValues(s), at, at, ...cap.bind),
     ]);
     const results = await db.batch(stmts);
     return results.filter((r, i) => i % 2 === 1 && r.meta.changes > 0).length;
   }
 
+  /** An edit. With `patch.version`, a stale copy gets a 409 instead of overwriting. */
   update(id: string, patch: SpotPatch): Promise<Spot> {
-    return this.#edit(id, (spot, today) => applyPatch(spot, patch, today));
+    return this.#edit(id, (spot, today) => applyPatch(spot, patch, today), {
+      expectVersion: patch.version,
+      // turning a spot "been" by editing it counts as a visit, same as /been
+      extra: (before, next, version, at) =>
+        before.status === 'want' && next.status === 'been'
+          ? this.#visit(id, this.#today(), next.rating, null, at, version)
+          : null,
+    });
   }
 
   markBeen(id: string, input: MarkBeen = {}): Promise<Spot> {
-    return this.#edit(
-      id,
-      (spot, today) => applyMarkBeen(spot, input, today),
-      (next, at) => this.#visit(id, input.on ?? this.#today(), next.rating, input.note ?? null, at),
-    );
+    return this.#edit(id, (spot, today) => applyMarkBeen(spot, input, today), {
+      extra: (_before, next, version, at) =>
+        this.#visit(id, input.on ?? this.#today(), next.rating, input.note ?? null, at, version),
+    });
   }
 
   addNote(id: string, input: AddNote): Promise<Spot> {
@@ -235,68 +251,110 @@ export class D1SpotRepository implements WritableSpotRepository {
   }
 
   /**
-   * Load, apply a domain edit, write back if nobody else wrote in between
-   * (updated_at guard), else retry from a fresh load.
+   * Load, apply a domain edit, write back only if the row is still at the
+   * version we read (then version + 1). If someone else wrote in between:
+   * a 409 when the caller pinned a version, else retry from fresh data.
+   * A name/location change is written first, guarded by created_by in SQL;
+   * the entry update only lands if the place now says what we wanted, so a
+   * refused place edit leaves everything untouched (not_editable).
    */
   async #edit(
     id: string,
     apply: (spot: Spot, today: string) => Spot,
-    extra?: (next: Spot, at: string) => D1PreparedStatement,
+    opts: {
+      expectVersion?: number;
+      extra?: (before: Spot, next: Spot, version: number, at: string) => D1PreparedStatement | null;
+    } = {},
   ): Promise<Spot> {
+    const db = this.#db;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       const loaded = await this.#load(id);
       if (!loaded) throw new SpotOpError('not_found', 'no such spot');
+      if (opts.expectVersion !== undefined && opts.expectVersion !== loaded.version)
+        throw new SpotOpError('conflict', 'this spot changed since you loaded it');
       const next = apply(loaded.spot, this.#today());
+      const version = loaded.version + 1;
       const placeChanged = changesPlace(loaded.spot, next);
-      if (placeChanged && !loaded.placeEditable)
-        throw new SpotOpError('not_editable', "this place's details aren't yours to change");
       const at = iso(this.#now());
-      // statements after the first only run if the first one won the race
-      const won = `EXISTS (SELECT 1 FROM user_places WHERE user_id = ? AND place_id = ? AND updated_at = ?)`;
-      const db = this.#db;
-      const stmts = [
-        db
-          .prepare(
-            `UPDATE user_places SET status = ?, rating = ?, note = ?, my_note = ?, order_json = ?, tags_json = ?,
-               why_text = ?, why_found_on = ?, lang = ?, updated_at = ?
-             WHERE user_id = ? AND place_id = ? AND updated_at = ?`,
-          )
-          .bind(...listValues(next), at, this.#userId, id, loaded.updatedAt),
-      ];
+
+      const stmts: D1PreparedStatement[] = [];
       if (placeChanged) {
         stmts.push(
           db
             .prepare(
-              `UPDATE places SET name = ?, lat = ?, lng = ?, kind = ?, cuisine = ?, price = ?, icon = ?,
-                 hours_json = ?, updated_at = ?
-               WHERE id = ? AND created_by = ? AND apple_place_id IS NULL AND ${won}`,
+              `UPDATE places SET name = ?, lat = ?, lng = ?, updated_at = ?
+               WHERE id = ? AND created_by = ? AND apple_place_id IS NULL
+               AND EXISTS (SELECT 1 FROM user_places WHERE user_id = ? AND place_id = ? AND version = ?)`,
             )
-            .bind(...placeValues(next).slice(1), at, id, this.#userId, this.#userId, id, at),
+            .bind(
+              next.name,
+              next.location.lat,
+              next.location.lng,
+              at,
+              id,
+              this.#userId,
+              this.#userId,
+              id,
+              loaded.version,
+            ),
         );
       }
-      if (extra) {
-        const stmt = extra(next, at);
-        stmts.push(stmt);
-      }
-      const [first] = await db.batch(stmts);
-      if (first?.meta.changes) return next;
+      const placeIsAsWanted = placeChanged
+        ? 'AND EXISTS (SELECT 1 FROM places WHERE id = ? AND name = ? AND lat = ? AND lng = ?)'
+        : '';
+      stmts.push(
+        db
+          .prepare(
+            `UPDATE user_places SET ${LIST_COLUMNS.split(', ')
+              .map((c) => `${c} = ?`)
+              .join(', ')}, version = ?, updated_at = ?
+             WHERE user_id = ? AND place_id = ? AND version = ? ${placeIsAsWanted}`,
+          )
+          .bind(
+            ...listValues(next),
+            version,
+            at,
+            this.#userId,
+            id,
+            loaded.version,
+            ...(placeChanged ? [id, next.name, next.location.lat, next.location.lng] : []),
+          ),
+      );
+      const extra = opts.extra?.(loaded.spot, next, version, at);
+      if (extra) stmts.push(extra);
+
+      const results = await db.batch(stmts);
+      const entry = results[placeChanged ? 1 : 0];
+      if (entry?.meta.changes) return { ...next, version };
+
+      const now = await this.#load(id);
+      if (!now) throw new SpotOpError('not_found', 'no such spot');
+      if (now.version === loaded.version)
+        // nobody else wrote, so it was the place guard that said no
+        throw new SpotOpError(
+          'not_editable',
+          "this place's name and location aren't yours to change",
+        );
+      if (opts.expectVersion !== undefined)
+        throw new SpotOpError('conflict', 'this spot changed since you loaded it');
     }
-    throw new SpotOpError('conflict', 'the spot changed while saving; try again');
+    throw new SpotOpError('conflict', 'the spot kept changing while saving; try again');
   }
 
+  /** A visit row, only if this user's entry is at `version` (i.e. the edit it belongs to landed). */
   #visit(
     placeId: string,
     on: string,
     rating: number | undefined,
     note: string | null,
     at: string,
+    version: number,
   ): D1PreparedStatement {
-    // only if this user has the place on their list (and, after an edit, won the race)
     return this.#db
       .prepare(
         `INSERT INTO visits (id, user_id, place_id, visited_on, rating, note, created_at)
          SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS
-           (SELECT 1 FROM user_places WHERE user_id = ? AND place_id = ? AND updated_at = ?)`,
+           (SELECT 1 FROM user_places WHERE user_id = ? AND place_id = ? AND version = ?)`,
       )
       .bind(
         newVisitId(),
@@ -308,7 +366,7 @@ export class D1SpotRepository implements WritableSpotRepository {
         at,
         this.#userId,
         placeId,
-        at,
+        version,
       );
   }
 
@@ -322,24 +380,25 @@ export class D1SpotRepository implements WritableSpotRepository {
   }
 }
 
-/** id, name, lat, lng, kind, cuisine, price, icon, hours_json */
+/** id, name, lat, lng */
 function placeValues(s: Spot) {
+  return [s.id, s.name, s.location.lat, s.location.lng] as const;
+}
+
+const LIST_COLUMNS =
+  'kind, cuisine, price, icon, hours_json, status, rating, note, my_note, order_json, tags_json, why_text, why_found_on, lang';
+const LIST_MARKS = LIST_COLUMNS.split(', ')
+  .map(() => '?')
+  .join(', ');
+
+/** Values for LIST_COLUMNS, in order. */
+function listValues(s: Spot) {
   return [
-    s.id,
-    s.name,
-    s.location.lat,
-    s.location.lng,
     s.kind,
     s.cuisine ?? '',
     s.price,
     s.icon,
     s.hours ? JSON.stringify(s.hours) : null,
-  ] as const;
-}
-
-/** status, rating, note, my_note, order_json, tags_json, why_text, why_found_on, lang */
-function listValues(s: Spot) {
-  return [
     s.status,
     s.rating ?? null,
     s.note ?? '',

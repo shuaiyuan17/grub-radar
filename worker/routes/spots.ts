@@ -16,7 +16,7 @@ import {
 import { parseSpots } from '../../src/domain/spot';
 import type { AppEnv } from '../app';
 import { csrf } from '../auth/csrf';
-import { actingUser, requireScope } from '../auth/principal';
+import { actingUser, limitWrites, requireScope } from '../auth/principal';
 import { D1SpotRepository } from '../db/spots';
 import { isDevelopment } from '../env';
 import { apiError, readJson } from '../lib/http';
@@ -43,6 +43,10 @@ function opError(c: Ctx, e: unknown): Response {
       return apiError(c, 400, 'note_too_long', e.message);
     case 'rating_needs_been':
       return apiError(c, 400, 'rating_needs_been', e.message);
+    case 'future_date':
+      return apiError(c, 400, 'future_date', e.message);
+    case 'list_full':
+      return apiError(c, 409, 'list_full', e.message);
   }
 }
 
@@ -52,7 +56,8 @@ const noHome = (c: Ctx) =>
 export const spots = new Hono<AppEnv>();
 
 const read = requireScope('spots:read');
-const write = requireScope('spots:write');
+// writes: scope, then CSRF, then the per-user brake (so refused requests don't count)
+const write = [requireScope('spots:write'), csrf, limitWrites] as const;
 
 spots.get('/', read, async (c) => c.json(await repoFor(c).list()));
 
@@ -67,7 +72,7 @@ spots.get('/nearby', read, async (c) => {
 });
 
 /** Dev/test only: the fictional demo spots onto your list. 404 anywhere else. */
-spots.post('/import-demo', write, csrf, async (c) => {
+spots.post('/import-demo', ...write, async (c) => {
   if (!isDevelopment(c.env)) return apiError(c, 404, 'not_found', 'no such endpoint');
   const added = await repoFor(c).importDemo(parseSpots(SEED_SPOTS));
   return c.json({ added });
@@ -79,13 +84,17 @@ spots.get('/:id', read, async (c) => {
 });
 
 /** `add_spot` (manual: name + location + kind; Apple places come in PR 3) */
-spots.post('/', write, csrf, async (c) => {
+spots.post('/', ...write, async (c) => {
   const body = await readJson(c, AddSpotSchema);
   if (!body.ok) return body.res;
-  return c.json(await repoFor(c).add(body.data), 201);
+  try {
+    return c.json(await repoFor(c).add(body.data), 201);
+  } catch (e) {
+    return opError(c, e);
+  }
 });
 
-spots.patch('/:id', write, csrf, async (c) => {
+spots.patch('/:id', ...write, async (c) => {
   const body = await readJson(c, SpotPatchSchema);
   if (!body.ok) return body.res;
   try {
@@ -96,7 +105,7 @@ spots.patch('/:id', write, csrf, async (c) => {
 });
 
 /** `mark_been` */
-spots.post('/:id/been', write, csrf, async (c) => {
+spots.post('/:id/been', ...write, async (c) => {
   const body = await readJson(c, MarkBeenSchema);
   if (!body.ok) return body.res;
   try {
@@ -107,7 +116,7 @@ spots.post('/:id/been', write, csrf, async (c) => {
 });
 
 /** `add_note` */
-spots.post('/:id/notes', write, csrf, async (c) => {
+spots.post('/:id/notes', ...write, async (c) => {
   const body = await readJson(c, AddNoteSchema);
   if (!body.ok) return body.res;
   try {
@@ -117,7 +126,7 @@ spots.post('/:id/notes', write, csrf, async (c) => {
   }
 });
 
-spots.delete('/:id', write, csrf, async (c) => {
+spots.delete('/:id', ...write, async (c) => {
   try {
     await repoFor(c).remove(c.req.param('id'));
     return c.body(null, 204);

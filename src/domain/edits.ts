@@ -5,7 +5,7 @@ import {
   KINDS,
   LatLngSchema,
   LIMITS,
-  OrderSchema,
+  DishSchema,
   PRICES,
   RatingSchema,
   SpotSchema,
@@ -13,6 +13,7 @@ import {
   TagsSchema,
   text,
   type DataLang,
+  type Dish,
   type IconName,
   type Kind,
   type Spot,
@@ -84,11 +85,20 @@ export const SpotPatchSchema = z
     rating: z.optional(z.nullable(RatingSchema)),
     note: z.optional(z.nullable(z.string().check(z.trim(), z.maxLength(LIMITS.note)))),
     myNote: z.optional(z.nullable(z.string().check(z.trim(), z.maxLength(LIMITS.myNote)))),
-    order: z.optional(OrderSchema),
+    /** The whole list; dishes keep their `id`, new ones may omit it. */
+    order: z.optional(z.array(DishSchema).check(z.maxLength(LIMITS.dishes))),
     why: z.optional(z.nullable(z.string().check(z.trim(), z.maxLength(LIMITS.why)))),
+    /**
+     * The spot's `version` this edit was made from. If the spot has changed
+     * since, the edit is refused (409) instead of overwriting the newer data.
+     * The app always sends it; agents may leave it out (last write wins).
+     */
+    version: z.optional(z.int().check(z.gte(1))),
   })
   .check(
-    z.refine((p) => Object.keys(p).length > 0, { message: 'nothing to change' }),
+    z.refine((p) => Object.keys(p).some((k) => k !== 'version'), {
+      message: 'nothing to change',
+    }),
     // a patch that rates must not also move the spot back to "want"
     z.refine((p) => p.rating == null || p.status !== 'want', {
       message: 'only rate places you have been to',
@@ -118,7 +128,13 @@ export type AddNoteInput = z.input<typeof AddNoteSchema>;
 export type AddNote = z.output<typeof AddNoteSchema>;
 
 export type SpotOpErrorCode =
-  'not_found' | 'note_too_long' | 'rating_needs_been' | 'not_editable' | 'conflict';
+  | 'not_found'
+  | 'note_too_long'
+  | 'rating_needs_been'
+  | 'not_editable'
+  | 'conflict'
+  | 'future_date'
+  | 'list_full';
 
 /** A write that can't happen. The Worker turns `code` into an HTTP error. */
 export class SpotOpError extends Error {
@@ -139,7 +155,7 @@ export function guessLang(...texts: readonly (string | undefined)[]): DataLang |
   return texts.some((t) => t !== undefined && HAN.test(t)) ? 'zh-Hans' : undefined;
 }
 
-const spotLang = (s: Omit<Spot, 'lang'>) =>
+const spotLang = (s: Draft) =>
   guessLang(
     s.name,
     s.cuisine,
@@ -184,8 +200,14 @@ export function parseNoteEntries(myNote: string | undefined): NoteEntry[] {
     });
 }
 
+/** A spot being built: dishes may not have ids yet (SpotSchema assigns them). */
+type Draft = Omit<Spot, 'lang' | 'order'> & {
+  lang?: Spot['lang'];
+  order: (Omit<Dish, 'id'> & { id?: string })[];
+};
+
 /** Strips undefined keys so the result is exactly what SpotSchema emits. */
-function finish(spot: Omit<Spot, 'lang'> & { lang?: Spot['lang'] }): Spot {
+function finish(spot: Draft): Spot {
   const lang = spotLang(spot);
   return SpotSchema.parse(withoutUndefined({ ...spot, lang }));
 }
@@ -224,6 +246,8 @@ function dedupe(items: readonly string[]): string[] {
 
 /** Applies an edit. Moving back to "want" drops the rating. */
 export function applyPatch(spot: Spot, patch: SpotPatch, today: string): Spot {
+  if (patch.version !== undefined && spot.version !== undefined && patch.version !== spot.version)
+    throw new SpotOpError('conflict', 'this spot changed since you loaded it');
   const status = patch.status ?? spot.status;
   const rating = patch.rating === undefined ? spot.rating : (patch.rating ?? undefined);
   if (patch.rating != null && status !== 'been')
@@ -255,9 +279,21 @@ export function applyPatch(spot: Spot, patch: SpotPatch, today: string): Spot {
   });
 }
 
+/**
+ * A dated thing (a visit, a note) can't be in the future. `today` is the
+ * server's UTC date; one day of slack covers time zones ahead of UTC.
+ */
+export function checkNotFuture(on: string, today: string): void {
+  const limit = new Date(`${today}T00:00:00Z`);
+  limit.setUTCDate(limit.getUTCDate() + 1);
+  if (on > limit.toISOString().slice(0, 10))
+    throw new SpotOpError('future_date', "that date hasn't happened yet");
+}
+
 /** "been": status, an optional new rating (else the old one stays), an optional dated note. */
 export function applyMarkBeen(spot: Spot, input: MarkBeen, today: string): Spot {
   const on = input.on ?? today;
+  checkNotFuture(on, today);
   return finish({
     ...spot,
     status: 'been',
@@ -267,19 +303,16 @@ export function applyMarkBeen(spot: Spot, input: MarkBeen, today: string): Spot 
 }
 
 export function applyAddNote(spot: Spot, input: AddNote, today: string): Spot {
+  if (input.on) checkNotFuture(input.on, today);
   return finish({ ...spot, myNote: appendNote(spot.myNote, input.on ?? today, input.note) });
 }
 
-/** Fields that belong to the place (shared, in `places`) rather than to your list entry. */
-export const PLACE_FIELDS = [
-  'name',
-  'kind',
-  'location',
-  'cuisine',
-  'price',
-  'icon',
-  'hours',
-] as const;
+/**
+ * Fields that belong to the place itself (shared, in `places`): what it's
+ * called and where it is. Everything else (kind, cuisine, price, tags, …) is
+ * your own description, on your list entry.
+ */
+export const PLACE_FIELDS = ['name', 'location'] as const;
 
 /** Did an edit change anything about the place itself (vs. your own list entry)? */
 export function changesPlace(before: Spot, after: Spot): boolean {

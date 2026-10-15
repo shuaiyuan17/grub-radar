@@ -18,6 +18,13 @@ export interface OriginValue {
   /** The home origin in use: yours (saved to your account) or the demo one. */
   home: LatLng;
   homeIsDemo: boolean;
+  /**
+   * A home this device remembers from v0, waiting for your answer: save it to
+   * your account, or keep it on this device only. null when there's nothing to ask.
+   */
+  homeConsent: LatLng | null;
+  acceptHomeConsent: () => void;
+  declineHomeConsent: () => void;
   homeEditorOpen: boolean;
   openHomeEditor: () => void;
   closeHomeEditor: () => void;

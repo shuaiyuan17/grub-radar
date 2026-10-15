@@ -121,12 +121,27 @@ describe('home: races and failures', () => {
     expect(screen.getAllByRole('article')[0]).toHaveTextContent('Two Fires Taqueria');
   });
 
-  it('moves an old device home (v0) to the account on first load', async () => {
+  it('asks once before moving an old device home (v0) to the account', async () => {
     localStorage.setItem(HOME_KEY, JSON.stringify({ lat: 47.6062, lng: -122.3245 }));
-    const { homeClient } = renderAt('/');
+    const { user, homeClient } = renderAt('/');
     expect((await screen.findAllByRole('article'))[0]).toHaveTextContent("Mama Ko's");
+    const ask = screen.getByRole('region', { name: 'save your home to your account?' });
+    expect(homeClient.save).not.toHaveBeenCalled();
+    await user.click(within(ask).getByRole('button', { name: 'save it' }));
     expect(await screen.findByRole('status')).toHaveTextContent('moved your home');
     expect(homeClient.save).toHaveBeenCalledExactlyOnceWith({ lat: 47.6062, lng: -122.3245 });
     expect(localStorage.getItem(HOME_KEY)).toBeNull();
+    expect(
+      screen.queryByRole('region', { name: 'save your home to your account?' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('"keep it on this device only" keeps it local and stops asking', async () => {
+    localStorage.setItem(HOME_KEY, JSON.stringify({ lat: 47.6062, lng: -122.3245 }));
+    const { user, homeClient } = renderAt('/');
+    await user.click(await screen.findByRole('button', { name: 'keep it on this device only' }));
+    expect(homeClient.save).not.toHaveBeenCalled();
+    expect(screen.getAllByRole('article')[0]).toHaveTextContent("Mama Ko's");
+    expect(localStorage.getItem(HOME_KEY)).not.toBeNull();
   });
 });

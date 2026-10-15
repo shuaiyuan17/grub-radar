@@ -60,10 +60,11 @@ describe('on the place page', () => {
     expect(await within(order).findByRole('checkbox', { name: 'dan dan noodles' })).toBeVisible();
     await user.click(within(order).getByRole('button', { name: 'Remove smashed cucumber' }));
     await vi.waitFor(async () => {
+      // dishes keep their ids; the new one gets the next free id
       expect((await repository.get('lucky-thread'))?.order).toEqual([
-        { dish: 'cumin lamb biang biang', tried: true },
-        { dish: 'chili oil wontons', tried: true },
-        { dish: 'dan dan noodles', tried: false },
+        { id: 'd1', dish: 'cumin lamb biang biang', tried: true },
+        { id: 'd3', dish: 'chili oil wontons', tried: true },
+        { id: 'd4', dish: 'dan dan noodles', tried: false },
       ]);
     });
   });
@@ -95,6 +96,26 @@ describe('on the place page', () => {
       'your notes for this spot are full.',
     );
     expect(within(mine).getByLabelText('New note')).toHaveValue('one more');
+  });
+
+  it('a stale order list is refused gently, and the latest one shows', async () => {
+    const repository = demoRepository();
+    const { user } = renderAt('/place/lucky-thread', { repository });
+    const order = await screen.findByRole('region', { name: 'order this' });
+    // meanwhile, on another device: a dish gets added
+    await repository.update('lucky-thread', {
+      order: [
+        ...(await repository.get('lucky-thread'))!.order,
+        { dish: 'added elsewhere', tried: false },
+      ],
+    });
+    await user.click(within(order).getByRole('checkbox', { name: 'chili oil wontons' }));
+    expect(await within(order).findByRole('alert')).toHaveTextContent('updated somewhere else');
+    expect(await within(order).findByRole('checkbox', { name: 'added elsewhere' })).toBeVisible();
+    expect(within(order).getByRole('checkbox', { name: 'chili oil wontons' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
   });
 
   it('in Chinese too', async () => {
