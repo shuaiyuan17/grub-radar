@@ -45,6 +45,16 @@ export const ERROR_CODES = [
   'friend_limit',
   /** You've made the most invite links allowed for one day. */
   'invite_limit',
+  /** A photo that isn't a WebP or JPEG we can read (wrong type, broken, too many pixels). */
+  'bad_image',
+  /** A photo that still carries EXIF or XMP (which can hold where it was taken). */
+  'image_metadata',
+  /** A photo over PHOTO_MAX_BYTES. */
+  'photo_too_big',
+  /** This spot already has PHOTOS_PER_SPOT photos of yours. */
+  'photo_limit',
+  /** Your photos already fill PHOTO_STORAGE_BYTES. */
+  'storage_full',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

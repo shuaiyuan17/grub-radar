@@ -1,5 +1,6 @@
 import type { ErrorCode, SigninResult } from '../contracts/errors';
 import { FRIEND_LIMIT } from '../contracts/friends';
+import { PHOTO_STORAGE_BYTES, PHOTOS_PER_SPOT } from '../contracts/photos';
 import type { Day, Hours, IconName, Kind, Verdict, Visibility } from '../domain/spot';
 import { formatMiles, formatMinutes, type TravelMode } from '../domain/travel';
 import type { Mode } from '../domain/modes';
@@ -310,6 +311,12 @@ const en = {
     own_invite: 'that’s your own invite link.',
     friend_limit: `one of you already has the most friends allowed (${String(FRIEND_LIMIT)}).`,
     invite_limit: 'that’s a lot of links for one day. try again tomorrow.',
+    bad_image: 'that file isn’t a photo we can keep.',
+    image_metadata:
+      'that photo still carried hidden data (like where it was taken), so it wasn’t saved.',
+    photo_too_big: 'that photo is over 1 MB, even after shrinking.',
+    photo_limit: `that’s ${String(PHOTOS_PER_SPOT)} photos, the most one spot can hold.`,
+    storage_full: `your photos fill your ${String(PHOTO_STORAGE_BYTES / 1024 / 1024)} MB. delete a few first?`,
     unknown: 'couldn’t save that. try again?',
   } satisfies Partial<Record<ErrorCode, string>> & { unknown: string },
 
@@ -347,11 +354,41 @@ const en = {
     failed: 'that didn’t work. try signing in again?',
   } satisfies Record<SigninResult, string>,
 
+  photos: {
+    galleryLabel: 'photos of this spot',
+    add: 'add photo',
+    addMore: 'add more',
+    pickerAria: 'Add photos of this spot',
+    preparing: (n: number, total: number) =>
+      total > 1 ? `shrinking photo ${n} of ${total}…` : 'shrinking your photo…',
+    uploading: (n: number, total: number, percent: number) =>
+      total > 1 ? `uploading ${n} of ${total} · ${percent}%` : `uploading · ${percent}%`,
+    open: (i: number, n: number) => `Photo ${i} of ${n}, view larger`,
+    friendOpen: (name: string, i: number, n: number) => `${name}’s photo ${i} of ${n}, view larger`,
+    viewerLabel: 'photo',
+    close: 'close',
+    prev: 'previous photo',
+    next: 'next photo',
+    counter: (i: number, n: number) => `${i} / ${n}`,
+    remove: 'delete photo',
+    removeConfirm: 'delete this photo for good?',
+    removeYes: 'yes, delete',
+    keep: 'keep',
+    captionLabel: 'caption',
+    captionPlaceholder: 'what’s in it?',
+    saveCaption: 'save',
+    spotFull: (n: number) => `${n} photos here, that’s the most.`,
+    unreadable: (name: string) =>
+      `couldn’t open “${name}”. if it’s a HEIC photo, try picking it again from Photos, or as a JPEG.`,
+    tooBig: (name: string) => `“${name}” wouldn’t shrink enough. try another?`,
+    privacy: 'photos are shrunk on your device, and where they were taken is wiped first.',
+  },
+
   navFriends: 'friends',
   friends: {
     title: 'your *friends*',
     intro:
-      'friends see the spots you share: the place, your verdict and your one-liner. never your home, never your private notes.',
+      'friends see the spots you share: the place, your verdict, your one-liner and your photos. never your home, never your private notes.',
     profileTitle: 'how friends see you',
     nameLabel: 'your name',
     emojiGroup: 'your emoji',
@@ -415,7 +452,8 @@ const en = {
     visibilityGroup: 'who sees this spot',
     visibility: { friends: 'friends', private: 'just me' } satisfies Record<Visibility, string>,
     visibilityHint: {
-      friends: 'friends see the place, your verdict and your one-liner. never your notes.',
+      friends:
+        'friends see the place, your verdict, your one-liner and your photos. never your notes.',
       private: 'only you see this spot.',
     } satisfies Record<Visibility, string>,
   },
@@ -697,6 +735,11 @@ const zh: Messages = {
     own_invite: '这是你自己的邀请链接。',
     friend_limit: `你们其中一位的好友已经满了（${String(FRIEND_LIMIT)} 位）。`,
     invite_limit: '今天生成的链接太多了，明天再来吧。',
+    bad_image: '这个文件不是能保存的照片。',
+    image_metadata: '这张照片还带着隐藏信息（比如拍摄地点），所以没有保存。',
+    photo_too_big: '这张照片压缩后还是超过 1 MB。',
+    photo_limit: `一家店最多放 ${String(PHOTOS_PER_SPOT)} 张照片，已经满了。`,
+    storage_full: `你的照片已经占满 ${String(PHOTO_STORAGE_BYTES / 1024 / 1024)} MB，先删几张吧？`,
     unknown: '没保存成功，再试一次？',
   },
 
@@ -734,10 +777,40 @@ const zh: Messages = {
     failed: '没成功，再登录一次试试？',
   },
 
+  photos: {
+    galleryLabel: '这家店的照片',
+    add: '添加照片',
+    addMore: '再加几张',
+    pickerAria: '给这家店添加照片',
+    preparing: (n, total) => (total > 1 ? `正在压缩第 ${n} 张，共 ${total} 张…` : '正在压缩照片…'),
+    uploading: (n, total, percent) =>
+      total > 1 ? `正在上传第 ${n} 张，共 ${total} 张 · ${percent}%` : `正在上传 · ${percent}%`,
+    open: (i, n) => `第 ${i} 张照片，共 ${n} 张，点开看大图`,
+    friendOpen: (name, i, n) => `${name} 的第 ${i} 张照片，共 ${n} 张，点开看大图`,
+    viewerLabel: '照片',
+    close: '关闭',
+    prev: '上一张',
+    next: '下一张',
+    counter: (i, n) => `${i} / ${n}`,
+    remove: '删除照片',
+    removeConfirm: '确定删除这张照片？',
+    removeYes: '删除',
+    keep: '留着',
+    captionLabel: '说明',
+    captionPlaceholder: '拍的是什么？',
+    saveCaption: '保存',
+    spotFull: (n) => `这里已经有 ${n} 张了，最多就这么多。`,
+    unreadable: (name) =>
+      `打不开“${name}”。如果是 HEIC 照片，试试从“照片”里重新选，或者存成 JPEG。`,
+    tooBig: (name) => `“${name}”压缩不到足够小，换一张试试？`,
+    privacy: '照片会先在你的设备上压缩，拍摄地点等信息会先抹掉。',
+  },
+
   navFriends: '好友',
   friends: {
     title: '你的*好友*',
-    intro: '好友能看到你分享的店：店本身、你的评价和那句话。看不到你的家，也看不到你的私人笔记。',
+    intro:
+      '好友能看到你分享的店：店本身、你的评价、那句话和你的照片。看不到你的家，也看不到你的私人笔记。',
     profileTitle: '好友眼中的你',
     nameLabel: '你的名字',
     emojiGroup: '你的表情',
@@ -799,7 +872,7 @@ const zh: Messages = {
     visibilityGroup: '谁能看到这家店',
     visibility: { friends: '好友', private: '只有我' },
     visibilityHint: {
-      friends: '好友能看到店、你的评价和那句话，看不到你的笔记。',
+      friends: '好友能看到店、你的评价、那句话和照片，看不到你的笔记。',
       private: '只有你自己能看到这家店。',
     },
   },

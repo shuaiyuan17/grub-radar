@@ -7,9 +7,11 @@ import { dataLang } from '../domain/spot';
 import { useT } from '../i18n/context';
 import { Headline, SpotLabel, Unknown } from '../components/bits';
 import { useOrigin } from '../lib/origin';
+import { useSpots } from '../lib/spots';
 import { useSpotViews } from '../lib/useSpotViews';
-import { FOOD_ICONS } from '../components/icons';
 import { FriendTakes } from '../components/FriendTakes';
+import { PhotoFrame } from '../components/PlacePhotos';
+import { usePlacePhotos } from '../lib/usePlacePhotos';
 import {
   NotesEditor,
   OrderEditor,
@@ -46,6 +48,8 @@ export function PlacePage() {
   const views = useSpotViews();
   const view = views.find((v) => v.spot.id === id);
   const back = backTarget(location.state);
+  const canWrite = useSpots().actions !== null;
+  const photos = usePlacePhotos(view?.spot.id, canWrite);
 
   if (!view) {
     return (
@@ -114,25 +118,7 @@ export function PlacePage() {
       <div className={styles.layout}>
         <div className={styles.colA}>
           <div className={styles.photoWrap}>
-            <div className={`sk ${styles.photo}`}>
-              <Ink />
-              <svg
-                width="74"
-                height="74"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="var(--ink)"
-                strokeWidth="1.3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d={FOOD_ICONS[spot.icon]} />
-              </svg>
-              <span className={styles.photoCaption}>{t.noPhoto}</span>
-            </div>
-            <span aria-hidden="true" className={`${styles.tape} ${styles.tapeL}`} />
-            <span aria-hidden="true" className={`${styles.tape} ${styles.tapeR}`} />
+            <PhotoFrame spot={spot} photos={photos} canAdd={canWrite} />
           </div>
 
           <dl className={styles.stats}>
@@ -197,7 +183,7 @@ export function PlacePage() {
 
           <StatusEditor spot={spot} />
 
-          <FriendTakes placeId={spot.id} />
+          <FriendTakes placeId={spot.id} photos={photos.data?.friends} />
 
           <OrderEditor spot={spot} />
 

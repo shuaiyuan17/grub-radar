@@ -20,3 +20,5 @@ export const newPlaceId = () => `p-${ulid()}`;
 export const newVisitId = () => `v_${ulid()}`;
 /** Names an invite link (for listing and revoking). Not the secret: that's the token. */
 export const newInviteId = () => `inv_${ulid()}`;
+/** Names a photo; also the last part of its R2 key. */
+export const newPhotoId = () => `ph_${ulid()}`;

@@ -1,18 +1,30 @@
+import type { Photo } from '../contracts/photos';
 import { useT } from '../i18n/context';
 import { takesFor, useFriendTakes } from '../lib/friends';
 import { FriendAvatars } from './FriendAvatars';
 import styles from './FriendTakes.module.css';
 import { Ink } from './Ink';
+import { FriendPhotos } from './PlacePhotos';
 
 /**
  * The place page's "friends' verdicts": each friend who has been, with their
- * good/meh/bad and their one-liner (in their own handwriting voice), then a
- * line of faces of friends who want to go too. Nothing when no friend has it.
+ * good/meh/bad, their one-liner (in their own handwriting voice) and their
+ * photos, then a line of faces of friends who want to go too (a friend who
+ * wants to go but already has photos of it gets a line of their own, for the
+ * photos). Nothing when no friend has it.
  */
-export function FriendTakes({ placeId }: { placeId: string }) {
+export function FriendTakes({
+  placeId,
+  photos = {},
+}: {
+  placeId: string;
+  /** Friends' photos of this place, by friend id. */
+  photos?: Readonly<Record<string, readonly Photo[]>>;
+}) {
   const t = useT();
   const { takes } = useFriendTakes();
-  const { been, want } = takesFor(takes, placeId);
+  const { been: beenOnly, want } = takesFor(takes, placeId);
+  const been = [...beenOnly, ...want.filter((w) => photos[w.friend.id]?.length)];
   if (been.length === 0 && want.length === 0) return null;
   return (
     <section aria-labelledby="friend-takes" className={`sk ${styles.box}`}>
@@ -31,7 +43,11 @@ export function FriendTakes({ placeId }: { placeId: string }) {
                 <span className={styles.who}>
                   <span className={styles.name}>{take.friend.displayName}</span>
                   <span className={styles.verdict}>
-                    {take.verdict ? t.verdicts[take.verdict] : t.friends.noVerdict}
+                    {take.status === 'want'
+                      ? t.wantToTry
+                      : take.verdict
+                        ? t.verdicts[take.verdict]
+                        : t.friends.noVerdict}
                   </span>
                 </span>
                 {take.note && (
@@ -39,6 +55,10 @@ export function FriendTakes({ placeId }: { placeId: string }) {
                     “{take.note}”
                   </span>
                 )}
+                <FriendPhotos
+                  name={take.friend.displayName}
+                  photos={photos[take.friend.id] ?? []}
+                />
               </span>
             </li>
           ))}

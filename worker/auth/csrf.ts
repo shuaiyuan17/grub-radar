@@ -20,13 +20,18 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 export type CsrfVerdict = { ok: true } | { ok: false; why: string };
 
-export function checkCsrf(req: Request, principal: Principal['kind']): CsrfVerdict {
+export function checkCsrf(
+  req: Request,
+  principal: Principal['kind'],
+  bodyTypes: readonly string[] = JSON_ONLY,
+): CsrfVerdict {
   if (SAFE_METHODS.has(req.method)) return { ok: true };
   const h = req.headers;
+  const typeOk = bodyTypes.includes(mediaType(h));
   if (principal === 'agent') {
-    return isJson(h) ? { ok: true } : { ok: false, why: 'content-type' };
+    return typeOk ? { ok: true } : { ok: false, why: 'content-type' };
   }
-  if (!isJson(h)) return { ok: false, why: 'content-type' };
+  if (!typeOk) return { ok: false, why: 'content-type' };
   if (h.get(CSRF_HEADER) !== '1') return { ok: false, why: 'header' };
   const site = h.get('sec-fetch-site');
   if (site !== null) {
@@ -37,9 +42,11 @@ export function checkCsrf(req: Request, principal: Principal['kind']): CsrfVerdi
   return { ok: true };
 }
 
-function isJson(h: Headers): boolean {
-  const type = h.get('content-type')?.split(';')[0]?.trim().toLowerCase();
-  return type === 'application/json';
+const JSON_ONLY = ['application/json'];
+
+/** The Content-Type without parameters, lowercased ('' when absent). */
+function mediaType(h: Headers): string {
+  return h.get('content-type')?.split(';')[0]?.trim().toLowerCase() ?? '';
 }
 
 export const csrf: MiddlewareHandler<AppEnv> = async (c, next) => {
@@ -47,6 +54,20 @@ export const csrf: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!verdict.ok) return apiError(c, 403, 'csrf', `cross-site request refused (${verdict.why})`);
   await next();
 };
+
+/**
+ * The same check for a raw upload whose body is one of `types` (a photo):
+ * none of them is a type a cross-site form can send without a preflight
+ * (forms only send urlencoded, multipart and text/plain), and the header and
+ * same-origin rules apply exactly as for JSON.
+ */
+export function csrfFor(types: readonly string[]): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    const verdict = checkCsrf(c.req.raw, c.var.principal.kind, types);
+    if (!verdict.ok) return apiError(c, 403, 'csrf', `cross-site request refused (${verdict.why})`);
+    await next();
+  };
+}
 
 /**
  * For cookie-authenticated writes that don't resolve a principal first

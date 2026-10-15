@@ -51,7 +51,7 @@ type Ctx = Context<AppEnv>;
 
 function repoFor(c: Ctx) {
   const { userId, foundBy } = actingUser(c.var.principal);
-  return new D1SpotRepository(c.env.DB, userId, { foundBy });
+  return new D1SpotRepository(c.env.DB, userId, { foundBy, photos: c.env.PHOTOS });
 }
 
 /** SpotOpError -> HTTP; anything else goes to the 500 handler. */

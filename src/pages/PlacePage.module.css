@@ -64,48 +64,6 @@
   order: -1;
 }
 
-.photoWrap {
-  position: relative;
-  padding: 8px 4px 0;
-}
-.photo {
-  height: 196px;
-  border-radius: 20px 14px 24px 16px / 16px 24px 14px 20px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background-image: repeating-linear-gradient(
-    -38deg,
-    transparent 0 11px,
-    rgba(30, 27, 24, 0.07) 11px 12.5px
-  );
-  transform: rotate(-1.2deg);
-}
-.photoCaption {
-  font-size: 13px;
-  color: var(--pencil);
-}
-.tape {
-  position: absolute;
-  top: 0;
-  height: 22px;
-  background: var(--hl);
-  opacity: 0.8;
-}
-.tapeL {
-  left: 26px;
-  width: 74px;
-  transform: rotate(-8deg);
-}
-.tapeR {
-  right: 22px;
-  top: 2px;
-  width: 64px;
-  transform: rotate(6deg);
-}
-
 .titleBlock {
   display: flex;
   flex-direction: column;
@@ -313,9 +271,6 @@
     grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
     gap: 40px;
     align-items: start;
-  }
-  .photo {
-    height: 300px;
   }
   .title {
     font-size: 48px;

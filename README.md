@@ -233,6 +233,26 @@ accounts, sessions, places and everyone's own list.
 | `POST /api/invites/preview`     | session  | `{ token }` → who sent it, `open`/`own`/`friends`; 410 if spent |
 | `POST /api/invites/accept`      | session  | `{ token }` → friends both ways now (201), already (200)        |
 | `GET /api/admin/stats`          | admin    | users, sign-ups per day, per-person counts; else a plain 404    |
+| `GET /api/photos?place=`        | session  | your photos of a spot + friends' (who share it) + your usage    |
+| `POST /api/photos?place=`       | session  | raw WebP/JPEG body, ≤ 1 MB, no EXIF/XMP → 201; 6/spot, 200 MB   |
+| `GET /api/photos/:id`           | session  | the image: owner or friends of a shared spot; else a plain 404  |
+| `PATCH /api/photos/:id`         | session  | `{ caption }` (≤ 140, `''` clears) on one of yours              |
+| `DELETE /api/photos/:id`        | session  | one of yours, row and R2 bytes; 204                             |
+
+**Photos** (`worker/routes/photos.ts`, `worker/db/photos.ts`, migration 0005). Bytes live
+in the private R2 bucket `grub-radar-photos` (binding `PHOTOS`, no public URL) under
+`u/<user>/<place>/<id>`; D1's `photos` table is the index and decides who may see what,
+with the same rule as friends' spots (owner, or a friend while that spot is `friends`).
+Anyone else, signed in or not, gets the same 404 as a photo that doesn't exist. Served
+with `Cache-Control: private, max-age=31536000, immutable`, `ETag` and `Vary: Cookie`.
+The browser shrinks every photo first (`src/lib/photoProcess.ts`: EXIF orientation
+applied, ≤ 1600px, WebP or JPEG fallback, ~150-300 KB), and re-encoding through a canvas
+drops all metadata, the GPS position included. The Worker doesn't trust that: it reads the
+container (`worker/lib/imageGuard.ts`), checks type and size from the headers, and refuses
+anything carrying EXIF/XMP/IPTC/MPF or bytes after the image. Caps (6 per spot, 200 MB per
+person) are checked inside the `INSERT`, so parallel uploads can't overshoot; uploads also
+have their own limiter (20/min). Removing a spot deletes its photos (rows and bytes);
+deleting a user cascades the rows, and `purgeUserPhotos` sweeps the bytes by prefix.
 
 **Sign in with Apple** (`worker/auth/siwa.ts`): web flow with `response_type=code` and
 `response_mode=form_post`. `state` and a hashed `nonce` ride in an HMAC-signed, 10-minute,
