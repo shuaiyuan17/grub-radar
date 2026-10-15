@@ -5,6 +5,7 @@ import { MeResponseSchema } from '../../src/contracts/me';
 import { SEED_SPOTS } from '../../src/data/seed';
 import { parseSpots } from '../../src/domain/spot';
 import app from '../index';
+import { createSession } from '../auth/session';
 import { call, devSession, setCookieLine, writeHeaders } from '../test/helpers';
 
 let cookie = '';
@@ -164,7 +165,13 @@ describe('GET /api/spots (PR 1: the demo spots, signed-in only)', () => {
 
 describe('home never leaks', () => {
   it('appears in no response except GET /api/me', async () => {
-    const paths = ['/api/spots', '/api/spots/lucky-thread', '/api/health', '/api/nope'];
+    const paths = [
+      '/api/spots',
+      '/api/spots/lucky-thread',
+      '/api/health',
+      '/api/mapkit-token',
+      '/api/nope',
+    ];
     for (const path of paths) {
       const body = await (await call(path, { cookie })).text();
       expect(body, path).not.toContain(String(HOME.lat));
@@ -174,39 +181,88 @@ describe('home never leaks', () => {
 });
 
 describe('GET /api/mapkit-token', () => {
-  it('is public and returns a 30-minute ES256 token locked to this origin', async () => {
+  it('needs a session (until the signed-out map ships)', async () => {
     const res = await call('/api/mapkit-token');
+    expect(res.status).toBe(401);
+  });
+
+  it('returns a 10-minute ES256 token with our origin', async () => {
+    const res = await call('/api/mapkit-token', { cookie });
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
     const jwt = await res.text();
     expect(decodeProtectedHeader(jwt)).toEqual({ alg: 'ES256', kid: 'BQY23WRKNY', typ: 'JWT' });
     const claims = decodeJwt(jwt);
     expect(claims).toMatchObject({ iss: 'TMTJYK5V5B', origin: 'https://grub.test' });
-    expect((claims.exp ?? 0) - (claims.iat ?? 0)).toBe(1800);
+    expect((claims.exp ?? 0) - (claims.iat ?? 0)).toBe(600);
   });
 
-  it('in production the origin is always the public one', async () => {
+  it('outside development the origin is always the public one', async () => {
     const res = await app.request(
       'https://evil.example/api/mapkit-token',
-      {},
-      {
-        ...env,
-        ENVIRONMENT: 'production',
-        PUBLIC_ORIGIN: 'https://grub.shuaiyuan.me',
-      },
+      { headers: { cookie } },
+      { ...env, ENVIRONMENT: 'production', PUBLIC_ORIGIN: 'https://grub.shuaiyuan.me' },
     );
+    expect(res.status).toBe(200);
     expect(decodeJwt(await res.text()).origin).toBe('https://grub.shuaiyuan.me');
   });
 
-  it('is rate limited per IP', async () => {
+  it('is rate limited per user', async () => {
     const statuses: number[] = [];
     for (let i = 0; i < 25; i++)
-      statuses.push(
-        (await call('/api/mapkit-token', { headers: { 'cf-connecting-ip': '203.0.113.9' } }))
-          .status,
-      );
-    expect(statuses.slice(0, 20).every((s) => s === 200)).toBe(true);
+      statuses.push((await call('/api/mapkit-token', { cookie })).status);
+    expect(statuses.filter((s) => s === 200).length).toBeLessThanOrEqual(20);
     expect(statuses.at(-1)).toBe(429);
+  });
+});
+
+describe('one user can never see another user’s data', () => {
+  // user A (the dev user, with a home) and user B (a second account)
+  let bCookie = '';
+  beforeAll(async () => {
+    await env.DB.prepare(
+      "INSERT INTO users (id, display_name, avatar_emoji, created_at, last_login_at) VALUES ('u_b', 'Bea', '🥐', 'x', 'x')",
+    ).run();
+    const { token } = await createSession(env.DB, 'u_b', undefined);
+    bCookie = `__Host-grub_session=${token}`;
+  });
+
+  it('B gets B, and nothing of A, from every endpoint', async () => {
+    const me = MeResponseSchema.parse(await (await call('/api/me', { cookie: bCookie })).json());
+    expect(me.user).toEqual({ id: 'u_b', displayName: 'Bea', avatarEmoji: '🥐' });
+    expect(me.home).toBeNull();
+    const paths = [
+      '/api/me',
+      '/api/spots',
+      '/api/spots/lucky-thread',
+      '/api/mapkit-token',
+      '/api/nope',
+    ];
+    for (const path of paths) {
+      const body = await (await call(path, { cookie: bCookie })).text();
+      expect(body, path).not.toContain(String(HOME.lat));
+      expect(body, path).not.toContain(String(HOME.lng));
+      expect(body, path).not.toContain('u_dev');
+    }
+  });
+
+  it("B's profile edits never touch A", async () => {
+    const before = await (await call('/api/me', { cookie })).json<{ user: unknown }>();
+    const res = await call('/api/me', {
+      method: 'PATCH',
+      cookie: bCookie,
+      headers: writeHeaders,
+      body: JSON.stringify({ displayName: 'Bea B', id: 'u_dev' }),
+    });
+    expect(res.status).toBe(400); // unknown keys (like id) are refused outright
+    await call('/api/me', {
+      method: 'PATCH',
+      cookie: bCookie,
+      headers: writeHeaders,
+      body: JSON.stringify({ displayName: 'Bea B' }),
+    });
+    const after = await (await call('/api/me', { cookie })).json<{ user: unknown }>();
+    expect(after.user).toEqual(before.user);
   });
 });
 
@@ -227,6 +283,7 @@ describe('everything else', () => {
       'referrer-policy': 'strict-origin-when-cross-origin',
       'permissions-policy': 'geolocation=(self)',
       'cache-control': 'no-store',
+      'content-security-policy': "default-src 'none'; frame-ancestors 'none'",
     });
   });
 

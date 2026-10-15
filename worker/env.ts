@@ -4,7 +4,11 @@ export interface Env {
   ASSETS: Fetcher;
   MAPKIT_TOKEN_LIMITER: RateLimit;
 
-  /** "production" on Cloudflare; anything else enables dev-only features. */
+  /**
+   * "production" on Cloudflare. Dev-only features (dev login, the Apple stub,
+   * request-origin redirects) need exactly "development": anything else,
+   * including a typo or a missing value, behaves like production.
+   */
   ENVIRONMENT: string;
   APPLE_TEAM_ID: string;
   /** Services ID: the web Sign in with Apple client_id. */
@@ -14,6 +18,11 @@ export interface Env {
   PUBLIC_ORIGIN: string;
   /** "true" | "false" (see wrangler.jsonc). */
   SIGNUP_OPEN: string;
+  /**
+   * Optional Apple `sub` of the owner. When set and sign-up is closed, only
+   * this Apple ID can create an account (replaces the first-account rule).
+   */
+  OWNER_APPLE_SUB?: string;
 
   /** Secret. ES256 .p8 key as PEM (literal "\n" escapes are accepted). */
   APPLE_PRIVATE_KEY: string;
@@ -26,4 +35,5 @@ export interface Env {
   APPLE_ENDPOINT_BASE?: string;
 }
 
-export const isProduction = (env: Env) => env.ENVIRONMENT === 'production';
+/** Fail closed: only an explicit "development" turns on dev-only behaviour. */
+export const isDevelopment = (env: Env) => env.ENVIRONMENT === 'development';

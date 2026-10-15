@@ -25,7 +25,11 @@ export default defineConfig({
           name: 'domain',
           environment: 'node',
           globals: true,
-          include: ['src/domain/**/*.test.ts', 'src/contracts/**/*.test.ts'],
+          include: [
+            'src/domain/**/*.test.ts',
+            'src/contracts/**/*.test.ts',
+            'scripts/**/*.test.ts',
+          ],
         },
       },
       {
@@ -37,7 +41,8 @@ export default defineConfig({
               bindings: {
                 TEST_MIGRATIONS: await readD1Migrations('./migrations'),
                 // tests never see .dev.vars or real keys
-                ENVIRONMENT: 'test',
+                // 'development' turns on dev login + request-origin redirects; tests override per case
+                ENVIRONMENT: 'development',
                 SESSION_HMAC_KEY: 'test-hmac-key-test-hmac-key-0123',
                 DEV_LOGIN_SECRET: 'test-dev-login-secret',
                 SIGNUP_OPEN: 'false',

@@ -6,21 +6,24 @@
  *       CORS preflight, and we never answer preflights),
  *   (c) come from our own origin: Sec-Fetch-Site same-origin|none when the
  *       browser sends it, else Origin equal to ours when present.
- * Bearer-authenticated requests skip (b)/(c): a bearer token isn't ambient.
+ * Requests whose *resolved principal* is an agent (a bearer token, PR 5)
+ * skip (b)/(c): a bearer token isn't ambient. A mere Authorization header
+ * proves nothing, so it doesn't count. Run after resolvePrincipal.
  */
 import type { MiddlewareHandler } from 'hono';
 import { CSRF_HEADER } from '../../src/contracts/errors';
 import type { AppEnv } from '../app';
+import type { Principal } from './principal';
 import { apiError } from '../lib/http';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 export type CsrfVerdict = { ok: true } | { ok: false; why: string };
 
-export function checkCsrf(req: Request): CsrfVerdict {
+export function checkCsrf(req: Request, principal: Principal['kind']): CsrfVerdict {
   if (SAFE_METHODS.has(req.method)) return { ok: true };
   const h = req.headers;
-  if (h.get('authorization')?.toLowerCase().startsWith('bearer ')) {
+  if (principal === 'agent') {
     return isJson(h) ? { ok: true } : { ok: false, why: 'content-type' };
   }
   if (!isJson(h)) return { ok: false, why: 'content-type' };
@@ -40,7 +43,7 @@ function isJson(h: Headers): boolean {
 }
 
 export const csrf: MiddlewareHandler<AppEnv> = async (c, next) => {
-  const verdict = checkCsrf(c.req.raw);
+  const verdict = checkCsrf(c.req.raw, c.var.principal.kind);
   if (!verdict.ok) return apiError(c, 403, 'csrf', `cross-site request refused (${verdict.why})`);
   await next();
 };

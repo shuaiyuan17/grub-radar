@@ -229,6 +229,47 @@ describe('POST /auth/callback', () => {
     const res = await postCallback({ code: 'c', state: t.state }, t.cookie);
     expect(res.headers.get('location')).toBe('/?signin=failed');
     expect(mock.calls).toHaveLength(0);
+    // and the pending sign-in's cookie is left alone
+    expect(setCookieLine(res, '__Host-grub_siwa')).toBeUndefined();
+  });
+
+  it.each([
+    ['a wrong state', 'forged'],
+    ['no state', undefined],
+  ])(
+    'a cross-site "cancel" with %s neither cancels nor clears a pending sign-in',
+    async (_label, forgedState) => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const mock = appleAnswers();
+      const start = await startSignIn();
+      mock.setNonce(start.nonce);
+      // the attacker's page auto-posts to our callback; the browser attaches the
+      // SameSite=None state cookie
+      const forged = await postCallback(
+        { error: 'user_cancelled_authorize', ...(forgedState ? { state: forgedState } : {}) },
+        start.cookie,
+      );
+      expect(forged.headers.get('location')).toBe('/?signin=failed');
+      expect(setCookieLine(forged, '__Host-grub_siwa')).toBeUndefined();
+      // Apple's real answer still completes the sign-in
+      const real = await postCallback({ code: 'c.fictional', state: start.state }, start.cookie);
+      expect(real.headers.get('location')).toBe('/');
+      expect(cookieFrom(real, '__Host-grub_session')).not.toBeNull();
+    },
+  );
+
+  it('signing in again ends the session this browser already had', async () => {
+    const first = cookieFrom((await signIn()).res, '__Host-grub_session')!;
+    const mock = appleAnswers();
+    const start = await startSignIn();
+    mock.setNonce(start.nonce);
+    const again = await postCallback(
+      { code: 'c', state: start.state },
+      `${start.cookie}; ${first}`,
+    );
+    expect(cookieFrom(again, '__Host-grub_session')).not.toBe(first);
+    expect(await countRows('sessions')).toBe(1);
+    expect((await call('/api/me', { cookie: first })).status).toBe(401);
   });
 
   it('refuses an id_token minted for a different nonce (replayed token)', async () => {
@@ -334,6 +375,105 @@ describe('POST /auth/dev-login', () => {
       (await devLogin('http://localhost/auth/dev-login', secret, { DEV_LOGIN_SECRET: undefined }))
         .status,
     ).toBe(404);
+  });
+
+  it.each(['test', 'staging', 'Development', ''])(
+    'fails closed: ENVIRONMENT=%j is not development',
+    async (environment) => {
+      const res = await devLogin('http://localhost/auth/dev-login', env.DEV_LOGIN_SECRET, {
+        ENVIRONMENT: environment,
+      });
+      expect(res.status).toBe(404);
+    },
+  );
+
+  it('replaces the session this browser already had', async () => {
+    const first = cookieFrom(
+      await devLogin('http://localhost/auth/dev-login', env.DEV_LOGIN_SECRET),
+      '__Host-grub_session',
+    )!;
+    const res = await app.request(
+      'http://localhost/auth/dev-login',
+      {
+        method: 'POST',
+        headers: {
+          ...writeHeaders,
+          'x-dev-login-secret': env.DEV_LOGIN_SECRET ?? '',
+          cookie: first,
+        },
+        body: '{}',
+      },
+      env,
+    );
+    expect(res.status).toBe(204);
+    expect(await countRows('sessions')).toBe(1);
+  });
+});
+
+/**
+ * Apple's form_post with env overrides (sign-up settings). The fake code
+ * carries the sub and nonce, so several of these can run at once against one
+ * Apple mock.
+ */
+function appleBySub() {
+  return mockApple(apple, async ({ form }) => {
+    const [sub = '', nonce = ''] = (form.get('code') ?? '').split('|');
+    return tokenResponse(await apple.idToken({ nonce, sub }));
+  });
+}
+
+async function callbackWith(envOverride: Partial<Env>, sub: string) {
+  const start = await startSignIn();
+  return app.request(
+    'https://grub.test/auth/callback',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: start.cookie },
+      body: new URLSearchParams({ code: `${sub}|${start.nonce}`, state: start.state }).toString(),
+    },
+    { ...env, ...envOverride },
+  );
+}
+
+describe('OWNER_APPLE_SUB (sign-up closed, owner pinned)', () => {
+  beforeEach(() => {
+    appleBySub();
+  });
+  const OWNER = '000777.the-owner.0001';
+  const pinned = { SIGNUP_OPEN: 'false', OWNER_APPLE_SUB: OWNER };
+
+  it('only the owner can create an account, even into an empty database', async () => {
+    const stranger = await callbackWith(pinned, '000999.stranger.0001');
+    expect(stranger.headers.get('location')).toBe('/?signin=closed');
+    expect(await countRows('users')).toBe(0);
+    const owner = await callbackWith(pinned, OWNER);
+    expect(owner.headers.get('location')).toBe('/');
+    expect(await countRows('users')).toBe(1);
+    // and comes back as the same user
+    await callbackWith(pinned, OWNER);
+    expect(await countRows('users')).toBe(1);
+  });
+
+  it('existing accounts keep working when the pin is added later', async () => {
+    await callbackWith({ SIGNUP_OPEN: 'false' }, '000111.early-user.0001');
+    const res = await callbackWith(pinned, '000111.early-user.0001');
+    expect(res.headers.get('location')).toBe('/');
+  });
+});
+
+describe('concurrent first sign-ins (SIGNUP_OPEN=false, no pin)', () => {
+  beforeEach(() => {
+    appleBySub();
+  });
+  it('two different Apple IDs at once: exactly one account', async () => {
+    const results = await Promise.all([
+      callbackWith({ SIGNUP_OPEN: 'false' }, '000001.racer-a.0001'),
+      callbackWith({ SIGNUP_OPEN: 'false' }, '000002.racer-b.0001'),
+    ]);
+    const locations = results.map((r) => r.headers.get('location')).sort();
+    expect(locations).toEqual(['/', '/?signin=closed']);
+    expect(await countRows('users')).toBe(1);
+    expect(await countRows('auth_identities')).toBe(1);
   });
 });
 

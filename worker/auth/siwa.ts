@@ -6,7 +6,8 @@
  */
 import { createRemoteJWKSet, importPKCS8, jwtVerify, SignJWT, type JWTVerifyGetKey } from 'jose';
 import { z } from 'zod/mini';
-import { isProduction, type Env } from '../env';
+import { clampName } from '../../src/contracts/me';
+import { isDevelopment, type Env } from '../env';
 import { randomToken, sha256Hex, signValue, verifyValue } from '../lib/crypto';
 import { MINUTE } from '../lib/time';
 
@@ -15,19 +16,20 @@ export const STATE_COOKIE = '__Host-grub_siwa';
 export const STATE_MAX_AGE_S = 600;
 const CLIENT_SECRET_TTL_S = 300;
 
-/** Apple's endpoints. Only a non-production Worker may point them at a stub. */
+/** Apple's endpoints. Only a development Worker may point them at a stub. */
 export function appleBase(env: Env): string {
-  if (!isProduction(env) && env.APPLE_ENDPOINT_BASE) return env.APPLE_ENDPOINT_BASE;
+  if (isDevelopment(env) && env.APPLE_ENDPOINT_BASE) return env.APPLE_ENDPOINT_BASE;
   return APPLE_ISSUER;
 }
 
-/**
- * Where Apple sends the form POST. Production always uses the registered
- * return URL; dev uses whatever origin the request came in on.
- */
+/** Our public origin: PUBLIC_ORIGIN, or in development whatever origin the request came in on. */
+export function publicOrigin(env: Env, requestUrl: string): string {
+  return isDevelopment(env) ? new URL(requestUrl).origin : env.PUBLIC_ORIGIN;
+}
+
+/** Where Apple sends the form POST: the registered return URL outside development. */
 export function redirectUri(env: Env, requestUrl: string): string {
-  const origin = isProduction(env) ? env.PUBLIC_ORIGIN : new URL(requestUrl).origin;
-  return `${origin}/auth/callback`;
+  return `${publicOrigin(env, requestUrl)}/auth/callback`;
 }
 
 /** Only same-origin paths: "/", "/place/x?y=1". Never "//evil.com" or "/\evil.com". */
@@ -120,7 +122,8 @@ function timingSafeEqualStrings(a: string, b: string): boolean {
 export const normalizePem = (pem: string) => pem.replaceAll('\\n', '\n').trim();
 
 const signingKeys = new Map<string, Promise<CryptoKey>>();
-function signingKey(pem: string): Promise<CryptoKey> {
+/** The Apple ES256 key, imported once per isolate (SIWA client secrets and MapKit tokens). */
+export function signingKey(pem: string): Promise<CryptoKey> {
   let key = signingKeys.get(pem);
   if (!key) {
     key = importPKCS8(normalizePem(pem), 'ES256');
@@ -294,7 +297,9 @@ export function nameFromUserField(raw: string | undefined): string | null {
     const name = [parsed.data.name?.firstName, parsed.data.name?.lastName]
       .map((part) => part?.trim())
       .find((part) => part !== undefined && part !== '');
-    return name === undefined ? null : name.slice(0, 40);
+    if (name === undefined) return null;
+    const clean = clampName(name);
+    return clean === '' ? null : clean;
   } catch {
     return null;
   }

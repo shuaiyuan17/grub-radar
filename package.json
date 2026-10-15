@@ -9,7 +9,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "deploy:dry-run": "wrangler deploy --dry-run --outdir dist-worker",
+    "deploy": "npm run build && npm run deploy:built",
+    "deploy:built": "wrangler d1 migrations apply grub-radar --remote -c dist/grub_radar/wrangler.json && wrangler deploy -c dist/grub_radar/wrangler.json",
+    "deploy:dry-run": "npm run build && wrangler deploy --dry-run --outdir dist-worker -c dist/grub_radar/wrangler.json",
     "preview": "vite preview",
     "db:migrate:local": "wrangler d1 migrations apply grub-radar --local",
     "db:migrate:remote": "wrangler d1 migrations apply grub-radar --remote",

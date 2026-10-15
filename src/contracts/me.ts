@@ -1,10 +1,31 @@
 import { z } from 'zod/mini';
 
-const graphemes = (s: string) => [...new Intl.Segmenter().segment(s)].length;
+const segmenter = new Intl.Segmenter();
+const graphemes = (s: string) => [...segmenter.segment(s)].length;
 
-export const DisplayNameSchema = z
-  .string()
-  .check(z.trim(), z.minLength(1, 'name is empty'), z.maxLength(40, 'name is too long'));
+export const DISPLAY_NAME_MAX = 40;
+
+// control characters and the bidi overrides/isolates/marks that can make a
+// name render as something else ("Trojan Source" style)
+const UNSAFE_CHARS = /[\p{Cc}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/gu;
+
+/** Strip control and bidi characters, trim. */
+export const sanitizeName = (s: string) => s.replace(UNSAFE_CHARS, '').trim();
+
+/** Sanitize, then cut to at most `max` whole graphemes (never half an emoji or surrogate pair). */
+export function clampName(s: string, max = DISPLAY_NAME_MAX): string {
+  const parts = [...segmenter.segment(sanitizeName(s))].slice(0, max);
+  return parts
+    .map((p) => p.segment)
+    .join('')
+    .trim();
+}
+
+export const DisplayNameSchema = z.string().check(
+  z.overwrite(sanitizeName),
+  z.minLength(1, 'name is empty'),
+  z.refine((s) => graphemes(s) <= DISPLAY_NAME_MAX, { message: 'name is too long' }),
+);
 
 /** One emoji (one grapheme cluster, so flags and ZWJ sequences count as one). */
 export const AvatarEmojiSchema = z.string().check(

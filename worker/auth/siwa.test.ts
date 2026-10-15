@@ -83,20 +83,30 @@ describe('authorize request', () => {
     expect(state).toMatchObject({ returnTo: '/radar', nonceHash: await sha256Hex(p.nonce ?? '') });
   });
 
-  it('production uses the registered return URL and the real Apple, whatever the request or vars say', () => {
-    const prod: Env = {
+  it.each(['production', 'staging', 'Development', '', 'test'])(
+    'ENVIRONMENT=%j: registered return URL and the real Apple, whatever the request or vars say',
+    (environment) => {
+      const notDev: Env = {
+        ...env,
+        ENVIRONMENT: environment,
+        APPLE_ENDPOINT_BASE: 'http://localhost:4599',
+        PUBLIC_ORIGIN: 'https://grub.shuaiyuan.me',
+      };
+      expect(redirectUri(notDev, 'https://evil.example/auth/apple/start')).toBe(
+        'https://grub.shuaiyuan.me/auth/callback',
+      );
+      expect(appleBase(notDev)).toBe('https://appleid.apple.com');
+    },
+  );
+
+  it('only ENVIRONMENT=development may use the stub and the request origin', () => {
+    const dev: Env = {
       ...env,
-      ENVIRONMENT: 'production',
+      ENVIRONMENT: 'development',
       APPLE_ENDPOINT_BASE: 'http://localhost:4599',
-      PUBLIC_ORIGIN: 'https://grub.shuaiyuan.me',
     };
-    expect(redirectUri(prod, 'https://evil.example/auth/apple/start')).toBe(
-      'https://grub.shuaiyuan.me/auth/callback',
-    );
-    expect(appleBase(prod)).toBe('https://appleid.apple.com');
-    expect(appleBase({ ...env, APPLE_ENDPOINT_BASE: 'http://localhost:4599' })).toBe(
-      'http://localhost:4599',
-    );
+    expect(appleBase(dev)).toBe('http://localhost:4599');
+    expect(redirectUri(dev, 'http://localhost:5173/x')).toBe('http://localhost:5173/auth/callback');
   });
 });
 

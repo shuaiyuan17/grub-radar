@@ -2,7 +2,7 @@ import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { sha256Hex } from '../lib/crypto';
 import { DAY, HOUR, MINUTE } from '../lib/time';
-import { createSession, loadSession, SESSION_TTL_MS, uaHint } from './session';
+import { createSession, loadSession, SESSION_MAX_AGE_MS, SESSION_TTL_MS, uaHint } from './session';
 
 const T0 = Date.UTC(2026, 9, 14, 22, 0);
 const row = (id: string) =>
@@ -54,6 +54,22 @@ describe('sessions', () => {
     expect((await row(session.id))?.expires_at).toBe(
       new Date(later + SESSION_TTL_MS).toISOString(),
     );
+  });
+
+  it('never outlives 90 days from sign-in, however active', async () => {
+    const { token, session } = await createSession(env.DB, 'u_s', undefined, T0);
+    // used every ~16 days: the sliding window keeps extending...
+    for (const day of [16, 32, 48, 64]) {
+      const r = await loadSession(env.DB, token, T0 + day * DAY);
+      expect(r.kind, `day ${day}`).toBe('ok');
+    }
+    // ...but at most to the 90-day mark
+    const r = await loadSession(env.DB, token, T0 + 80 * DAY);
+    expect(r.kind === 'ok' && r.session.expiresAt).toBe(T0 + SESSION_MAX_AGE_MS);
+    expect(await loadSession(env.DB, token, T0 + SESSION_MAX_AGE_MS + 1)).toEqual({
+      kind: 'invalid',
+    });
+    expect(await row(session.id)).toBeNull();
   });
 
   it('writes last_seen_at at most once an hour', async () => {

@@ -12,6 +12,8 @@ export const SESSION_COOKIE = '__Host-grub_session';
 export const SESSION_TTL_MS = 30 * DAY;
 /** Extend when less than this is left (one write every ~15 days per active session). */
 export const SESSION_REFRESH_BELOW_MS = 15 * DAY;
+/** However active, a session ends this long after sign-in. */
+export const SESSION_MAX_AGE_MS = 90 * DAY;
 /** `last_seen_at` is written at most this often. */
 export const LAST_SEEN_EVERY_MS = HOUR;
 
@@ -41,6 +43,7 @@ export async function createSession(
 
 interface SessionRow {
   user_id: string;
+  created_at: string;
   expires_at: string;
   last_seen_at: string;
 }
@@ -50,7 +53,11 @@ export type LoadResult =
   | { kind: 'invalid' } // a cookie that matches no live session: clear it
   | { kind: 'ok'; session: Session; refreshed: boolean };
 
-/** One row read; at most one write (sliding expiry or hourly last_seen). */
+/**
+ * One row read; at most one write (sliding expiry or hourly last_seen).
+ * Sliding: under 15 days left extends to 30 days from now, but never past
+ * 90 days from sign-in.
+ */
 export async function loadSession(
   db: D1Database,
   token: string | undefined,
@@ -60,20 +67,22 @@ export async function loadSession(
   if (token.length > 100) return { kind: 'invalid' };
   const id = await sha256Hex(token);
   const row = await db
-    .prepare('SELECT user_id, expires_at, last_seen_at FROM sessions WHERE id = ?')
+    .prepare('SELECT user_id, created_at, expires_at, last_seen_at FROM sessions WHERE id = ?')
     .bind(id)
     .first<SessionRow>();
   if (!row) return { kind: 'invalid' };
   const expiresAt = Date.parse(row.expires_at);
-  if (!(expiresAt > now)) {
+  const hardEnd = Date.parse(row.created_at) + SESSION_MAX_AGE_MS;
+  if (!(expiresAt > now) || !(hardEnd > now)) {
     await db.prepare('DELETE FROM sessions WHERE id = ?').bind(id).run();
     return { kind: 'invalid' };
   }
-  const refresh = expiresAt - now < SESSION_REFRESH_BELOW_MS;
+  const extended = Math.min(now + SESSION_TTL_MS, hardEnd);
+  const refresh = expiresAt - now < SESSION_REFRESH_BELOW_MS && extended > expiresAt;
   const seen = now - Date.parse(row.last_seen_at) >= LAST_SEEN_EVERY_MS;
   let next = expiresAt;
   if (refresh) {
-    next = now + SESSION_TTL_MS;
+    next = extended;
     await db
       .prepare('UPDATE sessions SET expires_at = ?, last_seen_at = ? WHERE id = ?')
       .bind(iso(next), iso(now), id)
@@ -86,6 +95,12 @@ export async function loadSession(
 
 export async function deleteSession(db: D1Database, id: string): Promise<void> {
   await db.prepare('DELETE FROM sessions WHERE id = ?').bind(id).run();
+}
+
+/** Signing in again replaces whatever session this browser had. */
+export async function revokeSessionToken(db: D1Database, token: string | undefined) {
+  if (!token || token.length > 100) return;
+  await deleteSession(db, await sha256Hex(token));
 }
 
 export function setSessionCookie(c: Context<AppEnv>, token: string, maxAgeMs = SESSION_TTL_MS) {

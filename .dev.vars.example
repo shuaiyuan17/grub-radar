@@ -2,7 +2,8 @@
 # `npm run dev:vars` to generate one with fresh random values.
 # Never deployed: production secrets are set with `wrangler secret put`.
 
-# Anything but "production" enables the dev-only features below.
+# Exactly "development" enables the dev-only features below (dev login, the Apple stub,
+# request-origin redirects). Any other value behaves like production.
 ENVIRONMENT=development
 
 # HMAC key for the Sign in with Apple state cookie. 32+ random bytes, base64url.
@@ -13,10 +14,10 @@ SESSION_HMAC_KEY=change-me
 APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
 
 # Apple only redirects to https://grub.shuaiyuan.me, so locally Sign in with Apple talks to a
-# stub (`npm run apple-stub`, e2e/apple-stub.ts). Ignored when ENVIRONMENT=production.
+# stub (`npm run apple-stub`, e2e/apple-stub.ts). Ignored unless ENVIRONMENT=development.
 APPLE_ENDPOINT_BASE=http://localhost:4599
 
-# Enables POST /auth/dev-login (localhost only, never in production). Playwright uses it.
+# Enables POST /auth/dev-login (development + localhost only). Playwright uses it.
 DEV_LOGIN_SECRET=change-me
 
 # Locally anyone can sign up.

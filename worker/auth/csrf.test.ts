@@ -7,8 +7,8 @@ const good = { 'content-type': 'application/json', 'x-grub-request': '1' };
 
 describe('checkCsrf', () => {
   it('lets reads through', () => {
-    expect(checkCsrf(req('GET', {})).ok).toBe(true);
-    expect(checkCsrf(req('HEAD', {})).ok).toBe(true);
+    expect(checkCsrf(req('GET', {}), 'user').ok).toBe(true);
+    expect(checkCsrf(req('HEAD', {}), 'user').ok).toBe(true);
   });
 
   it.each<[string, Record<string, string>, boolean, string?]>([
@@ -50,19 +50,31 @@ describe('checkCsrf', () => {
     ],
     ['null Origin', { ...good, origin: 'null' }, false, 'origin'],
   ])('%s', (_label, headers, ok, why) => {
-    const v = checkCsrf(req('POST', headers));
+    const v = checkCsrf(req('POST', headers), 'user');
     expect(v.ok).toBe(ok);
     if (!v.ok) expect(v.why).toBe(why);
   });
 
-  it('bearer requests skip the header/origin checks but still need JSON', () => {
-    const bearer = { authorization: 'Bearer grub_pat_x', 'sec-fetch-site': 'cross-site' };
-    expect(checkCsrf(req('POST', { ...bearer, 'content-type': 'application/json' })).ok).toBe(true);
-    expect(checkCsrf(req('POST', bearer)).ok).toBe(false);
+  it('only a resolved agent principal skips the header/origin checks (still needs JSON)', () => {
+    const crossSite = { 'sec-fetch-site': 'cross-site' };
+    expect(
+      checkCsrf(req('POST', { ...crossSite, 'content-type': 'application/json' }), 'agent').ok,
+    ).toBe(true);
+    expect(checkCsrf(req('POST', crossSite), 'agent').ok).toBe(false);
+  });
+
+  it('an Authorization header alone is not a bypass', () => {
+    const forged = {
+      authorization: 'Bearer anything',
+      'content-type': 'application/json',
+      'sec-fetch-site': 'cross-site',
+    };
+    expect(checkCsrf(req('POST', forged), 'user')).toEqual({ ok: false, why: 'header' });
+    expect(checkCsrf(req('POST', forged), 'anonymous').ok).toBe(false);
   });
 
   it('applies to every unsafe method', () => {
     for (const m of ['POST', 'PUT', 'PATCH', 'DELETE'])
-      expect(checkCsrf(req(m, { 'sec-fetch-site': 'cross-site' })).ok).toBe(false);
+      expect(checkCsrf(req(m, { 'sec-fetch-site': 'cross-site' }), 'user').ok).toBe(false);
   });
 });

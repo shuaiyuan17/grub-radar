@@ -8,6 +8,8 @@ import {
   clearSessionCookie,
   createSession,
   deleteSession,
+  readSessionCookie,
+  revokeSessionToken,
   setSessionCookie,
 } from '../auth/session';
 import {
@@ -23,7 +25,7 @@ import {
   verifyIdToken,
 } from '../auth/siwa';
 import { ensureDevUser, signInWithApple } from '../db/users';
-import { isProduction } from '../env';
+import { isDevelopment } from '../env';
 import { apiError } from '../lib/http';
 
 export const auth = new Hono<AppEnv>();
@@ -44,19 +46,24 @@ auth.get('/apple/start', async (c) => {
 const backTo = (c: Context<AppEnv>, result: SigninResult) => c.redirect(`/?signin=${result}`, 303);
 
 auth.post('/callback', async (c) => {
-  const stateCookie = getCookie(c, STATE_COOKIE);
-  // single use, whatever happens next
-  deleteCookie(c, STATE_COOKIE, { path: '/', secure: true, sameSite: 'None' });
-
   const form = await c.req.parseBody();
   const field = (name: string) => (typeof form[name] === 'string' ? form[name] : undefined);
+
+  // State first, for every POST, errors included: anyone can make a browser
+  // POST here, and only a matching state may touch the pending sign-in.
+  const state = await readStateCookie(c.env, getCookie(c, STATE_COOKIE), field('state'));
+  if (!state) {
+    // leave the cookie alone: a forged POST must not cancel a real sign-in
+    console.warn('sign in with apple failed', 'missing, forged, expired or mismatched state');
+    return backTo(c, 'failed');
+  }
+  // single use from here on, whatever happens next
+  deleteCookie(c, STATE_COOKIE, { path: '/', secure: true, sameSite: 'None' });
 
   const error = field('error');
   if (error) return backTo(c, error === 'user_cancelled_authorize' ? 'cancelled' : 'failed');
 
   try {
-    const state = await readStateCookie(c.env, stateCookie, field('state'));
-    if (!state) throw new SiwaError('state', 'missing, forged, expired or mismatched state');
     const code = field('code');
     if (!code) throw new SiwaError('code', 'no authorization code');
 
@@ -72,6 +79,7 @@ auth.post('/callback', async (c) => {
     });
     if (outcome.kind === 'closed') return backTo(c, 'closed');
 
+    await revokeSessionToken(c.env.DB, readSessionCookie(c));
     const { token } = await createSession(c.env.DB, outcome.userId, c.req.header('user-agent'));
     setSessionCookie(c, token);
     return c.redirect(state.returnTo, 303);
@@ -82,7 +90,7 @@ auth.post('/callback', async (c) => {
   }
 });
 
-auth.post('/logout', csrf, resolvePrincipal, async (c) => {
+auth.post('/logout', resolvePrincipal, csrf, async (c) => {
   const p = c.var.principal;
   if (p.kind === 'user') await deleteSession(c.env.DB, p.sessionId);
   clearSessionCookie(c);
@@ -91,13 +99,13 @@ auth.post('/logout', csrf, resolvePrincipal, async (c) => {
 
 /**
  * Local-only shortcut for tests: a session for a fixed user without Apple.
- * Exists only off production, on localhost, with DEV_LOGIN_SECRET set and sent.
+ * Exists only with ENVIRONMENT=development, on localhost, with DEV_LOGIN_SECRET set and sent.
  */
-auth.post('/dev-login', csrf, async (c) => {
+auth.post('/dev-login', resolvePrincipal, csrf, async (c) => {
   const secret = c.env.DEV_LOGIN_SECRET;
   const host = new URL(c.req.url).hostname;
   const local = host === 'localhost' || host === '127.0.0.1';
-  if (isProduction(c.env) || !secret || !local) return apiError(c, 404, 'not_found', 'not found');
+  if (!isDevelopment(c.env) || !secret || !local) return apiError(c, 404, 'not_found', 'not found');
   const sent = c.req.header('x-dev-login-secret') ?? '';
   const enc = new TextEncoder();
   const a = enc.encode(sent);
@@ -105,6 +113,7 @@ auth.post('/dev-login', csrf, async (c) => {
   if (a.byteLength !== b.byteLength || !crypto.subtle.timingSafeEqual(a, b))
     return apiError(c, 403, 'forbidden', 'wrong dev login secret');
   const userId = await ensureDevUser(c.env.DB);
+  await revokeSessionToken(c.env.DB, readSessionCookie(c));
   const { token } = await createSession(c.env.DB, userId, c.req.header('user-agent'));
   setSessionCookie(c, token);
   return c.body(null, 204);

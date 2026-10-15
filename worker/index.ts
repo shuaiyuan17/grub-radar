@@ -18,11 +18,16 @@ const app = new Hono<AppEnv>();
 
 app.use(async (c, next) => {
   await next();
+  // responses from env.ASSETS.fetch have immutable headers: copy before editing
+  c.res = new Response(c.res.body, c.res);
   const h = c.res.headers;
   h.set('X-Content-Type-Options', 'nosniff');
   h.set('X-Frame-Options', 'DENY');
   h.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   h.set('Permissions-Policy', 'geolocation=(self)');
+  // JSON and redirects need nothing; static files keep the CSP from _headers
+  if (!h.has('Content-Security-Policy'))
+    h.set('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
   const path = c.req.path;
   if (path.startsWith('/api/') || path.startsWith('/auth/')) h.set('Cache-Control', 'no-store');
 });
@@ -36,10 +41,10 @@ app.use(
 );
 
 app.get('/api/health', (c) => c.json({ ok: true, version: VERSION }));
-app.route('/api/mapkit-token', mapkit);
 app.route('/auth', auth);
 
 app.use('/api/*', resolvePrincipal);
+app.route('/api/mapkit-token', mapkit);
 app.route('/api/me', me);
 app.route('/api/spots', spots);
 

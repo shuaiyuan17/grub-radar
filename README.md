@@ -35,7 +35,8 @@ returns people to `https://grub.shuaiyuan.me`), where you pick any name and cont
 | `npm run preview`           | serve the build in workerd, like production                           |
 | `npm test`                  | Vitest: `spa` (jsdom), `domain` (node), `worker` (workerd + D1)       |
 | `npm run test:e2e`          | Playwright at phone and desktop sizes (starts the stub + preview)     |
-| `npm run deploy:dry-run`    | bundle + config check, no upload                                      |
+| `npm run deploy`            | build, apply D1 migrations (remote), deploy the built Worker + SPA    |
+| `npm run deploy:dry-run`    | build, then bundle + config check, no upload                          |
 | `npm run db:migrate:local`  | apply D1 migrations locally                                           |
 | `npm run db:migrate:remote` | apply D1 migrations to the real database                              |
 | `npm run dev:vars`          | write `.dev.vars` (`-- --from-keychain` for the real Apple key)       |
@@ -169,16 +170,16 @@ served by Cloudflare directly; only the paths in `assets.run_worker_first` (`/ap
 `/auth/*`, and the reserved agent paths) run `worker/index.ts` (Hono). D1 (`grub-radar`) holds
 accounts and sessions; spots move there in the next PR.
 
-| endpoint                       | auth    | what                                                          |
-| ------------------------------ | ------- | ------------------------------------------------------------- |
-| `GET /api/health`              | none    | `{ ok, version }`                                             |
-| `GET /auth/apple/start`        | none    | 302 to Apple (`?returnTo=/same/origin/path`)                  |
-| `POST /auth/callback`          | Apple   | Apple's form_post; 303 back with a session, or `/?signin=…`   |
-| `POST /auth/logout`            | session | 204, session deleted                                          |
-| `GET /api/me`, `PATCH /api/me` | session | `{ user, home, signupOpen }`; change name / avatar emoji      |
-| `GET /api/spots[/:id]`         | session | the demo spots (until spots live in D1)                       |
-| `GET /api/mapkit-token`        | none    | 30-minute MapKit JS token locked to our origin; 20/min per IP |
-| `POST /auth/dev-login`         | secret  | local only (localhost, non-production, `DEV_LOGIN_SECRET`)    |
+| endpoint                       | auth    | what                                                            |
+| ------------------------------ | ------- | --------------------------------------------------------------- |
+| `GET /api/health`              | none    | `{ ok, version }`                                               |
+| `GET /auth/apple/start`        | none    | 302 to Apple (`?returnTo=/same/origin/path`)                    |
+| `POST /auth/callback`          | Apple   | Apple's form_post; 303 back with a session, or `/?signin=…`     |
+| `POST /auth/logout`            | session | 204, session deleted                                            |
+| `GET /api/me`, `PATCH /api/me` | session | `{ user, home, signupOpen }`; change name / avatar emoji        |
+| `GET /api/spots[/:id]`         | session | the demo spots (until spots live in D1)                         |
+| `GET /api/mapkit-token`        | session | 10-minute MapKit JS token with our origin; 20/min per user      |
+| `POST /auth/dev-login`         | secret  | `ENVIRONMENT=development` + localhost + `DEV_LOGIN_SECRET` only |
 
 **Sign in with Apple** (`worker/auth/siwa.ts`): web flow with `response_type=code` and
 `response_mode=form_post`. `state` and a hashed `nonce` ride in an HMAC-signed, 10-minute,
@@ -189,20 +190,45 @@ creates the user by Apple `sub`. Apple sends the person's name only on the first
 authorization; it's stored then.
 
 **Sessions** (`worker/auth/session.ts`): a random 32-byte token in `__Host-grub_session`
-(HttpOnly, Secure, SameSite=Lax, 30 days, sliding). D1 stores only its SHA-256.
+(HttpOnly, Secure, SameSite=Lax, 30 days sliding, never more than 90 days after sign-in).
+D1 stores only its SHA-256. Signing in again ends the browser's previous session.
 **CSRF** (`worker/auth/csrf.ts`): cookie-authenticated writes need JSON, `X-Grub-Request: 1`
-and a same-origin `Sec-Fetch-Site`/`Origin`; no CORS headers anywhere.
+and a same-origin `Sec-Fetch-Site`/`Origin`; no CORS headers anywhere. Only a resolved agent
+principal (bearer token, later) skips the header/origin checks.
 
-**Who can sign up**: `SIGNUP_OPEN` in `wrangler.jsonc`. `"false"` (the default) lets exactly
-one account be created, the first, and then closes the door; others see "invite-only".
-`"true"` opens sign-up to any Apple ID.
+**Security headers**: the Worker sets them on its own responses; static files get theirs
+from `dist/client/_headers`, generated at build time (`scripts/security-headers.ts`): a CSP
+with `frame-ancestors 'none'` and the inline language-boot script allowed by hash (no
+`unsafe-inline`), `nosniff`, Referrer-Policy, Permissions-Policy, COOP, HSTS.
+
+**Dev-only behaviour** (dev login, the Apple stub via `APPLE_ENDPOINT_BASE`, request-origin
+redirects) needs `ENVIRONMENT=development` exactly; any other value behaves like production.
+
+**Who can sign up**: `SIGNUP_OPEN` in `wrangler.jsonc`. `"true"` (the launch setting): any
+Apple ID. `"false"`: closed; others see "invite-only". While closed, exactly one account can
+still be created: if the `OWNER_APPLE_SUB` secret is set, only that Apple ID; if not, only the
+very first account. Admission is decided inside the `INSERT` (one D1 transaction with the
+identity row), so simultaneous first sign-ins can't both get in. To pin the owner, read his
+`sub` (`wrangler d1 execute grub-radar --remote --command "SELECT provider_sub FROM
+auth_identities"`) and `wrangler secret put OWNER_APPLE_SUB`.
+
+Each person's data is scoped by their `user_id` on every query; a test checks a second user
+can't see the first's profile or home through any endpoint. (Until spots move to D1, every
+signed-in user sees the same fictional demo spots.)
 
 **Secrets** (production, `wrangler secret put`): `APPLE_PRIVATE_KEY` (the ES256 `.p8` as
-PEM) and `SESSION_HMAC_KEY` (32+ random bytes). Locally they live in `.dev.vars`
+PEM), `SESSION_HMAC_KEY` (32+ random bytes) and, optionally, `OWNER_APPLE_SUB`. Locally they live in `.dev.vars`
 (gitignored; see `.dev.vars.example`).
 
 **Database**: migrations in `migrations/`, applied with Wrangler's D1 migrations
 (`db:migrate:*`); Worker tests apply the same files. Forward-only, additive.
+
+**Deploying**: always `npm run deploy` (or `deploy:built` after a build, e.g. in Workers
+Builds). It builds, applies migrations, then deploys `dist/grub_radar/wrangler.json`, the
+config the Vite plugin generates with the SPA attached. A bare `wrangler deploy` from a fresh
+checkout refuses to run (`wrangler.jsonc` has no `assets.directory` on purpose). There is no
+`*.workers.dev` URL and no preview URLs (`workers_dev`/`preview_urls` off), since those would
+run against the production D1 and secrets.
 
 ## Architecture
 

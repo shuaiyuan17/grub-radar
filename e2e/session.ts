@@ -12,9 +12,10 @@ export function devVar(name: string): string {
 /**
  * Signs the browser in as the fixed dev user via POST /auth/dev-login (local
  * only), from a same-origin page so the browser stores the cookie itself.
+ * (A static file: API responses carry `default-src 'none'`, which blocks fetch.)
  */
 export async function devLogin(page: Page) {
-  await page.goto('/api/health');
+  await page.goto('/favicon.svg');
   const status = await page.evaluate(async (secret) => {
     const res = await fetch('/auth/dev-login', {
       method: 'POST',

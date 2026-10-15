@@ -28,9 +28,7 @@ jobs:
         run: npm run dev:vars
       - name: Typecheck, lint, format, unit + Worker tests
         run: npm run check
-      - name: Build (SPA + Worker)
-        run: npm run build
-      - name: Worker bundle + config check (wrangler deploy --dry-run)
+      - name: Build (SPA + Worker + _headers) and check the deploy bundle (dry run)
         run: npm run deploy:dry-run
       - name: D1 migrations apply cleanly, in order
         run: |
