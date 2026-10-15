@@ -255,7 +255,10 @@ describe('POST /auth/finish', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { t, cookie, mock } = await handoff();
     const [name, value = ''] = cookie.split('=');
-    const flipped = value.slice(0, -2) + (value.endsWith('A') ? 'B' : 'A') + value.slice(-1);
+    // change one ciphertext character, always to a different one
+    const i = value.length - 10;
+    const flipped = value.slice(0, i) + (value[i] === 'A' ? 'B' : 'A') + value.slice(i + 1);
+    expect(flipped).not.toBe(value);
     for (const c of [undefined, `${name}=${btoa('{}')}.AAAA`, `${name}=${flipped}`]) {
       const res = await finish(t, c);
       expect(res.headers.get('location')).toBe('/?signin=failed');

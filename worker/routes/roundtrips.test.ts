@@ -7,6 +7,7 @@ import { env } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MeResponseSchema } from '../../src/contracts/me';
 import { resetAppleKeys } from '../auth/appleKeys';
+import app from '../index';
 import { createSession, SESSION_MAX_AGE_MS } from '../auth/session';
 import { sha256Hex } from '../lib/crypto';
 import { DAY, HOUR, iso } from '../lib/time';
@@ -210,7 +211,10 @@ describe('Server-Timing and the structured log', () => {
   });
 
   it('static files (the SPA) carry none of it', async () => {
-    const res = await call('/');
+    // a stand-in for the assets binding (tests may run before the SPA is built)
+    const assets = { fetch: () => Promise.resolve(new Response('<!doctype html>')) };
+    const res = await app.request('https://grub.test/radar', {}, { ...env, ASSETS: assets });
+    expect(res.status).toBe(200);
     expect(res.headers.get('server-timing')).toBeNull();
   });
 });
