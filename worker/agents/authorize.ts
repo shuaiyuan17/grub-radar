@@ -22,13 +22,14 @@ import {
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { agentName } from '../../src/contracts/agents';
+import { admitDaily, revokeGrantStatement } from '../db/agents';
 import type { AppEnv } from '../app';
 import { principalResolver } from '../auth/principal';
 import { localeFromAcceptLanguage } from '../auth/signingInPage';
 import { openValue, sealValue } from '../lib/crypto';
 import type { GrantMetadata } from '../routes/agents';
 import { consentCsp, consentErrorPage, consentPage } from './consentPage';
-import { agentOrigin, authServer, GRANTABLE_SCOPES, oauthAllowed } from './oauth';
+import { agentOrigin, authServer, CONSENTS_PER_DAY, GRANTABLE_SCOPES, oauthAllowed } from './oauth';
 
 type Ctx = Context<AppEnv>;
 
@@ -75,16 +76,11 @@ async function authError(c: Ctx, e: unknown): Promise<Response> {
 }
 
 authorize.get('/authorize', async (c) => {
-  const oauth = authServer(agentOrigin(c)).getOAuthApi(c.env);
-  let request: AuthRequest;
-  try {
-    request = await oauth.parseAuthRequest(c.req.raw);
-  } catch (e) {
-    return authError(c, e);
-  }
   const me = person(c);
   if (!me) {
-    // sign in first; the request waits in a sealed cookie (see the header comment)
+    // sign in first, before anything is looked up: a signed-out visitor makes us
+    // fetch no client metadata and write nothing. The request waits in a sealed
+    // cookie (see the header comment) and is validated once they're back.
     const query = new URL(c.req.url).search;
     setCookie(c, PENDING_COOKIE, await sealValue(query, c.env.SESSION_HMAC_KEY, PENDING_INFO), {
       path: '/',
@@ -95,16 +91,23 @@ authorize.get('/authorize', async (c) => {
     });
     return c.redirect(`/auth/apple/start?returnTo=${encodeURIComponent('/oauth/resume')}`, 302);
   }
+  const oauth = authServer(agentOrigin(c)).getOAuthApi(c.env);
+  let request: AuthRequest;
   let details;
   try {
-    // first: a failed lookup leaves nothing in KV
+    request = await oauth.parseAuthRequest(c.req.raw);
+    // before beginConsent: a failed lookup leaves nothing in KV
     details = await oauth.describeConsent(request);
   } catch (e) {
     return authError(c, e);
   }
+  // each consent page is a KV write: a daily cap per person
+  if (!(await admitDaily(c.env.DB, `consent:${me.userId}`, CONSENTS_PER_DAY)))
+    return page(429, consentErrorPage(locale(c), 'too many connections today, try tomorrow.'));
   const consent = await oauth.beginConsent(request);
   const html = consentPage(locale(c), {
-    details,
+    // the name the client chose: shown bounded and without invisible or bidi characters
+    details: { ...details, clientName: agentName(details.clientName) },
     handle: consent.handle,
     signedInAs: me.account ? `${me.account.avatarEmoji} ${me.account.displayName}` : '',
     // a client that names no scopes gets asked for both (MCP clients send the resource's)
@@ -161,6 +164,11 @@ authorize.post('/authorize', async (c) => {
       clientName,
       ...(details.clientDomain ? { clientDomain: details.clientDomain } : {}),
     };
+    // completeAuthorization revokes this client's earlier grant(s) for the same resource
+    // (in KV only): mark them in D1 too, so they stop everywhere at once
+    const earlier = (await oauth.listUserGrants(me.userId)).items.filter(
+      (g) => g.clientId === pending.request.clientId && sameResource(g.resource, pending.request),
+    );
     const { redirectTo } = await oauth.completeAuthorization({
       request: { ...pending.request, scope },
       userId: me.userId,
@@ -168,12 +176,19 @@ authorize.post('/authorize', async (c) => {
       scope,
       props: { userId: me.userId, clientName },
     });
+    if (earlier.length)
+      await c.env.DB.batch(earlier.map((g) => revokeGrantStatement(c.env.DB, g.id, me.userId)));
     pending.headers.set('Location', redirectTo);
     return new Response(null, { status: 302, headers: pending.headers });
   } catch (e) {
     return authError(c, e);
   }
 });
+
+/** Is a stored grant for the resource this request asks for? (Parsed requests always name one.) */
+function sameResource(resource: string | string[] | undefined, request: AuthRequest): boolean {
+  return (Array.isArray(resource) ? resource[0] : resource) === request.resource;
+}
 
 /** Back from Sign in with Apple: on to the consent page with the waiting request. */
 authorize.get('/oauth/resume', async (c) => {

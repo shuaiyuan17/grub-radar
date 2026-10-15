@@ -1,5 +1,5 @@
 import { z } from 'zod/mini';
-import { clampName, sanitizeName } from './me';
+import { sanitizeName } from './me';
 
 /**
  * Wire shapes for the agent door's settings: personal API tokens
@@ -21,9 +21,39 @@ export const TOKEN_NAME_MAX = 40;
 /** Live personal tokens per person. */
 export const TOKENS_MAX = 10;
 
-/** An agent's name as it shows on a card ("found by …"): visible characters, short. */
-export const agentName = (raw: string, fallback = 'an agent') =>
-  clampName(raw, TOKEN_NAME_MAX) || fallback;
+const segmenter = new Intl.Segmenter();
+
+/**
+ * Names an agent may not take: they mean something else in `found_by`
+ * ('me', the demo import, a friend) or look like our own prefix.
+ */
+export function isReservedAgentName(name: string): boolean {
+  const n = name.trim().toLowerCase();
+  return n === 'me' || n === 'demo' || n.startsWith('friend:') || n.startsWith('agent:');
+}
+
+/**
+ * An agent's name as it shows anywhere ("found by …", the consent page,
+ * settings): invisible and bidi characters stripped, cut on whole graphemes
+ * to at most TOKEN_NAME_MAX UTF-16 units (the same limit SpotSchema.foundBy
+ * checks, so a stored name always validates). Empty or reserved -> `fallback`.
+ */
+export function agentName(raw: string, fallback = 'an agent'): string {
+  let out = '';
+  for (const { segment } of segmenter.segment(sanitizeName(raw))) {
+    if (out.length + segment.length > TOKEN_NAME_MAX) break;
+    out += segment;
+  }
+  out = out.trim();
+  return out && !isReservedAgentName(out) ? out : fallback;
+}
+
+/**
+ * `user_places.found_by` for a spot an agent added: 'agent:<name>', so no
+ * agent name can pass for 'me', 'demo' or 'friend:…'.
+ */
+export const FOUND_BY_AGENT = 'agent:';
+export const foundByAgent = (name: string) => `${FOUND_BY_AGENT}${agentName(name)}`;
 
 /** POST /api/me/tokens */
 export const CreateTokenSchema = z.strictObject({
@@ -31,6 +61,7 @@ export const CreateTokenSchema = z.strictObject({
     z.overwrite((s) => sanitizeName(s)),
     z.minLength(1, 'give it a name'),
     z.maxLength(TOKEN_NAME_MAX),
+    z.refine((s) => !isReservedAgentName(s), 'that name is reserved, pick another'),
   ),
   /** spots:read is always included; add spots:write to let it add and edit. */
   scopes: z.array(AgentScopeSchema).check(z.minLength(1), z.maxLength(AGENT_SCOPES.length)),

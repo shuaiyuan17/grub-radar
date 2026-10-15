@@ -26,9 +26,22 @@ CREATE TABLE agent_grants_seen (
 );
 CREATE INDEX agent_grants_seen_user ON agent_grants_seen(user_id);
 
--- Dynamic client registrations per UTC day: each one costs a KV write, and anyone may
--- register, so the Worker refuses past a daily cap (worker/agents/oauth.ts).
-CREATE TABLE oauth_registrations (
-  day   TEXT PRIMARY KEY,                    -- 'YYYY-MM-DD' (UTC)
-  count INTEGER NOT NULL
+-- Disconnected agents (OAuth grants), strongly consistent. Revoking deletes the grant from
+-- KV too, but KV is eventually consistent: another edge may still read the old token record
+-- for up to a minute. Every OAuth bearer is checked against this table, so a disconnected
+-- agent is refused everywhere at once. Written before the KV delete.
+CREATE TABLE agent_grants_revoked (
+  grant_id   TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  revoked_at TEXT NOT NULL
+);
+
+-- Per-day counters for things that cost KV writes and that anyone (or any signed-in person)
+-- can trigger: 'register' (all dynamic client registrations), 'register:<ip>' (per IP),
+-- 'consent:<user_id>' (consent pages opened). The Worker refuses past a cap.
+CREATE TABLE daily_counts (
+  key   TEXT NOT NULL,
+  day   TEXT NOT NULL,                       -- 'YYYY-MM-DD' (UTC)
+  count INTEGER NOT NULL,
+  PRIMARY KEY (key, day)
 );

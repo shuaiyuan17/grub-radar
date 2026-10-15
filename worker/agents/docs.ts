@@ -128,16 +128,11 @@ export const AGENT_PATHS = {
     },
     patch: {
       operationId: 'editSpot',
-      summary: 'Edit your entry (null clears a field)',
+      summary:
+        "Edit a spot (null clears a field). Not visibility or myNote: those are the person's (403); add notes with POST …/notes",
       security: write,
       requestBody: json(ref('SpotPatch')),
       responses: { '200': ok('the spot', ref('Spot')), ...errors },
-    },
-    delete: {
-      operationId: 'removeSpot',
-      summary: 'Take it off your list',
-      security: write,
-      responses: { '204': ok('removed'), ...errors },
     },
   },
   '/api/spots/{id}/been': {
@@ -240,7 +235,11 @@ How to connect (and the rules for doing it): ${origin}/agent-setup.md
 
 ## Privacy
 
-Home is never revealed to an agent: distances from "home" are approximate (a ~1 km grid, km to the nearest 0.5).
+Home's coordinates are never sent to an agent. For an agent, "home" is the centre of the ~1 km grid cell home lies in, and every distance from home is measured from that point: that is the guarantee (home is anywhere in that cell, up to ~700 m from its centre). km and miles from home are also rounded to the nearest 0.5, but that rounding is cosmetic; the grid is what protects home.
+
+## What an agent may change
+
+With spots:write: add spots, mark them been, append notes, edit a spot's fields (PATCH). Not its visibility (private vs friends) or the person's notes as a whole (PATCH myNote); those, and removing spots, are the person's alone (403).
 `;
 }
 
@@ -255,7 +254,7 @@ You were asked to connect yourself to someone's **grub radar**: their list of pl
 - **Ask before you run anything.** Show the person the command or config change below and run it only after they say yes.
 - Don't install anything globally, and don't edit files other than your own MCP configuration.
 - No secret is needed to start: the first time you connect, a browser page opens on ${origin} where **the person signs in and approves** what you may do (read, or read and add/edit). They can disconnect you any time in grub's settings.
-- You will never see where their home is: distances from "home" are approximate on purpose.
+- You will never see where their home is: "home" is the centre of its ~1 km grid cell for you, so distances from it are approximate on purpose (up to ~700 m off).
 
 ## Connect over MCP (preferred)
 

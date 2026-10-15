@@ -82,6 +82,13 @@
       "namespace_id": "1007",
       "simple": { "limit": 30, "period": 60 },
     },
+    // Bad bearer tokens (unknown, malformed, revoked), per client IP: past this, that IP's
+    // tokens aren't looked up for a minute, so junk can't spend KV reads (worker/agents/oauth.ts).
+    {
+      "name": "BEARER_FAIL_LIMITER",
+      "namespace_id": "1008",
+      "simple": { "limit": 20, "period": 60 },
+    },
   ],
   // The OAuth server's own store (workers-oauth-provider): agent clients, grants and tokens, all
   // hashed or encrypted by the library. Nothing else goes here: KV allows 1,000 writes a day.

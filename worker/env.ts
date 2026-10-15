@@ -17,6 +17,8 @@ export interface Env {
   AGENT_LIMITER: RateLimit;
   /** 30 requests a minute per client IP to /authorize, /oauth/token and /oauth/register. */
   OAUTH_LIMITER: RateLimit;
+  /** 20 bad bearer tokens a minute per client IP; past it, that IP's tokens aren't looked up. */
+  BEARER_FAIL_LIMITER: RateLimit;
   /** workers-oauth-provider's store: agent clients, grants, tokens (hashed/encrypted by it). */
   OAUTH_KV: KVNamespace;
 

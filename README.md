@@ -218,7 +218,7 @@ accounts, sessions, places and everyone's own list.
 | `PATCH /api/spots/:id`          | write    | edit; `null` clears; stale `version` → 409; to been = visit     |
 | `POST /api/spots/:id/been`      | write    | `mark_been`: `{ verdict?, on?, note? }`, records a visit        |
 | `POST /api/spots/:id/notes`     | write    | `add_note`: appends `— YYYY-MM-DD: …` to your notes             |
-| `DELETE /api/spots/:id`         | write    | 204; your entry and visits go (and a manual place only you had) |
+| `DELETE /api/spots/:id`         | session  | 204; your entry and visits go (and a manual place only you had) |
 | `POST /api/roll`                | read     | `roll`: `{ origin, maxMinutes?, kinds?, previousId? }`          |
 | `POST /api/spots/import-demo`   | write    | dev only: the fictional demo spots onto your list               |
 | `GET /api/mapkit-token`         | session  | 10-minute MapKit JS token with our origin; 20/min per user      |
@@ -451,7 +451,8 @@ test (`worker/db/migration0004.test.ts`) checks a production-shaped database com
 unchanged. `0006` (single-use sign-in states) adds one table, `auth_states_used`
 (`worker/db/migration0006.test.ts`). `0007` adds `users.name_set_at` and backfills it: every
 name but the stand-in `'you'` counts as chosen (`worker/db/migration0007.test.ts`). `0008`
-(the agent door) adds `api_tokens`, `agent_grants_seen` and `oauth_registrations`. `users.friend_code` from `0001` is unused (friends are by invite link only) and
+(the agent door) adds `api_tokens`, `agent_grants_seen`, `agent_grants_revoked` and
+`daily_counts`. `users.friend_code` from `0001` is unused (friends are by invite link only) and
 stays: SQLite can't drop a `UNIQUE` column in place.
 
 **Deploying**: always `npm run deploy` (or `deploy:built` after a build, e.g. in Workers
@@ -466,30 +467,66 @@ run against the production D1 and secrets.
 Agents (Claude Code, Codex, Cursor, Claude desktop, a bot) act for one person with that
 person's consent. Code in `worker/agents/`; settings at `/settings` in the app.
 
-- **Principal** (`worker/auth/principal.ts`): a live session cookie wins; otherwise a bearer
-  token: a personal token (`grub_pat_…`, D1 `api_tokens`, SHA-256 only), or an OAuth access
-  token issued for `<origin>/api`. Agents reach exactly the spot and place routes (`read` /
-  `write` above, by scope `spots:read` / `spots:write`); every `session` route answers an
-  agent 403. Test: `worker/agents/access.test.ts` (every route × every kind of caller).
+- **Principal** (`worker/auth/principal.ts`): a request with `Authorization: Bearer` is an
+  agent's, whatever cookie it carries (memo §3.3): a personal token (`grub_pat_…`, D1
+  `api_tokens`, SHA-256 only), or an OAuth access token issued for `<origin>/api`. Without
+  one, the session cookie decides. CSRF follows the resolved principal. Agents reach exactly
+  the spot and place routes (`read` / `write` above, by scope `spots:read` / `spots:write`);
+  every `session` route answers an agent 403. Test: `worker/agents/access.test.ts` (every
+  route × every kind of caller).
+- **What an agent may write**: add spots, mark them been, append notes, and PATCH a spot's
+  own fields. Never `visibility` (private → friends is the person's call) or `myNote` as a
+  whole (agents append with `POST …/notes`): 403. Removing a spot (it takes visits and
+  photos with it) is session-only.
+- **"found by"**: stored as `agent:<name>` in `user_places.found_by`, the name sanitised
+  (no invisible or bidi characters) and cut on whole graphemes to 40 UTF-16 units, the same
+  limit `SpotSchema.foundBy` checks; `me`, `demo`, `friend:…`, `agent:…` are reserved. A row
+  that somehow doesn't validate loses its label, never the list.
 - **OAuth 2.1 server** (`@cloudflare/workers-oauth-provider` 1.x split API, same Worker):
-  `/.well-known/oauth-authorization-server`, `/oauth/token`, `/oauth/register` (DCR, capped
-  per day), Client ID Metadata Documents, PKCE S256. `/authorize` is ours: not signed in →
-  Sign in with Apple → back (`/oauth/resume`) → the consent page (client name, redirect host,
-  scopes; en + zh) → the client. Grants live in KV (`OAUTH_KV`); access tokens 4 h, refresh
-  sliding 30 days; "last used" in D1. `friends:read` is reserved, never granted.
+  `/.well-known/oauth-authorization-server`, `/oauth/token`, `/oauth/register` (DCR),
+  Client ID Metadata Documents (fetched only once the person is signed in, never through a
+  redirect), PKCE S256. `/authorize` is ours: not signed in → Sign in with Apple → back
+  (`/oauth/resume`) → the consent page (client name, redirect host, scopes; en + zh) → the
+  client. Access tokens 4 h, refresh sliding 30 days. `friends:read` is reserved, never
+  granted.
+- **Revocation** is strongly consistent: disconnecting writes `agent_grants_revoked` (D1)
+  before deleting from KV, and every OAuth bearer is checked against it (one D1 read, in
+  parallel with the KV read), so a disconnected agent is refused at every edge at once, not
+  when KV catches up. Re-authorizing a client marks its replaced grant the same way.
 - **MCP** at `/mcp` (`createMcpHandler` from `agents/mcp/server`, stateless, behind an
   `OAuthResourceServer`; personal tokens work too). Tools: `list_spots`, `find_nearby`,
   `roll`, `search_places`, `add_spot`, `mark_been`, `add_note`. Write tools need
-  `spots:write` (else a 403 step-up challenge). Spots an agent adds say "found by <agent>".
-- **Home stays private**: for an agent, `origin: home` is snapped to the centre of a ~1 km grid
-  cell before any distance is measured, distances come back as minutes, ring and km/miles to
-  the nearest 0.5, never coordinates. `worker/agents/home.test.ts` trilaterates from three
-  known spots: ~800 m off for an agent (52 m on the person's own precise view).
+  `spots:write` (a 403 step-up challenge at the HTTP layer, and checked again in each tool).
+- **Home stays private**: for an agent, `home` is the centre of the ~1 km grid cell home lies
+  in, and every distance from home (and every Apple search "near home") is measured from that
+  point. That is the guarantee: an agent can learn the cell, never where in it (up to ~700 m
+  from the centre). km/miles from home are also rounded to 0.5, which is cosmetic.
+  `worker/agents/home.test.ts` trilaterates from three known spots: ~800 m off for an agent
+  (52 m on the person's own precise view).
 - **Docs for agents**: `/agent-setup.md` (how to connect each client; the "connect your agent"
   button copies a sentence pointing at it), `/llms.txt`, `/openapi.json` (from the zod
   contracts).
-- **Brakes**: `AGENT_LIMITER` 120/min per credential, `OAUTH_LIMITER` 30/min per IP on
-  `/authorize` and `/oauth/*`, plus the existing write and search limiters.
+- **Brakes**: `AGENT_LIMITER` 120/min per credential; `OAUTH_LIMITER` 30/min per IP on
+  `/authorize` and `/oauth/*`; `BEARER_FAIL_LIMITER` 20 bad tokens/min per IP, past which
+  that IP's tokens aren't looked up for a minute (and a malformed token never reaches KV); plus
+  the existing write and search limiters.
+
+**KV budget** (free plan: 1,000 writes, 1,000 deletes, 1,000 lists, 100,000 reads a day; only
+the OAuth library uses `OAUTH_KV`):
+
+| what                                    | KV cost                                    | cap                                             |
+| --------------------------------------- | ------------------------------------------ | ----------------------------------------------- |
+| a client registers (DCR)                | 1 write                                    | 5 per IP and 50 in all per day (`daily_counts`) |
+| a consent page opens                    | 1 write, then 1 delete when answered       | 20 per person per day                           |
+| "allow"                                 | 1 write (grant) + 1 list (replaced grants) |                                                 |
+| code → tokens                           | 2 writes                                   |                                                 |
+| a refresh (every ~4 h per active agent) | 2 writes                                   |                                                 |
+| each OAuth request (MCP or REST)        | 1 read                                     | `AGENT_LIMITER`, `BEARER_FAIL_LIMITER`          |
+| the settings page                       | 1 list                                     |                                                 |
+| disconnect                              | 1 list + a few deletes                     |                                                 |
+
+An agent in steady use costs about 12 writes a day; a new connection about 5. Ten busy agents
+and a few new connections a day stay under 200 writes. Personal tokens cost no KV at all.
 
 ## Architecture
 

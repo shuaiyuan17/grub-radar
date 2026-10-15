@@ -21,7 +21,14 @@ import { authServer, agentOrigin } from '../agents/oauth';
 import type { AppEnv } from '../app';
 import { csrf } from '../auth/csrf';
 import { limitWrites, requireSession, sessionUser } from '../auth/principal';
-import { createToken, forgetGrant, grantsSeen, listTokens, revokeToken } from '../db/agents';
+import {
+  createToken,
+  forgetGrant,
+  grantsSeen,
+  listTokens,
+  revokeGrantStatement,
+  revokeToken,
+} from '../db/agents';
 import { apiError, readJson } from '../lib/http';
 import { iso } from '../lib/time';
 
@@ -75,6 +82,8 @@ agentSettings.delete('/agents/:id', ...write, async (c) => {
   const id = c.req.param('id');
   const grants = await grantsOf(c, userId);
   if (!grants.some((g) => g.id === id)) return apiError(c, 404, 'not_found', 'no such agent');
+  // D1 first (strongly consistent: refused everywhere from now on), then KV (eventually)
+  await revokeGrantStatement(c.env.DB, id, userId).run();
   await authServer(agentOrigin(c)).getOAuthApi(c.env).revokeGrant(id, userId);
   await forgetGrant(c.env.DB, id, userId);
   return c.body(null, 204);

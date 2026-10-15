@@ -10,6 +10,7 @@
  * one: the loser retries from fresh data, or gets a 409 if the caller said
  * which version it edited.
  */
+import { agentName, FOUND_BY_AGENT } from '../../src/contracts/agents';
 import type { ApplePlace } from '../../src/contracts/places';
 import {
   applyAddNote,
@@ -86,9 +87,25 @@ export function spotsFromRows(result: D1Result | undefined): Spot[] {
 
 const json = (s: string | null): unknown => (s === null ? undefined : JSON.parse(s));
 
-/** `found_by` as a Spot shows it: an agent's name, or nothing ('me', and v2's 'friend:…'). */
-const agentFoundBy = (f: string | undefined): string | undefined =>
-  f && f !== 'me' && f !== 'demo' && !f.startsWith('friend:') ? f : undefined;
+/**
+ * `found_by` as a Spot shows it: the agent's name for 'agent:<name>', else
+ * nothing ('me', 'demo', v2's 'friend:…'). A name that wouldn't pass
+ * SpotSchema (a row written under some older rule) is dropped, never fatal:
+ * one odd label must not break the whole list.
+ */
+export function agentFoundBy(f: string | undefined): string | undefined {
+  if (!f?.startsWith(FOUND_BY_AGENT)) return undefined;
+  const name = f.slice(FOUND_BY_AGENT.length);
+  if (name && agentName(name, '') === name) return name;
+  console.error('unusable found_by dropped');
+  return undefined;
+}
+
+/** What a repository may stamp: 'me', the demo import, or a well-formed 'agent:<name>'. */
+function checkFoundBy(f: string): string {
+  if (f === 'me' || f === 'demo' || agentFoundBy(f) !== undefined) return f;
+  throw new Error('found_by must be "me" or "agent:<name>"');
+}
 
 /**
  * A saved spot that no longer passes SpotSchema. Never dropped quietly (the
@@ -175,7 +192,7 @@ export class D1SpotRepository implements WritableSpotRepository {
   ) {
     this.#db = db;
     this.#userId = userId;
-    this.#foundBy = opts.foundBy ?? 'me';
+    this.#foundBy = checkFoundBy(opts.foundBy ?? 'me');
     this.#now = opts.now ?? Date.now;
     this.#photosDeleted = opts.photosDeleted;
   }

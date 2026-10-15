@@ -1,10 +1,12 @@
 /**
  * Who is calling: a person (session cookie), or an agent acting for one (a
- * personal API token, or an OAuth access token issued for /api). Resolved in
- * that order: a live session cookie wins; otherwise a bearer token is tried.
+ * personal API token, or an OAuth access token issued for /api). A request
+ * with `Authorization: Bearer` is an agent's, valid or not, and its cookie is
+ * ignored; otherwise the session cookie decides.
  */
 import type { Context, MiddlewareHandler } from 'hono';
 import { agentFromToken, agentOrigin, bearerToken, resourcesFor } from '../agents/oauth';
+import { foundByAgent } from '../../src/contracts/agents';
 import { defer, type AppEnv } from '../app';
 import { apiError } from '../lib/http';
 import {
@@ -55,6 +57,21 @@ export function principalResolver(
   prefetchFor: (c: Context<AppEnv>) => Prefetch | null = () => null,
 ): MiddlewareHandler<AppEnv> {
   return async (c, next) => {
+    // an Authorization header decides on its own (memo §3.3): the request is an
+    // agent's, whatever cookie the client happens to carry
+    const bearer = bearerToken(c.req.header('authorization'));
+    if (bearer) {
+      c.set('principal', { kind: 'anonymous' });
+      const agent = await c.var.timing.measure('agent', () =>
+        agentFromToken(c, resourcesFor(agentOrigin(c)).api, bearer),
+      );
+      if (agent === 'throttled') return apiError(c, 429, 'rate_limited', 'too many bad tokens');
+      if (!agent) return apiError(c, 401, 'unauthorized', 'that token is not valid (any more)');
+      if (!(await agentAllowed(c, agent))) return apiError(c, 429, 'rate_limited', 'slow down');
+      c.set('principal', agent);
+      await next();
+      return;
+    }
     const token = readSessionCookie(c);
     const prefetch = token ? prefetchFor(c) : null;
     const result = await c.var.timing.measure('session', () =>
@@ -80,15 +97,6 @@ export function principalResolver(
     } else {
       c.set('principal', { kind: 'anonymous' });
       if (result.kind === 'invalid') clearSessionCookie(c);
-      const bearer = bearerToken(c.req.header('authorization'));
-      if (bearer) {
-        const agent = await c.var.timing.measure('agent', () =>
-          agentFromToken(c, resourcesFor(agentOrigin(c)).api, bearer),
-        );
-        if (!agent) return apiError(c, 401, 'unauthorized', 'that token is not valid (any more)');
-        if (!(await agentAllowed(c, agent))) return apiError(c, 429, 'rate_limited', 'slow down');
-        c.set('principal', agent);
-      }
     }
     await next();
   };
@@ -158,7 +166,7 @@ export const limitWrites: MiddlewareHandler<AppEnv> = async (c, next) => {
 /** The user whose data this request acts on, and how to label what it adds. */
 export function actingUser(p: Principal): { userId: string; foundBy: string } {
   if (p.kind === 'anonymous') throw new Error('requireScope must run first');
-  return { userId: p.userId, foundBy: p.kind === 'agent' ? p.clientName : 'me' };
+  return { userId: p.userId, foundBy: p.kind === 'agent' ? foundByAgent(p.clientName) : 'me' };
 }
 
 /** Is an agent (not the person themselves) asking? Then home is coarse (see services/spots.ts). */

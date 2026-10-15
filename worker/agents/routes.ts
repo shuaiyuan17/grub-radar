@@ -12,12 +12,20 @@
  */
 import { Hono, type Context } from 'hono';
 import { executionCtx, type AppEnv } from '../app';
-import { admitRegistration } from '../db/agents';
+import { admitDaily } from '../db/agents';
+import { isDevelopment } from '../env';
 import { apiError } from '../lib/http';
 import { authorize } from './authorize';
 import { agentSetup, llmsTxt, openApi } from './docs';
 import { serveMcp } from './mcp';
-import { agentOrigin, apiResource, authServer, oauthAllowed, REGISTRATIONS_PER_DAY } from './oauth';
+import {
+  agentOrigin,
+  apiResource,
+  authServer,
+  oauthAllowed,
+  REGISTRATIONS_PER_DAY,
+  REGISTRATIONS_PER_IP_PER_DAY,
+} from './oauth';
 
 export const agentDoor = new Hono<AppEnv>();
 
@@ -28,8 +36,12 @@ agentDoor.route('/', authorize);
 
 agentDoor.post('/oauth/register', async (c) => {
   if (!(await oauthAllowed(c))) return apiError(c, 429, 'rate_limited', 'slow down');
-  // each registration is a KV write, and anyone may register: a daily cap
-  if (!(await admitRegistration(c.env.DB, REGISTRATIONS_PER_DAY)))
+  // each registration is a KV write, and anyone may register: a daily cap per IP (so one IP
+  // can't use up the day for everyone), then one for everyone
+  const ip = c.req.header('cf-connecting-ip') ?? (isDevelopment(c.env) ? null : 'unknown');
+  if (ip && !(await admitDaily(c.env.DB, `register:${ip}`, REGISTRATIONS_PER_IP_PER_DAY)))
+    return apiError(c, 429, 'rate_limited', 'too many new apps from here today, try tomorrow');
+  if (!(await admitDaily(c.env.DB, 'register', REGISTRATIONS_PER_DAY)))
     return apiError(c, 429, 'rate_limited', 'too many new apps today, try tomorrow');
   return toAuthServer(c);
 });

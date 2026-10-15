@@ -159,21 +159,46 @@ export async function forgetGrant(db: D1Database, grantId: string, userId: strin
 }
 
 /**
- * Counts one dynamic client registration against today's cap. true if it may
- * go ahead. One write (an upsert that refuses past `cap`).
+ * Counts one more `key` today, unless it already reached `cap` today. true if
+ * it may go ahead. One write (an upsert that refuses at the cap).
  */
-export async function admitRegistration(
+export async function admitDaily(
   db: D1Database,
+  key: string,
   cap: number,
   now = Date.now(),
 ): Promise<boolean> {
   const row = await db
     .prepare(
-      `INSERT INTO oauth_registrations (day, count) VALUES (?, 1)
-       ON CONFLICT (day) DO UPDATE SET count = count + 1 WHERE count < ?
+      `INSERT INTO daily_counts (key, day, count) VALUES (?, ?, 1)
+       ON CONFLICT (key, day) DO UPDATE SET count = count + 1 WHERE count < ?
        RETURNING count`,
     )
-    .bind(iso(now).slice(0, 10), cap)
+    .bind(key, iso(now).slice(0, 10), cap)
     .first<{ count: number }>();
+  return row !== null;
+}
+
+/** Marks a grant disconnected (strongly consistent; see migration 0008). */
+export function revokeGrantStatement(
+  db: D1Database,
+  grantId: string,
+  userId: string,
+  now = Date.now(),
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `INSERT INTO agent_grants_revoked (grant_id, user_id, revoked_at) VALUES (?, ?, ?)
+       ON CONFLICT (grant_id) DO NOTHING`,
+    )
+    .bind(grantId, userId, iso(now));
+}
+
+/** Was this grant disconnected? One indexed read. */
+export async function isGrantRevoked(db: D1Database, grantId: string): Promise<boolean> {
+  const row = await db
+    .prepare('SELECT 1 AS x FROM agent_grants_revoked WHERE grant_id = ?')
+    .bind(grantId)
+    .first();
   return row !== null;
 }

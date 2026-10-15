@@ -30,6 +30,7 @@ import {
   limitWrites,
   prefetched,
   requireScope,
+  requireSession,
   type Prefetch,
 } from '../auth/principal';
 import { sweepPhotoDeletions } from '../db/photos';
@@ -204,9 +205,23 @@ spots.post('/', ...write, async (c) => {
   }
 });
 
+/**
+ * What an agent may not change with PATCH, even holding spots:write:
+ * `visibility` (making a private spot visible to friends is the person's
+ * call), and `myNote` (a PATCH replaces the person's notes wholesale; agents
+ * append with POST …/notes instead). Everything else (the one-liner, tags,
+ * dishes, status, verdict…) is the kind of fix an agent is asked to make.
+ */
+export const PERSON_ONLY_FIELDS = ['visibility', 'myNote'] as const;
+
 spots.patch('/:id', ...write, async (c) => {
   const body = await readWrite(c, SpotPatchSchema);
   if (!body.ok) return body.res;
+  if (isAgent(c)) {
+    const off = PERSON_ONLY_FIELDS.filter((k) => k in body.data);
+    if (off.length)
+      return apiError(c, 403, 'forbidden', `only the person can change ${off.join(', ')}`);
+  }
   try {
     return c.json(await repoFor(c).update(c.req.param('id'), body.data));
   } catch (e) {
@@ -242,7 +257,11 @@ spots.post('/:id/notes', ...write, async (c) => {
   }
 });
 
-spots.delete('/:id', ...write, async (c) => {
+/**
+ * Removing a spot takes its visits and photos with it: the person's call
+ * alone, never an agent's (an agent gets 403 before anything else runs).
+ */
+spots.delete('/:id', requireSession, ...write, async (c) => {
   try {
     await repoFor(c).remove(c.req.param('id'));
     return c.body(null, 204);

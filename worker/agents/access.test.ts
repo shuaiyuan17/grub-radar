@@ -25,7 +25,8 @@ const ROUTES: [string, string, Kind][] = [
   ['PATCH', '/api/spots/p-x', 'write'],
   ['POST', '/api/spots/p-x/been', 'write'],
   ['POST', '/api/spots/p-x/notes', 'write'],
-  ['DELETE', '/api/spots/p-x', 'write'],
+  // removing a spot (and its photos) is the person's alone
+  ['DELETE', '/api/spots/p-x', 'session'],
   ['POST', '/api/spots/import-demo', 'write'],
   ['GET', '/api/me', 'session'],
   ['PATCH', '/api/me', 'session'],
@@ -140,12 +141,26 @@ describe('details', () => {
     expect(body).not.toContain('Mo');
   });
 
-  it('a live session wins over a bearer token (cookie first)', async () => {
-    const res = await request('GET', '/api/me', { cookie: session, ...bearer('patRead')() });
-    expect(res.status).toBe(200);
+  it('a bearer token decides, whatever cookie comes with it (memo §3.3)', async () => {
+    // a person's live cookie doesn't lift an agent to a person
+    const withPat = await request('GET', '/api/me', { cookie: session, ...bearer('patRead')() });
+    expect(withPat.status).toBe(403);
+    // and a bad token isn't rescued by the cookie
+    const bad = await request('GET', '/api/spots', {
+      cookie: session,
+      authorization: 'Bearer nope',
+    });
+    expect(bad.status).toBe(401);
+    // CSRF follows the resolved principal: an agent's JSON write needs no CSRF header
+    const write = await call('/api/spots', {
+      method: 'POST',
+      headers: { cookie: session, ...bearer('patWrite')(), 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Kite', kind: 'coffee', location: { lat: 47.6, lng: -122.3 } }),
+    });
+    expect(write.status).toBe(201);
   });
 
-  it('a dead cookie falls through to the bearer token', async () => {
+  it('a dead cookie next to a good token: the token decides', async () => {
     const res = await request('GET', '/api/spots', {
       cookie: '__Host-grub_session=stale',
       ...bearer('patRead')(),

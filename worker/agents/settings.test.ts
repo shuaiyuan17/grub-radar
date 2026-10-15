@@ -160,23 +160,30 @@ describe("the OAuth server's brakes", () => {
     expect(limit).toHaveBeenCalledWith({ key: 'oauth:203.0.113.9' });
   });
 
-  it('caps new client registrations per day (each one is a KV write)', async () => {
+  it('caps new client registrations per IP per day, and for everyone', async () => {
+    const register = (ip: string) =>
+      call('/oauth/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'cf-connecting-ip': ip },
+        body: JSON.stringify({
+          client_name: 'x',
+          redirect_uris: ['https://x.example/cb'],
+          token_endpoint_auth_method: 'none',
+        }),
+      });
+    for (let i = 0; i < 5; i++) expect((await register('198.51.100.1')).status).toBe(201);
+    expect((await register('198.51.100.1')).status).toBe(429);
+    // another IP isn't blocked by the first one
+    expect((await register('198.51.100.2')).status).toBe(201);
+    // the global cap
     const today = new Date().toISOString().slice(0, 10);
     await env.DB.prepare(
-      'INSERT INTO oauth_registrations (day, count) VALUES (?, 50) ON CONFLICT (day) DO UPDATE SET count = 50',
+      "INSERT INTO daily_counts (key, day, count) VALUES ('register', ?, 50) ON CONFLICT (key, day) DO UPDATE SET count = 50",
     )
       .bind(today)
       .run();
-    const res = await call('/oauth/register', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        client_name: 'one too many',
-        redirect_uris: ['https://x.example/cb'],
-      }),
-    });
-    expect(res.status).toBe(429);
-    await env.DB.prepare('DELETE FROM oauth_registrations').run();
+    expect((await register('198.51.100.3')).status).toBe(429);
+    await env.DB.prepare('DELETE FROM daily_counts').run();
   });
 });
 

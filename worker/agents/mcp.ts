@@ -11,6 +11,7 @@
  */
 import {
   insufficientScope,
+  OAuthError,
   OAuthResourceServer,
   type OAuthResourceContext,
 } from '@cloudflare/workers-oauth-provider';
@@ -18,6 +19,7 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { createMcpHandler } from 'agents/mcp/server';
 import type { Context } from 'hono';
 import * as z from 'zod';
+import { foundByAgent } from '../../src/contracts/agents';
 import { AddApplePlaceSchema, AddByQuerySchema } from '../../src/contracts/places';
 import { NEARBY_DEFAULT_LIMIT, NEARBY_MAX_LIMIT } from '../../src/contracts/spots';
 import { AddNoteSchema, MarkBeenSchema, SpotOpError } from '../../src/domain/edits';
@@ -50,7 +52,7 @@ export const INSTRUCTIONS = `grub radar is one person's list of places to eat: r
 
 - Spots are identified by "id" (e.g. "p-01j..."). Get ids from list_spots, find_nearby or roll.
 - To add a place, prefer search_places then add_spot with the applePlaceId of the right result. add_spot with a free-text "query" adds only a clear match; otherwise it returns candidates for you to pick from.
-- "home" as an origin means the person's saved home. You never see where home is: distances from home are deliberately approximate (minutes and a ring, km to the nearest 0.5). Use explicit coordinates when the person tells you where they are.
+- "home" as an origin means the person's saved home. You never see where home is: for you, home is the centre of its ~1 km grid cell, so distances from it are approximate (up to ~700 m off). Use explicit coordinates when the person tells you where they are.
 - Only mark a spot as been, give a verdict or write notes when the person told you so; write notes in their words. Say "found by" is you: every spot you add is labelled with your name.
 - Never invent places, verdicts or opening hours.`;
 
@@ -109,8 +111,14 @@ export function buildServer(c: Context<AppEnv>, agent: AgentPrincipal): McpServe
     { name: 'grub-radar', title: 'grub radar', version: VERSION },
     { instructions: INSTRUCTIONS },
   );
-  const repo = () => new D1SpotRepository(c.env.DB, agent.userId, { foundBy: agent.clientName });
+  const repo = () =>
+    new D1SpotRepository(c.env.DB, agent.userId, {
+      foundBy: foundByAgent(agent.clientName),
+    });
+  // every write tool: the scope again (not only the HTTP step-up), then the brake
   const writeBrake = async () => {
+    if (!agent.scopes.includes('spots:write'))
+      return failure('forbidden', 'this connection may only read: reconnect and allow adding');
     const { success } = await c.env.WRITE_LIMITER.limit({ key: `write:${agent.userId}` });
     return success ? null : failure('rate_limited', 'slow down');
   };
@@ -406,6 +414,12 @@ function mcpResource(origin: string): OAuthResourceServer<McpEnv, AgentPrincipal
       requiredScopes: REQUIRED_SCOPES,
       validateToken: (env) => async (resource, token) => {
         const agent = await agentFromToken(env.hono, resource, token);
+        if (agent === 'throttled')
+          throw new OAuthError('temporarily_unavailable', {
+            description: 'too many bad tokens from here',
+            statusCode: 429,
+            headers: { 'Retry-After': '60' },
+          });
         return agent
           ? { props: agent, audience: resource, scope: agent.scopes, userId: agent.userId }
           : null;
