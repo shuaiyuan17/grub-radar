@@ -90,11 +90,14 @@ export function verdictFromRating(rating: number): Verdict {
 export function withLegacyRating(body: unknown): unknown {
   if (!body || typeof body !== 'object' || Array.isArray(body) || !('rating' in body)) return body;
   const { rating, ...rest } = body as Record<string, unknown>;
+  const valid =
+    rating === null ||
+    (typeof rating === 'number' && Number.isInteger(rating) && rating >= 1 && rating <= 10);
+  // An invalid rating stays in the body so the strict schema refuses it, even
+  // when a verdict is sent too.
+  if (!valid) return body;
   if ('verdict' in rest) return rest;
-  if (rating === null) return { ...rest, verdict: null };
-  if (typeof rating === 'number' && Number.isInteger(rating) && rating >= 1 && rating <= 10)
-    return { ...rest, verdict: verdictFromRating(rating) };
-  return body;
+  return { ...rest, verdict: rating === null ? null : verdictFromRating(rating) };
 }
 
 /** POST /api/spots and the `add_spot` tool, by hand: name, kind and where. */

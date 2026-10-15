@@ -9,6 +9,7 @@ import {
   changesPlace,
   guessLang,
   MarkBeenSchema,
+  withLegacyRating,
   parseNoteEntries,
   spotFromInput,
   SpotOpError,
@@ -223,5 +224,25 @@ describe('guards', () => {
     expect(spot.order).toHaveLength(3);
     // and a full range still finds a free one
     expect(withDishIds([{ id: 'd1' }, { id: 'd999999' }, {}])[2]?.id).toBe('d2');
+  });
+});
+
+describe('withLegacyRating', () => {
+  it('maps a valid legacy rating to a verdict', () => {
+    expect(withLegacyRating({ rating: 9 })).toEqual({ verdict: 'good' });
+    expect(withLegacyRating({ rating: 6 })).toEqual({ verdict: 'meh' });
+    expect(withLegacyRating({ rating: null })).toEqual({ verdict: null });
+  });
+
+  it('lets an explicit verdict win over a valid rating', () => {
+    expect(withLegacyRating({ verdict: 'bad', rating: 10 })).toEqual({ verdict: 'bad' });
+  });
+
+  it('keeps an invalid rating so the strict schema refuses it, even next to a verdict', () => {
+    expect(withLegacyRating({ verdict: 'good', rating: 'not-a-number' })).toEqual({
+      verdict: 'good',
+      rating: 'not-a-number',
+    });
+    expect(withLegacyRating({ rating: 11 })).toEqual({ rating: 11 });
   });
 });
