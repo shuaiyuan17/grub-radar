@@ -344,6 +344,7 @@ const en = {
   noteEmpty: 'write something first.',
 
   wallTagline: 'where should we *eat*?',
+  legal: { label: 'legal', privacy: 'privacy policy', terms: 'terms of service' },
   /** Apple's own title for the button (HIG); keep it verbatim. */
   appleSignIn: 'Sign in with Apple',
   checkingWho: 'checking who you are…',
@@ -815,6 +816,7 @@ const zh: Messages = {
   noteEmpty: '先写点什么。',
 
   wallTagline: '今天去哪儿*吃*？',
+  legal: { label: '条款与隐私', privacy: '隐私政策', terms: '服务条款' },
   /** Apple's localized button title (HIG). */
   appleSignIn: '通过 Apple 登录',
   checkingWho: '确认一下你是谁…',

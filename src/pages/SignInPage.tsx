@@ -4,6 +4,7 @@ import { AppleSignInButton } from '../components/AppleSignInButton';
 import { Headline, Logo } from '../components/bits';
 import { Icon } from '../components/Icon';
 import { Ink } from '../components/Ink';
+import { LegalLinks } from '../components/LegalLinks';
 import { SIGNIN_RESULTS, type SigninResult } from '../contracts/errors';
 import { LangToggle } from '../components/controls';
 import { parseHeadline } from '../domain/headlines';
@@ -117,6 +118,9 @@ export function SignInPage({ backdrop }: { backdrop?: ReactNode }) {
           />
         </section>
       </main>
+      <footer className={styles.footer}>
+        <LegalLinks />
+      </footer>
     </div>
   );
 }

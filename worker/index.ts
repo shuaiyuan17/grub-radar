@@ -13,6 +13,7 @@ import { apiError } from './lib/http';
 import { timedD1 } from './lib/timedD1';
 import { Timing } from './lib/timing';
 import { agentDoor } from './agents/routes';
+import { legal } from './legal/routes';
 import { admin, noSuchEndpoint } from './routes/admin';
 import { agentSettings } from './routes/agents';
 import { auth } from './routes/auth';
@@ -114,6 +115,8 @@ app.route('/api/admin', admin);
 
 app.all('/api/*', noSuchEndpoint);
 app.all('/auth/*', (c) => apiError(c, 404, 'not_found', 'no such endpoint'));
+// the Privacy Policy and Terms of Service: public, plain HTML
+app.route('/', legal);
 // the agent door: OAuth, consent, MCP, and the docs agents read
 app.route('/', agentDoor);
 app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));

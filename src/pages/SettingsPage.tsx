@@ -4,6 +4,7 @@ import { BottomNav } from '../components/controls';
 import { formErrorClass, inputClass, linkButtonClass } from '../components/fieldClasses';
 import { InkBox, InkButton } from '../components/fields';
 import { Ink } from '../components/Ink';
+import { LegalLinks } from '../components/LegalLinks';
 import type { AgentScope, ConnectedAgent, PersonalToken } from '../contracts/agents';
 import { TOKEN_NAME_MAX } from '../contracts/agents';
 import { parseHeadline } from '../domain/headlines';
@@ -318,6 +319,7 @@ export function SettingsPage() {
           />
         </section>
       </div>
+      <LegalLinks />
       <BottomNav />
     </main>
   );

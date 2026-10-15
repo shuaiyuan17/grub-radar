@@ -26,6 +26,11 @@
       "/openapi.json",
       "/llms.txt",
       "/agent-setup.md",
+      // the legal pages: server-rendered, readable signed out and without JS
+      "/privacy",
+      "/privacy/",
+      "/terms",
+      "/terms/",
     ],
   },
   "d1_databases": [

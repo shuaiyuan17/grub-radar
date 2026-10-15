@@ -28,6 +28,19 @@ describe('/settings', () => {
     expect(await screen.findByText('copied. paste it to your agent.')).toBeInTheDocument();
   });
 
+  it('links the privacy policy and terms', async () => {
+    renderAt('/settings');
+    const nav = await screen.findByRole('navigation', { name: 'legal' });
+    expect(within(nav).getByRole('link', { name: 'privacy policy' })).toHaveAttribute(
+      'href',
+      '/privacy',
+    );
+    expect(within(nav).getByRole('link', { name: 'terms of service' })).toHaveAttribute(
+      'href',
+      '/terms',
+    );
+  });
+
   it('lists connected agents and disconnects one', async () => {
     const agents = fakeAgentsClient([AGENT]);
     const { user } = renderAt('/settings', { agents });
