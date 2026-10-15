@@ -10,7 +10,8 @@ Apple Maps.
 
 It's built for phones first (~390px wide) and has a proper desktop layout (≥960px: card grid
 with a radar and "can't decide? roll" on the side). The look follows a hand-drawn mockup: Shantell
-Sans + Caveat, paper-and-ink colours, and borders wobbled by an SVG turbulence filter.
+Sans + Caveat, paper-and-ink colours, and wobbly hand-drawn outlines (see **Hand-drawn look
+and motion** below).
 
 ## Run it
 
@@ -40,7 +41,11 @@ The first `test:e2e` run needs `npx playwright install chromium`.
 - `/` list. `?mode=near|weekend|coffee`, `?tag=spicy`, `?q=search`, `?roll=<spot id>`
   - **near me**: food within 20 min. **weekend**: anything but coffee, further than 20 min.
     **coffee**: coffee + bakeries within 30 min. Thresholds live in `src/domain/modes.ts`.
+  - The list is sorted by actual distance ("closest first"). Travel minutes are an estimate
+    shown on each card; the radar's rings use them.
   - Search looks across every spot (name, cuisine, tags, notes, dishes) regardless of mode.
+    It ignores case, accents, apostrophes (straight or curly) and punctuation, so
+    `mama kos` finds "Mama Ko's".
 - `/place/:id` one spot.
 - `/radar` `?reach=0..3` (10 min … road trip), `?kinds=food,coffee`, `?sel=<spot id>`.
 
@@ -51,8 +56,11 @@ Weekend daytime also opens the list in **weekend** mode. The copy lives in
 [`src/copy/headlines.ts`](src/copy/headlines.ts); wrap the highlighted words in `*asterisks*`.
 The picker is `pickHeadline(date, random)` in `src/domain/headlines.ts`.
 
-**from: home / where i am.** Home is a configured origin. "where i am" asks the browser for its
-location once; if that's blocked or times out you get a note and distances stay measured from home.
+**from: home / where i am.** "where i am" asks the browser for its location once; if that's
+blocked or times out you get a note and distances stay measured from home. **Home** is yours to
+set from the app ("set your home": use where you are now, or type `lat, lng`). It's saved in
+this browser's `localStorage` only. Until you set one, distances are measured from a demo home
+in downtown Seattle, and the app says so.
 
 ## How travel time is estimated
 
@@ -99,16 +107,30 @@ The data is validated with zod when the app loads and in `npm test`, so a typo f
 Everything in `src/data/seed.ts` is **fictional demo data** scattered around a demo origin in
 downtown Seattle. Don't commit real addresses, real names or private notes.
 
-Your real home origin goes in a gitignored env file:
+Your real home is **never** in the code, the config or the build: there is no env var for it.
+You set it in the app and it lives in your browser's `localStorage` on that device. The site
+can be deployed publicly without leaking where you live.
 
-```sh
-cp .env.example .env.local
-# then edit VITE_HOME="lat,lng"
-```
+## Hand-drawn look and motion
 
-Heads-up: `VITE_*` values are compiled into the JavaScript bundle. If you deploy a build made
-with your real `VITE_HOME`, anyone who opens the site can read it. Leave it unset for public
-deploys, or keep that deployment private.
+- **Outlines.** Every sketchy box (`.sk`) gets an `<Ink>` child: an SVG with a wobbly
+  rounded-rect path, its fill and its ink shadow. The path is computed in JS
+  (`src/lib/inkPath.ts`) from the element's size and CSS `border-radius`, using smooth seeded
+  noise, so each element always wobbles the same way. One shared `ResizeObserver` redraws a
+  path only when its element changes size. There are no runtime SVG filters: the first version
+  used `feTurbulence` + `feDisplacementMap` on every box, which is CPU-rasterised (badly so
+  in WebKit) and made window resizing janky.
+- **Boil** (outlines swapping like hand-drawn animation) only runs while you hover or focus
+  the logo or a dice button. Nothing animates at idle.
+- **Motion** is light and only uses `transform` and `opacity`: cards stagger in on load and
+  on mode/chip changes, buttons squash a little when pressed, radar dots pop out from home,
+  out-of-reach dots fade, the dice wiggles when you roll, the headline highlighter draws in
+  once, and route changes cross-fade via the View Transitions API (a no-op where it isn't
+  supported). Timings and easings are CSS custom properties at the top of
+  `src/styles/global.css`.
+- **`prefers-reduced-motion: reduce` turns all of it off**, which Playwright checks.
+- `node scripts/perf.mjs <url>` measures resize frame times and idle work against a running
+  `npm run preview` (see the script for options).
 
 ## Architecture
 
@@ -122,9 +144,16 @@ src/
   components/, pages/   the UI.
 ```
 
-The UI only reads spots through `SpotRepository` (`list()`, `get(id)`); it never imports the
-seed file. ESLint enforces both rules: `src/domain` can't import React or app code, and only
-`src/data` may import the seed.
+The UI only reads spots through `SpotRepository` (`list()`, `get(id)`, plus an optional
+synchronous `snapshot()` for in-memory sources); it never imports the seed file. The seed is
+validated lazily, so bad data shows an error in the app instead of a blank page. The
+boundaries are enforced twice:
+
+- **ESLint**: `src/domain` can't import React, app code or config, and can't touch browser
+  globals (`window`, `location`, `fetch`, `globalThis`, ...). Only `src/data` may import the
+  seed.
+- **TypeScript**: `tsconfig.domain.json` typechecks the domain on its own with no DOM lib, so
+  a stray browser API fails `tsc -b`, not just lint.
 
 The domain operations are shaped to map 1:1 onto future API endpoints / MCP tools:
 
@@ -144,7 +173,7 @@ change.
 
 ## Stack
 
-Vite 8, React 19, TypeScript 6 (strict, `noUncheckedIndexedAccess`), React Router 8, zod 4,
+Vite 8, React 19, TypeScript 6 (strict, `noUncheckedIndexedAccess`), React Router 8, zod 4 (`zod/mini`),
 plain CSS (custom properties + CSS modules), self-hosted fonts via Fontsource. Vitest 5 +
 Testing Library, Playwright with axe-core checks, ESLint 10 (typescript-eslint strict,
 type-checked) + Prettier, GitHub Actions CI.
