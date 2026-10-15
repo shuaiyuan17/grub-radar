@@ -1,0 +1,89 @@
+.landing {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  overflow: hidden;
+}
+/* layer 1: fills the screen. Rings today; a MapKit map of nearby spots next. */
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.rings {
+  width: 100%;
+  height: 100%;
+}
+/* the language switch stays at the very top, as everywhere else */
+.langRow {
+  position: absolute;
+  top: 12px;
+  right: var(--page-pad);
+  z-index: 2;
+}
+/* layer 2: the card, centred (later: a sheet over the map) */
+.stage {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px var(--page-pad);
+}
+.card {
+  --fill: var(--card);
+  border-radius: var(--r-panel);
+  padding: 28px 24px 30px;
+  width: min(100%, 440px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+}
+.logo {
+  transform: scale(1.25);
+  margin: 6px 0 2px;
+}
+.tagline {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.status {
+  display: contents;
+}
+.notice {
+  --fill: var(--sticky);
+  --sx: 2px;
+  --sy: 3px;
+  border-radius: 4px 6px 3px 5px;
+  padding: 8px 6px 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  text-align: left;
+  transform: rotate(-0.6deg);
+}
+.notice p {
+  flex: 1;
+}
+.closeBtn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (min-width: 960px) {
+  .card {
+    padding: 40px 40px 42px;
+    gap: 22px;
+  }
+  .tagline {
+    font-size: 38px;
+  }
+}

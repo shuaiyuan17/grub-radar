@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { devLogin } from './session';
 
 const WEEKDAY_DINNER = new Date(2026, 9, 14, 19, 0);
 
@@ -9,6 +10,11 @@ async function zh(page: Page) {
     localStorage.setItem('grub-radar:lang', 'zh-Hans');
   });
 }
+
+// the app is behind the login wall: every test here starts signed in
+test.beforeEach(async ({ page }) => {
+  await devLogin(page);
+});
 
 const isZhFont = (url: string) => /zcool-kuaile|long-cang/.test(url);
 

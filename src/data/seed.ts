@@ -1,7 +1,8 @@
 import type { SpotInput } from '../domain/spot';
 
 /**
- * DEMO DATA, served by StaticSpotRepository. This repo is public: every place, note and coordinate here is
+ * DEMO DATA. Served by the Worker to signed-in users until PR 2 moves spots
+ * into D1, and used by tests. Never bundled into the SPA. This repo is public: every place, note and coordinate here is
  * fictional, scattered around a demo origin in downtown Seattle. Keep real
  * addresses, names and private notes out of this file.
  *

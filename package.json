@@ -9,7 +9,14 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "deploy": "npm run build && npm run deploy:built",
+    "deploy:built": "wrangler d1 migrations apply grub-radar --remote -c dist/grub_radar/wrangler.json && wrangler deploy -c dist/grub_radar/wrangler.json",
+    "deploy:dry-run": "npm run build && wrangler deploy --dry-run --outdir dist-worker -c dist/grub_radar/wrangler.json",
     "preview": "vite preview",
+    "db:migrate:local": "wrangler d1 migrations apply grub-radar --local",
+    "db:migrate:remote": "wrangler d1 migrations apply grub-radar --remote",
+    "dev:vars": "node scripts/dev-vars.mjs",
+    "apple-stub": "node e2e/apple-stub.ts",
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -24,6 +31,8 @@
     "@fontsource/long-cang": "^5.3.0",
     "@fontsource/shantell-sans": "^5.3.0",
     "@fontsource/zcool-kuaile": "^5.3.0",
+    "hono": "^4.13.13",
+    "jose": "^6.2.12",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router": "^8.4.0",
@@ -31,6 +40,9 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@cloudflare/vite-plugin": "^1.64.0",
+    "@cloudflare/vitest-plugin": "^1.4.2",
+    "@cloudflare/workers-types": "^5.20261015.1",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.64.1",
     "@testing-library/dom": "^10.4.2",
@@ -51,6 +63,11 @@
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.2",
     "vite": "^8.3.4",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.4",
+    "wrangler": "^4.151.0"
+  },
+  "allowScripts": {
+    "workerd@1.20261012.1": true,
+    "esbuild@0.28.2": true
   }
 }

@@ -1,0 +1,48 @@
+.frame {
+  --fill: var(--card);
+  --bw: 2px;
+  display: inline-flex;
+  padding: 7px;
+  border-radius: var(--r-btn);
+}
+/* Apple HIG: black style, min 140×30 pt, corner radius at most half the height,
+   title ~43% of the height in the system font. */
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 260px;
+  height: 50px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 9px;
+  background: #000;
+  color: #fff;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  cursor: pointer;
+}
+.button:focus-visible {
+  outline: 3px dashed var(--ink);
+  outline-offset: 10px;
+}
+.button:active {
+  opacity: 0.85;
+}
+.logo {
+  width: 17px;
+  height: 20px;
+  margin-top: -3px;
+  flex-shrink: 0;
+}
+@media (max-width: 359.98px) {
+  .button {
+    min-width: 0;
+    width: 100%;
+  }
+}

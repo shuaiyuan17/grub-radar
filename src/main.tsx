@@ -8,15 +8,13 @@ import './styles/global.css';
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createBrowserRouter } from 'react-router';
-import { RouterProvider } from 'react-router/dom';
-import { routes } from './routes';
+import { App } from './App';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('missing #root');
 
 createRoot(root).render(
   <StrictMode>
-    <RouterProvider router={createBrowserRouter(routes)} />
+    <App />
   </StrictMode>,
 );

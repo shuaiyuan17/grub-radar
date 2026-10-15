@@ -3,6 +3,7 @@
   "references": [
     { "path": "./tsconfig.domain.json" },
     { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.worker.json" },
     { "path": "./tsconfig.node.json" }
   ]
 }

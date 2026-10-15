@@ -1,6 +1,7 @@
 import { Ink } from '../components/Ink';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
+import { AccountMenu } from '../components/AccountMenu';
 import { Headline, Logo } from '../components/bits';
 import {
   BottomNav,
@@ -137,6 +138,7 @@ export function ListPage() {
             <Ink />
             <Icon name="locate" size={22} strokeWidth={2} />
           </button>
+          <AccountMenu compact />
         </div>
       </div>
 
