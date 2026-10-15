@@ -1,5 +1,5 @@
 import { Ink } from './Ink';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Kind } from '../domain/spot';
 import type { From } from '../lib/origin';
 import {
@@ -15,6 +15,7 @@ const STATIC_DOT_PX = 16;
 import { byTravelTime, type SpotView } from '../domain/spotView';
 import { useT } from '../i18n/context';
 import type { Ring } from '../domain/travel';
+import { SpotLabel } from './bits';
 import { Icon } from './Icon';
 import styles from './Radar.module.css';
 
@@ -53,6 +54,7 @@ export function Radar({
   className = '',
 }: RadarProps) {
   const t = useT();
+  const uid = useId();
   const interactive = Boolean(onSelect);
   const ref = useRef<HTMLDivElement>(null);
   // spacing depends on the rendered size: 40px tap targets must not overlap
@@ -154,18 +156,22 @@ export function Radar({
             type="button"
             className={`${styles.dot} ${inReach ? '' : styles.out}`}
             style={pos}
-            aria-label={t.dotLabel(
-              v.spot.name,
-              t.kinds[v.spot.kind],
-              t.minutes(v.travel.minutes),
-              t.travelMode[v.travel.mode],
-              inReach,
-            )}
+            aria-labelledby={`${uid}-${v.spot.id}`}
             aria-pressed={selected}
             onClick={() => {
               onSelect(v.spot.id);
             }}
           >
+            <SpotLabel
+              id={`${uid}-${v.spot.id}`}
+              spot={v.spot}
+              parts={t.dotLabel(
+                t.kinds[v.spot.kind],
+                t.minutes(v.travel.minutes),
+                t.travelMode[v.travel.mode],
+                inReach,
+              )}
+            />
             {selected && (
               <span aria-hidden="true" className={`sk flat ${styles.selRing}`}>
                 <Ink />

@@ -5,7 +5,7 @@ import { appleMapsUrl } from '../domain/maps';
 import { parseHeadline } from '../domain/headlines';
 import { dataLang } from '../domain/spot';
 import { useT } from '../i18n/context';
-import { Headline } from '../components/bits';
+import { Headline, SpotLabel } from '../components/bits';
 import { useOrigin } from '../lib/origin';
 import { useSpotViews } from '../lib/useSpotViews';
 import { FOOD_ICONS } from '../components/icons';
@@ -232,8 +232,9 @@ export function PlacePage() {
               href={appleMapsUrl(spot.name, spot.location, travel.mode)}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label={t.mapsLabel(spot.name, travel.mode)}
+              aria-labelledby="take-label"
             >
+              <SpotLabel id="take-label" parts={t.mapsLabel(travel.mode)} spot={spot} />
               <Ink />
               <Icon name="go" size={22} />
               {t.takeMeThere}

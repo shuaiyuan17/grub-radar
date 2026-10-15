@@ -1,7 +1,7 @@
 import { Ink } from './Ink';
-import type { CSSProperties } from 'react';
+import { useId, type CSSProperties } from 'react';
 import { Link } from 'react-router';
-import type { Spot } from '../domain/spot';
+import { dataLang, type Spot } from '../domain/spot';
 import { appleMapsUrl } from '../domain/maps';
 import { useT } from '../i18n/context';
 import type { TravelEstimate } from '../domain/travel';
@@ -53,17 +53,22 @@ export function GoLink({
   labelClassName?: string;
 }) {
   const t = useT();
+  const labelId = useId();
   return (
     <a
       className={`sk press ${styles.go} ${className}`}
       href={appleMapsUrl(spot.name, spot.location, travel.mode)}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={t.mapsLabel(spot.name, travel.mode)}
+      aria-labelledby={labelId}
     >
+      <SpotLabel id={labelId} parts={t.mapsLabel(travel.mode)} spot={spot} />
       <Ink />
       <Icon name="go" size={20} />
-      <span className={labelClassName ?? 'visually-hidden'}>{label ?? t.appleMaps}</span>
+      {/* visible on desktop; the accessible name (which includes it) comes from SpotLabel */}
+      <span className={labelClassName ?? 'visually-hidden'} aria-hidden="true">
+        {label ?? t.appleMaps}
+      </span>
     </a>
   );
 }
@@ -90,5 +95,29 @@ export function Headline({
       <span className={draw ? 'hl hl-draw' : 'hl'}>{hl}</span>
       {post}
     </h1>
+  );
+}
+
+/**
+ * A screen-reader label that embeds a spot name: the surrounding words are in
+ * the UI language, the name keeps the spot's own lang. Point the control's
+ * aria-labelledby at `id` (an aria-label string can't carry per-word lang).
+ */
+export function SpotLabel({
+  id,
+  parts,
+  spot,
+}: {
+  id: string;
+  parts: readonly [string, string];
+  spot: Pick<Spot, 'name' | 'lang'>;
+}) {
+  const [before, after] = parts;
+  return (
+    <span id={id} className="visually-hidden">
+      {before}
+      <span lang={dataLang(spot)}>{spot.name}</span>
+      {after}
+    </span>
   );
 }

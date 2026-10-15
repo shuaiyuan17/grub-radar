@@ -134,4 +134,38 @@ describe('language', () => {
     renderAt('/place/two-fires');
     expect(await screen.findByText('midnight')).toBeInTheDocument();
   });
+
+  it('labels that embed a spot name keep the name in its own lang (no aria-label strings)', async () => {
+    localStorage.setItem(LANG_KEY, 'zh-Hans');
+    const expectLangTaggedName = (el: HTMLElement, name: string) => {
+      expect(el).not.toHaveAttribute('aria-label');
+      const label = document.getElementById(el.getAttribute('aria-labelledby') ?? '');
+      expect(label).not.toBeNull();
+      expect(label).not.toHaveAttribute('lang'); // the surrounding words: page language (zh)
+      const nameSpan = label!.querySelector('[lang="en"]');
+      expect(nameSpan).toHaveTextContent(name);
+    };
+
+    const { unmount } = renderAt('/');
+    const card = (await screen.findAllByRole('article'))[0]!;
+    const go = within(card).getByRole('link', {
+      name: '带我去 Lucky Thread Noodle Bar：在 Apple 地图中查看步行路线',
+    });
+    expectLangTaggedName(go, 'Lucky Thread Noodle Bar');
+    unmount();
+
+    const radar = renderAt('/radar?sel=hilltop-smokehouse');
+    const dot = await screen.findByRole('button', { name: 'Ondo Soup House，吃的，开车 8 分钟' });
+    expectLangTaggedName(dot, 'Ondo Soup House');
+    expect(screen.getByRole('article', { name: 'Hilltop Smokehouse' })).toHaveAttribute(
+      'aria-labelledby',
+    );
+    radar.unmount();
+
+    renderAt('/place/saltmarsh-crab');
+    const take = await screen.findByRole('link', {
+      name: '带我去 Saltmarsh Crab Shack：在 Apple 地图中查看驾车路线',
+    });
+    expectLangTaggedName(take, 'Saltmarsh Crab Shack');
+  });
 });

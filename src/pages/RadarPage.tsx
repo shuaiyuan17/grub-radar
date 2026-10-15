@@ -131,12 +131,13 @@ export function RadarPage() {
 
           <div aria-live="polite" className={styles.cardSlot}>
             {selected ? (
-              <article className={`sk ${styles.card}`} aria-label={selected.spot.name}>
+              <article className={`sk ${styles.card}`} aria-labelledby="radar-card-name">
                 <Ink />
                 <FoodTile icon={selected.spot.icon} index={selectedIndex} />
                 <div className={styles.cardBody}>
                   <Link
                     viewTransition
+                    id="radar-card-name"
                     className={styles.cardName}
                     lang={dataLang(selected.spot)}
                     to={`/place/${selected.spot.id}`}

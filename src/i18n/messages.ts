@@ -98,8 +98,14 @@ const en = {
   wantToTry: 'want to try',
   beenHere: 'been here',
   appleMaps: 'Apple Maps',
-  mapsLabel: (name: string, mode: TravelMode) =>
-    `Take me to ${name}: ${mode === 'walk' ? 'walking' : 'driving'} directions in Apple Maps`,
+  /**
+   * Labels that embed a spot name come as [before, after] around the name,
+   * so the name can carry its own lang (see SpotLabel).
+   */
+  mapsLabel: (mode: TravelMode): readonly [string, string] => [
+    'Take me to ',
+    `: ${mode === 'walk' ? 'walking' : 'driving'} directions in Apple Maps`,
+  ],
   travelMode: { walk: 'walk', drive: 'drive' } satisfies Record<TravelMode, string>,
   minutes: (m: number) => formatMinutes(m),
   distance: (_km: number, miles: number) => formatMiles(miles),
@@ -128,8 +134,15 @@ const en = {
   radarRingsSr: (from: From) =>
     `Rings around ${from === 'home' ? 'home' : 'you'}: 10 minutes, 30 minutes, 1 hour, and road trip.`,
   hub: { home: 'Home', here: 'You are here' } satisfies Record<From, string>,
-  dotLabel: (name: string, kind: string, time: string, mode: string, inReach: boolean) =>
-    `${name}, ${kind}, ${time} ${mode}${inReach ? '' : ', beyond your reach'}`,
+  dotLabel: (
+    kind: string,
+    time: string,
+    mode: string,
+    inReach: boolean,
+  ): readonly [string, string] => [
+    '',
+    `, ${kind}, ${time} ${mode}${inReach ? '' : ', beyond your reach'}`,
+  ],
   backToListArrow: '← back to the list',
 
   backAria: 'Back to the list',
@@ -273,8 +286,7 @@ const zh: Messages = {
   wantToTry: '想去',
   beenHere: '去过',
   appleMaps: 'Apple 地图',
-  mapsLabel: (name, mode) =>
-    `带我去 ${name}：在 Apple 地图中查看${mode === 'walk' ? '步行' : '驾车'}路线`,
+  mapsLabel: (mode) => ['带我去 ', `：在 Apple 地图中查看${mode === 'walk' ? '步行' : '驾车'}路线`],
   travelMode: { walk: '步行', drive: '开车' },
   minutes: zhMinutes,
   distance: (km) => (km < 10 ? `${km.toFixed(1)} 公里` : `${Math.round(km)} 公里`),
@@ -298,8 +310,10 @@ const zh: Messages = {
   radarRingsSr: (from) =>
     `以${from === 'home' ? '家' : '你'}为中心的圈：10 分钟、30 分钟、1 小时、自驾游。`,
   hub: { home: '家', here: '你在这里' },
-  dotLabel: (name, kind, time, mode, inReach) =>
-    `${name}，${kind}，${mode} ${time}${inReach ? '' : '，超出范围'}`,
+  dotLabel: (kind, time, mode, inReach) => [
+    '',
+    `，${kind}，${mode} ${time}${inReach ? '' : '，超出范围'}`,
+  ],
   backToListArrow: '← 回到列表',
 
   backAria: '回到列表',
