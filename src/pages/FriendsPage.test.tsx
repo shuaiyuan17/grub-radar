@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { FriendAvatars } from '../components/FriendAvatars';
-import type { FriendTake } from '../contracts/friends';
+import type { FriendTake, InvitePreview } from '../contracts/friends';
 import { ApiRequestError } from '../lib/api';
 import { ADMIN_MESSAGES } from '../i18n/adminMessages';
 import { fakeFriendsClient, renderAt } from '../test/render';
@@ -212,6 +212,27 @@ describe('an invite link', () => {
     gone.preview.mockRejectedValue(new ApiRequestError(410, 'invite_gone', 'gone'));
     renderAt(`/invite#${token}`, { friends: gone });
     expect(await screen.findByText(/has been used, revoked or has expired/)).toBeInTheDocument();
+  });
+
+  it('a late answer for a link this tab has left does not forget the newer one', async () => {
+    const friends = fakeFriendsClient();
+    let answer: (p: InvitePreview) => void = () => undefined;
+    friends.preview.mockReturnValue(
+      new Promise<InvitePreview>((resolve) => {
+        answer = resolve;
+      }),
+    );
+    const { unmount } = renderAt(`/invite#${token}`, { friends });
+    await waitFor(() => {
+      expect(friends.preview).toHaveBeenCalledWith(token);
+    });
+    unmount();
+    const newer = 'n'.repeat(43);
+    sessionStorage.setItem('grub-radar:invite', newer);
+    answer({ from: { displayName: 'Tess', avatarEmoji: '🥟' }, state: 'own' });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(sessionStorage.getItem('grub-radar:invite')).toBe(newer);
   });
 
   it("a malformed link doesn't even ask the server", async () => {

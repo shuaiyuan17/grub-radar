@@ -49,7 +49,10 @@ export function InvitePage() {
     let live = true;
     client.preview(token).then(
       (preview) => {
-        if (live) setView({ state: 'preview', preview });
+        // A stale answer (the tab has moved on to another invite) must not
+        // forget the token the tab is holding now.
+        if (!live) return;
+        setView({ state: 'preview', preview });
         if (preview.state !== 'open') forgetInviteToken();
       },
       (e: unknown) => {
