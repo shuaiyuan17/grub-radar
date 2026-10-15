@@ -45,6 +45,13 @@
       "namespace_id": "1002",
       "simple": { "limit": 60, "period": 60 },
     },
+    // Apple Maps searches and place lookups, per user. Apple allows 25,000 calls a day for
+    // the whole app; this keeps one person (or a runaway client) from spending it.
+    {
+      "name": "SEARCH_LIMITER",
+      "namespace_id": "1003",
+      "simple": { "limit": 30, "period": 60 },
+    },
   ],
   "vars": {
     "ENVIRONMENT": "production",
@@ -58,6 +65,8 @@
     "SIGNUP_OPEN": "true",
   },
   // Secrets (wrangler secret put): APPLE_PRIVATE_KEY, SESSION_HMAC_KEY, optionally OWNER_APPLE_SUB.
+  // APPLE_PRIVATE_KEY (key BQY23WRKNY) signs Sign in with Apple client secrets, MapKit JS tokens
+  // and the Maps Server API token (place search): the key has both services enabled.
   "routes": [{ "pattern": "grub.shuaiyuan.me", "custom_domain": true }],
   // No *.workers.dev URL and no per-version preview URLs: they'd run against the
   // production D1 and secrets. Previews come later, with their own database.

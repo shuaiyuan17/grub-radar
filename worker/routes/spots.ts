@@ -4,6 +4,12 @@
  * reach another user's rows.
  */
 import { Hono, type Context } from 'hono';
+import {
+  AddApplePlaceSchema,
+  AddByQuerySchema,
+  addSpotForm,
+  type AddByQueryResponse,
+} from '../../src/contracts/places';
 import { parseNearbyQuery, RollBodySchema } from '../../src/contracts/spots';
 import { SEED_SPOTS } from '../../src/data/seed';
 import {
@@ -24,9 +30,20 @@ import {
   type Prefetch,
 } from '../auth/principal';
 import { D1SpotRepository, listStatement, spotsFromRows } from '../db/spots';
+import { homeFromResult } from '../db/users';
 import { isDevelopment, type Env } from '../env';
-import { apiError, readJson } from '../lib/http';
-import { nearby, resolveOrigin, rollSpot } from '../services/spots';
+import { apiError, parseBody, readBody, readJson } from '../lib/http';
+import { AppleMapsError } from '../services/appleMaps';
+import {
+  addSpot,
+  AmbiguousMatch,
+  nearby,
+  resolveOrigin,
+  resolveSearchCentre,
+  rollSpot,
+  type AddRequest,
+} from '../services/spots';
+import { appleMapsFor, HOME_FOR_SEARCH, mapsError, overSearchLimit } from './places';
 
 type Ctx = Context<AppEnv>;
 
@@ -53,6 +70,8 @@ function opError(c: Ctx, e: unknown): Response {
       return apiError(c, 400, 'future_date', e.message);
     case 'list_full':
       return apiError(c, 409, 'list_full', e.message);
+    case 'no_match':
+      return apiError(c, 404, 'no_match', e.message);
   }
 }
 
@@ -100,13 +119,75 @@ spots.get('/:id', read, async (c) => {
   return spot ? c.json(spot) : apiError(c, 404, 'not_found', 'no such spot');
 });
 
-/** `add_spot` (manual: name + location + kind; Apple places come in PR 3) */
+/**
+ * `add_spot`, three ways (see addSpotForm):
+ *   { name, kind, location, … }   by hand                                    -> Spot
+ *   { applePlaceId, kind?, … }    a place from Apple Maps (Apple's name,
+ *                                 location and address, in English)          -> Spot
+ *   { query, near?, kind?, … }    the Apple Maps match for some words, only
+ *                                 if it's clear (else 409 ambiguous + candidates;
+ *                                 needs near or a saved home: 400 need_location)
+ *                                 -> { spot, created, resolvedFrom, alternatives }
+ * 201 when added; 200 when the place was already on your list (your entry
+ * comes back, nothing written). The Apple forms also count against the
+ * search brake.
+ */
 spots.post('/', ...write, async (c) => {
-  const body = await readJson(c, AddSpotSchema);
+  const body = await readBody(c);
   if (!body.ok) return body.res;
+  const form = addSpotForm(body.data);
+  let req: AddRequest;
+  if (form === 'manual') {
+    const input = parseBody(c, AddSpotSchema, body.data);
+    if (!input.ok) return input.res;
+    req = { form, input: input.data };
+  } else {
+    const limited = await overSearchLimit(c);
+    if (limited) return limited;
+    if (form === 'apple') {
+      const input = parseBody(c, AddApplePlaceSchema, body.data);
+      if (!input.ok) return input.res;
+      req = { form, input: input.data };
+    } else {
+      const input = parseBody(c, AddByQuerySchema, body.data);
+      if (!input.ok) return input.res;
+      const { userId } = actingUser(c.var.principal);
+      const pre = prefetched(c, HOME_FOR_SEARCH);
+      const centre = await resolveSearchCentre(
+        c.env.DB,
+        userId,
+        input.data.near,
+        pre ? homeFromResult(pre[0]) : undefined,
+      );
+      if (!centre.ok) return noHome(c);
+      if (!centre.near)
+        return apiError(
+          c,
+          400,
+          'need_location',
+          'adding by words needs a place to search around: pass near, or save a home',
+        );
+      req = { form, input: input.data, near: centre.near };
+    }
+  }
   try {
-    return c.json(await repoFor(c).add(body.data), 201);
+    const added = await addSpot(repoFor(c), appleMapsFor(c), req);
+    const status = added.created ? 201 : 200;
+    if (req.form !== 'query') return c.json(added.spot, status);
+    const body: AddByQueryResponse = {
+      spot: added.spot,
+      created: added.created,
+      resolvedFrom: 'apple',
+      alternatives: added.alternatives ?? [],
+    };
+    return c.json(body, status);
   } catch (e) {
+    if (e instanceof AppleMapsError) return mapsError(c, e);
+    if (e instanceof AmbiguousMatch)
+      return c.json(
+        { error: { code: 'ambiguous', message: e.message }, candidates: e.candidates },
+        409,
+      );
     return opError(c, e);
   }
 });

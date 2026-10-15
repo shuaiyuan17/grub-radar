@@ -51,6 +51,24 @@ describe('AddSpotSchema', () => {
 });
 
 describe('spotFromInput', () => {
+  it('marks a place from Apple Maps with its id and address', () => {
+    const spot = spotFromInput(
+      'p-1',
+      { name: 'Paper Kite Coffee', kind: 'coffee', location: { lat: 47.6, lng: -122.3 } },
+      '2026-10-15',
+      { applePlaceId: 'IF0000000000000B1', address: '9 Kite Ln, Seattle, WA 98101' },
+    );
+    expect(spot).toMatchObject({
+      applePlaceId: 'IF0000000000000B1',
+      address: '9 Kite Ln, Seattle, WA 98101',
+      icon: 'cup',
+      status: 'want',
+    });
+    expect(
+      spotFromInput('p-2', { name: 'x', kind: 'food', location: { lat: 0, lng: 0 } }, '2026-10-15'),
+    ).not.toHaveProperty('applePlaceId');
+  });
+
   it('fills defaults: want, $$, the kind’s doodle, no empty strings', () => {
     const spot = spotFromInput(
       'p-1',

@@ -21,16 +21,33 @@ export function describeIssue(error: z.core.$ZodError): string {
   return path ? `${path}: ${issue.message}` : issue.message;
 }
 
+/** The JSON body, or a ready 400 response. */
+export async function readBody(
+  c: Context,
+): Promise<{ ok: true; data: unknown } | { ok: false; res: Response }> {
+  const raw: unknown = await c.req.json().catch(() => undefined);
+  if (raw === undefined)
+    return { ok: false, res: apiError(c, 400, 'bad_request', 'body must be JSON') };
+  return { ok: true, data: raw };
+}
+
+/** `raw` checked against `schema`: the data, or a ready 400 response saying what's wrong. */
+export function parseBody<T extends z.core.$ZodType>(
+  c: Context,
+  schema: T,
+  raw: unknown,
+): { ok: true; data: z.output<T> } | { ok: false; res: Response } {
+  const parsed = z.safeParse(schema, raw);
+  if (!parsed.success)
+    return { ok: false, res: apiError(c, 400, 'bad_request', describeIssue(parsed.error)) };
+  return { ok: true, data: parsed.data };
+}
+
 /** Parses the JSON body with `schema`: the data, or a ready 400 response. */
 export async function readJson<T extends z.core.$ZodType>(
   c: Context,
   schema: T,
 ): Promise<{ ok: true; data: z.output<T> } | { ok: false; res: Response }> {
-  const raw: unknown = await c.req.json().catch(() => undefined);
-  if (raw === undefined)
-    return { ok: false, res: apiError(c, 400, 'bad_request', 'body must be JSON') };
-  const parsed = z.safeParse(schema, raw);
-  if (!parsed.success)
-    return { ok: false, res: apiError(c, 400, 'bad_request', describeIssue(parsed.error)) };
-  return { ok: true, data: parsed.data };
+  const body = await readBody(c);
+  return body.ok ? parseBody(c, schema, body.data) : body;
 }

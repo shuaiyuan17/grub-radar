@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = 4173;
+// overridable so two checkouts can run e2e side by side (point .dev.vars' Apple bases at the stub port)
+const PORT = Number(process.env.E2E_PORT ?? 4173);
+const STUB_PORT = Number(process.env.APPLE_STUB_PORT ?? 4599);
 
 export default defineConfig({
   testDir: './e2e',
@@ -32,7 +34,7 @@ export default defineConfig({
     {
       // stands in for appleid.apple.com (.dev.vars points the Worker here)
       command: 'node e2e/apple-stub.ts',
-      url: 'http://localhost:4599/health',
+      url: `http://localhost:${STUB_PORT}/health`,
       reuseExistingServer: !process.env.CI,
     },
     {

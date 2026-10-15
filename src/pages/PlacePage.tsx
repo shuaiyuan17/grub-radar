@@ -12,6 +12,11 @@ import { FOOD_ICONS } from '../components/icons';
 import { NotesEditor, OrderEditor, SpotAdmin, StatusEditor } from '../components/placeEditors';
 import styles from './PlacePage.module.css';
 
+/** Just added from the search (`state.added`): say so once, on arrival. */
+function justAdded(state: unknown): boolean {
+  return Boolean(state && typeof state === 'object' && 'added' in state && state.added === true);
+}
+
 function backTarget(state: unknown): string {
   if (state && typeof state === 'object' && 'back' in state && typeof state.back === 'string') {
     return state.back;
@@ -145,6 +150,12 @@ export function PlacePage() {
               {nameA && `${nameA} `}
               <span className="hl">{nameB}</span>
             </h1>
+            {spot.address && <p className={styles.address}>{spot.address}</p>}
+            {justAdded(location.state) && (
+              <p role="status" className={`note ${styles.added}`}>
+                {t.addSearch.added}
+              </p>
+            )}
             {spot.note && (
               <p className={`note ${styles.oneLiner}`} lang={lang}>
                 {spot.note}

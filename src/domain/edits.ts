@@ -17,6 +17,7 @@ import {
   type IconName,
   type Kind,
   type Spot,
+  type Status,
 } from './spot';
 
 /**
@@ -42,31 +43,46 @@ const entryText = z.string().check(
   z.maxLength(LIMITS.entry, 'note is too long'),
 );
 
-/** POST /api/spots and the `add_spot` tool (manual places; Apple places come in PR 3). */
+/**
+ * What you can say about a spot when you add it, whichever way it's added
+ * (by hand, from an Apple Maps place, from a search): everything except what
+ * the place *is*. Shared by AddSpotSchema and the Apple variants in
+ * src/contracts/places.ts.
+ */
+export const ADD_EXTRAS = {
+  cuisine: optText(LIMITS.cuisine),
+  price: z.optional(z.enum(PRICES)),
+  tags: z.optional(TagsSchema),
+  status: z.optional(z.enum(STATUSES)),
+  rating: z.optional(RatingSchema),
+  note: optText(LIMITS.note),
+  /** Dishes to order, none tried yet. */
+  order: z.optional(z.array(text(LIMITS.dish)).check(z.maxLength(LIMITS.dishes))),
+  /** "why it's on the list"; dated today. */
+  why: optText(LIMITS.why),
+  icon: z.optional(z.enum(ICONS)),
+  hours: z.optional(HoursSchema),
+};
+
+/** The optional part of every add (see ADD_EXTRAS), parsed. */
+export type AddExtras = Omit<AddSpot, 'name' | 'kind' | 'location'>;
+
+/** The rule every add shares: a rating only on a place you've been to. */
+export const ratingNeedsBeen = () =>
+  z.refine<{ rating?: number; status?: Status }>(
+    (s) => s.rating === undefined || s.status === 'been',
+    { message: 'only rate places you have been to', path: ['rating'] },
+  );
+
+/** POST /api/spots and the `add_spot` tool, by hand: name, kind and where. */
 export const AddSpotSchema = z
   .strictObject({
     name: text(LIMITS.name),
     kind: z.enum(KINDS),
     location: LatLngSchema,
-    cuisine: optText(LIMITS.cuisine),
-    price: z.optional(z.enum(PRICES)),
-    tags: z.optional(TagsSchema),
-    status: z.optional(z.enum(STATUSES)),
-    rating: z.optional(RatingSchema),
-    note: optText(LIMITS.note),
-    /** Dishes to order, none tried yet. */
-    order: z.optional(z.array(text(LIMITS.dish)).check(z.maxLength(LIMITS.dishes))),
-    /** "why it's on the list"; dated today. */
-    why: optText(LIMITS.why),
-    icon: z.optional(z.enum(ICONS)),
-    hours: z.optional(HoursSchema),
+    ...ADD_EXTRAS,
   })
-  .check(
-    z.refine((s) => s.rating === undefined || s.status === 'been', {
-      message: 'only rate places you have been to',
-      path: ['rating'],
-    }),
-  );
+  .check(ratingNeedsBeen());
 export type AddSpotInput = z.input<typeof AddSpotSchema>;
 export type AddSpot = z.output<typeof AddSpotSchema>;
 
@@ -134,7 +150,8 @@ export type SpotOpErrorCode =
   | 'not_editable'
   | 'conflict'
   | 'future_date'
-  | 'list_full';
+  | 'list_full'
+  | 'no_match';
 
 /** A write that can't happen. The Worker turns `code` into an HTTP error. */
 export class SpotOpError extends Error {
@@ -219,8 +236,22 @@ export function withoutUndefined(o: Record<string, unknown>): Record<string, unk
 
 const orNone = (s: string | null | undefined) => (s === '' || s === null ? undefined : s);
 
-/** A new spot from `add_spot` input. `today` stamps `why`. */
-export function spotFromInput(id: string, input: AddSpot, today: string): Spot {
+/** Where a place from Apple Maps is: its identity on our side. */
+export interface AppleIdentity {
+  applePlaceId: string;
+  address?: string;
+}
+
+/**
+ * A new spot from `add_spot` input. `today` stamps `why`. `apple` marks a
+ * place that came from Apple Maps (its name and location are Apple's).
+ */
+export function spotFromInput(
+  id: string,
+  input: AddSpot,
+  today: string,
+  apple?: AppleIdentity,
+): Spot {
   const status = input.status ?? 'want';
   return finish({
     id,
@@ -237,6 +268,8 @@ export function spotFromInput(id: string, input: AddSpot, today: string): Spot {
     hours: input.hours,
     icon: input.icon ?? defaultIcon(input.kind),
     location: { lat: input.location.lat, lng: input.location.lng },
+    applePlaceId: apple?.applePlaceId,
+    address: apple?.address,
   });
 }
 

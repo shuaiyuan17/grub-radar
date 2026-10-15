@@ -17,6 +17,11 @@ APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
 # stub (`npm run apple-stub`, e2e/apple-stub.ts). Ignored unless ENVIRONMENT=development.
 APPLE_ENDPOINT_BASE=http://localhost:4599
 
+# The same stub stands in for the Apple Maps Server API (place search). Comment this out to
+# search the real Apple Maps locally (needs the real key: `npm run dev:vars -- --from-keychain`).
+# Ignored unless ENVIRONMENT=development.
+APPLE_MAPS_BASE=http://localhost:4599
+
 # Enables POST /auth/dev-login (development + localhost only). Playwright uses it.
 DEV_LOGIN_SECRET=change-me
 

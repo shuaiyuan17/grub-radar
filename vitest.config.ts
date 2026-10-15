@@ -47,6 +47,7 @@ export default defineConfig({
                 DEV_LOGIN_SECRET: 'test-dev-login-secret',
                 SIGNUP_OPEN: 'false',
                 APPLE_ENDPOINT_BASE: '',
+                APPLE_MAPS_BASE: '',
                 APPLE_PRIVATE_KEY: generateKeyPairSync('ec', { namedCurve: 'P-256' })
                   .privateKey.export({ type: 'pkcs8', format: 'pem' })
                   .toString(),

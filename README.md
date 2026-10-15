@@ -56,8 +56,12 @@ The first `test:e2e` run needs `npx playwright install chromium`.
     `mama kos` finds "Mama Ko's".
 - `/place/:id` one spot: mark it been with a rating out of 10, change the rating or move it
   back to "want to try", tick off and edit "order this", add dated notes, edit, delete.
-- `/add` add a spot by hand (name, kind, where: "use where i am" or `lat, lng`, cuisine,
-  price, cravings, status/rating, one-liner, doodle). `/place/:id/edit` the same form.
+- `/add` find a place on Apple Maps (restaurants, cafés, bakeries around where you measure
+  from) and put it on your radar in one tap; `?q=pho` keeps the search. Places already on your
+  list say so and open your entry. Apple's places appear only here, never on the list or radar.
+- `/add/manual` add a spot by hand (name, kind, where: "use where i am" or `lat, lng`, cuisine,
+  price, cravings, status/rating, one-liner, doodle); `?name=` prefills it.
+  `/place/:id/edit` the same form (a place from Apple Maps keeps Apple's name and location).
 - `/radar` `?reach=0..3` (10 min … road trip), `?kinds=food,coffee`, `?sel=<spot id>`.
 
 **The headline changes with the time of day.** When the page opens it looks at the local
@@ -119,8 +123,11 @@ and draw rings.
 
 ## Add a spot
 
-In the app: **+ add a spot** (desktop header, phone header, or the empty list). Every
-account starts with an empty list; spots live in D1 and are yours alone.
+In the app: **+ add a spot** (desktop header, phone header, or the empty list). Type a name or
+a craving ("pho", "serious pie"), tap a result: it's on your list with Apple's Place ID, name,
+location and address; set been / rating / notes / kind on the place page. Can't find it?
+"add it by hand". Every account starts with an empty list; spots live in D1 and are yours
+alone.
 
 The fictional demo list in [`src/data/seed.ts`](src/data/seed.ts) is for tests and local
 dev only: `POST /api/spots/import-demo` (404 unless `ENVIRONMENT=development`) copies it onto
@@ -185,28 +192,31 @@ served by Cloudflare directly; only the paths in `assets.run_worker_first` (`/ap
 `/auth/*`, and the reserved agent paths) run `worker/index.ts` (Hono). D1 (`grub-radar`) holds
 accounts, sessions, places and everyone's own list.
 
-| endpoint                       | auth     | what                                                             |
-| ------------------------------ | -------- | ---------------------------------------------------------------- |
-| `GET /api/health`              | none     | `{ ok, version }`                                                |
-| `GET /auth/apple/start`        | none     | 302 to Apple (`?returnTo=/same/origin/path`)                     |
-| `POST /auth/callback`          | Apple    | Apple's form_post; the "signing you in…" page, or `/?signin=…`   |
-| `POST /auth/finish`            | hand-off | the slow half of sign-in (`t` in the body); 303 with a session   |
-| `GET /auth/callback`           | none     | 303 to `/` (never Apple: iOS preloads it, or the back button)    |
-| `POST /auth/logout`            | session  | 204, session deleted                                             |
-| `GET /api/me`, `PATCH /api/me` | session  | `{ user, home, signupOpen }`; change name / avatar emoji         |
-| `PUT /api/me/home`, `DELETE`   | session  | save / clear your home (body `{ lat, lng }`), 204                |
-| `GET /api/spots`               | read     | your list (`Spot[]`)                                             |
-| `GET /api/spots/:id`           | read     | one of your spots, or 404                                        |
-| `GET /api/spots/nearby`        | read     | `find_nearby`: `?origin=home\|lat,lng&maxMinutes&kinds&limit`    |
-| `POST /api/spots`              | write    | `add_spot` (manual: name, kind, location + optional fields), 201 |
-| `PATCH /api/spots/:id`         | write    | edit; `null` clears; stale `version` → 409; to been = visit      |
-| `POST /api/spots/:id/been`     | write    | `mark_been`: `{ rating?, on?, note? }`, records a visit          |
-| `POST /api/spots/:id/notes`    | write    | `add_note`: appends `— YYYY-MM-DD: …` to your notes              |
-| `DELETE /api/spots/:id`        | write    | 204; your entry and visits go (and a manual place only you had)  |
-| `POST /api/roll`               | read     | `roll`: `{ origin, maxMinutes?, kinds?, previousId? }`           |
-| `POST /api/spots/import-demo`  | write    | dev only: the fictional demo spots onto your list                |
-| `GET /api/mapkit-token`        | session  | 10-minute MapKit JS token with our origin; 20/min per user       |
-| `POST /auth/dev-login`         | secret   | `ENVIRONMENT=development` + localhost + `DEV_LOGIN_SECRET` only  |
+| endpoint                        | auth     | what                                                            |
+| ------------------------------- | -------- | --------------------------------------------------------------- |
+| `GET /api/health`               | none     | `{ ok, version }`                                               |
+| `GET /auth/apple/start`         | none     | 302 to Apple (`?returnTo=/same/origin/path`)                    |
+| `POST /auth/callback`           | Apple    | Apple's form_post; the "signing you in…" page, or `/?signin=…`  |
+| `POST /auth/finish`             | hand-off | the slow half of sign-in (`t` in the body); 303 with a session  |
+| `GET /auth/callback`            | none     | 303 to `/` (never Apple: iOS preloads it, or the back button)   |
+| `POST /auth/logout`             | session  | 204, session deleted                                            |
+| `GET /api/me`, `PATCH /api/me`  | session  | `{ user, home, signupOpen }`; change name / avatar emoji        |
+| `PUT /api/me/home`, `DELETE`    | session  | save / clear your home (body `{ lat, lng }`), 204               |
+| `GET /api/spots`                | read     | your list (`Spot[]`)                                            |
+| `GET /api/spots/:id`            | read     | one of your spots, or 404                                       |
+| `GET /api/spots/nearby`         | read     | `find_nearby`: `?origin=home\|lat,lng&maxMinutes&kinds&limit`   |
+| `POST /api/spots`               | write    | `add_spot`: by hand, `{ applePlaceId }` or `{ query, near? }`   |
+| `GET /api/places/search`        | read     | `search_places`: `?q=&near=home\|lat,lng&lang=` → `{ places }`  |
+| `POST /api/places/search`       | read     | the same, `{ q, near?, lang? }` in the body (the app)           |
+| `GET /api/places/:applePlaceId` | read     | one Apple Maps place (`?lang=`)                                 |
+| `PATCH /api/spots/:id`          | write    | edit; `null` clears; stale `version` → 409; to been = visit     |
+| `POST /api/spots/:id/been`      | write    | `mark_been`: `{ rating?, on?, note? }`, records a visit         |
+| `POST /api/spots/:id/notes`     | write    | `add_note`: appends `— YYYY-MM-DD: …` to your notes             |
+| `DELETE /api/spots/:id`         | write    | 204; your entry and visits go (and a manual place only you had) |
+| `POST /api/roll`                | read     | `roll`: `{ origin, maxMinutes?, kinds?, previousId? }`          |
+| `POST /api/spots/import-demo`   | write    | dev only: the fictional demo spots onto your list               |
+| `GET /api/mapkit-token`         | session  | 10-minute MapKit JS token with our origin; 20/min per user      |
+| `POST /auth/dev-login`          | secret   | `ENVIRONMENT=development` + localhost + `DEV_LOGIN_SECRET` only |
 
 **Sign in with Apple** (`worker/auth/siwa.ts`): web flow with `response_type=code` and
 `response_mode=form_post`. `state` and a hashed `nonce` ride in an HMAC-signed, 10-minute,
@@ -262,8 +272,9 @@ mean a signed-in person today, or an agent with `spots:read`/`spots:write` once 
 door ships; home is session-only.
 
 **Places vs your list**: `places` is global and holds only what a place _is_: name,
-location, address, Apple Place ID, who created it. Apple places (PR 3) will be shared and
-deduped by Apple Place ID. Everything you _say_ about a place (kind, cuisine, price, doodle,
+location, address, Apple Place ID, who created it. Apple places are shared and deduped by
+Apple Place ID: adding one someone already saved reuses that row (no Apple call); adding one
+already on your list returns your entry (200, nothing written). Everything you _say_ about a place (kind, cuisine, price, doodle,
 hours, tags, status, rating, notes, "order this") is on your own `user_places` row, so on a
 shared place each person keeps their own. Only whoever created a manual place can rename or
 move it (enforced in the `UPDATE`; your entry update only lands if the place change did).
@@ -275,6 +286,21 @@ edited with every `PATCH`; if the spot changed elsewhere meanwhile, that's a **4
 fetches the latest copy and says "updated somewhere else, try again" (so a stale copy of
 `order` or `tags` never overwrites a newer one). Server-side appends (`/been`, `/notes`)
 retry on their own. The SPA also ignores a write answer older than the copy it already has.
+
+**Apple Maps** (`worker/services/appleMaps.ts`, Maps Server API): the Worker signs an ES256
+JWT (`scope: server_api`) with `APPLE_PRIVATE_KEY` and trades it at `GET /v1/token` for a
+30-minute access token, cached per isolate and in the Cache API until a minute before it
+expires. Search is `GET /v1/search?q&searchLocation&includePoiCategories=Restaurant,Cafe,Bakery&resultTypeFilter=Poi&lang`
+(`searchLocation` and `searchRegion` are mutually exclusive at Apple; we send the point).
+The centre is rounded to 2 decimals (~1 km) before it leaves the Worker and is never echoed
+back; `near=home` is resolved server-side. Answers are cached in the Cache API (search 15
+min, keyed by normalized query + rounded centre + language; place lookups a day). Adding by
+Apple id always takes name, location and address from Apple (or the shared row), never from
+the request. Apple allows 25,000 calls a day for the whole app: the app debounces typing
+(350 ms, 2+ characters, earlier answers remembered), and `SEARCH_LIMITER` brakes each user at
+30 Apple-backed calls a minute. Apple down / out of quota → 503 `maps_unavailable`. Locally
+`APPLE_MAPS_BASE` points at the stub (`e2e/apple-stub.ts`); comment it out to use the real
+API with the keychain key.
 
 **Brakes**: at most 1000 spots per list (`list_full`, 409), and 60 writes per minute per
 user (`WRITE_LIMITER`, 429) across spot writes and home.

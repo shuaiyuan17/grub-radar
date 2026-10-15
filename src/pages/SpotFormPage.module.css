@@ -33,6 +33,22 @@
   color: var(--note-red);
   padding-block: 4px;
 }
+.apple {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.appleName {
+  font-size: 20px;
+  font-weight: 800;
+}
+.appleAddress {
+  font-size: 15px;
+}
+.appleHint {
+  font-size: 13px;
+  color: var(--pencil);
+}
 .elsewhere {
   font-size: 14px;
   color: var(--pencil);

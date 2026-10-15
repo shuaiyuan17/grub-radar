@@ -1,12 +1,12 @@
 import { useState, type SyntheticEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Headline } from '../components/bits';
 import { Choice, Field, InkBox, InkButton, RatingPicker } from '../components/fields';
 import { formErrorClass, inputClass, rowClass } from '../components/fieldClasses';
 import { Icon } from '../components/Icon';
 import { FOOD_ICONS } from '../components/icons';
 import type { AddSpot, SpotPatch } from '../domain/edits';
-import { defaultIcon } from '../domain/edits';
+import { defaultIcon, guessLang } from '../domain/edits';
 import { parseLatLng, type LatLng } from '../domain/geo';
 import { parseHeadline } from '../domain/headlines';
 import {
@@ -44,9 +44,9 @@ interface Values {
   icon: IconName | null;
 }
 
-function initialValues(spot: Spot | undefined): Values {
+function initialValues(spot: Spot | undefined, name = ''): Values {
   return {
-    name: spot?.name ?? '',
+    name: spot?.name ?? name,
     kind: spot?.kind ?? 'food',
     where: spot ? formatLatLng(spot.location) : '',
     cuisine: spot?.cuisine ?? '',
@@ -75,12 +75,16 @@ const FIELDS = [
 ] as const satisfies readonly (keyof Values)[];
 type FieldKey = (typeof FIELDS)[number];
 
-/** Add a spot (`/add`) or edit one (`/place/:id/edit`): one form, two submits. */
-function SpotForm({ spot }: { spot?: Spot }) {
+/**
+ * Add a spot by hand (`/add/manual`, `?name=` prefills) or edit one
+ * (`/place/:id/edit`): one form, two submits. A place from Apple Maps keeps
+ * Apple's name and location, so those aren't fields when editing one.
+ */
+function SpotForm({ spot, name }: { spot?: Spot; name?: string }) {
   const t = useT();
   const navigate = useNavigate();
   const { actions } = useSpots();
-  const [v, setV] = useState<Values>(() => initialValues(spot));
+  const [v, setV] = useState<Values>(() => initialValues(spot, name));
   // what the form started from (the spot at `version`) and which fields you've changed
   const [base, setBase] = useState(() => ({ version: spot?.version, values: initialValues(spot) }));
   const [touched, setTouched] = useState<ReadonlySet<FieldKey>>(() => new Set());
@@ -178,27 +182,40 @@ function SpotForm({ spot }: { spot?: Spot }) {
   const point = location();
   const noteLeft = LIMITS.note - v.note.trim().length;
 
+  const fromApple = spot?.applePlaceId !== undefined;
+
   return (
     <form className={styles.form} onSubmit={(e) => void submit(e)} noValidate>
-      <Field label={t.form.name} error={errors.name}>
-        {({ id, describedBy, invalid }) => (
-          <InkBox>
-            <input
-              id={id}
-              className={inputClass}
-              value={v.name}
-              maxLength={LIMITS.name}
-              autoComplete="off"
-              placeholder={t.form.namePlaceholder}
-              aria-invalid={invalid}
-              aria-describedby={describedBy}
-              onChange={(e) => {
-                set('name', e.target.value);
-              }}
-            />
-          </InkBox>
-        )}
-      </Field>
+      {fromApple && (
+        <div className={styles.apple}>
+          <p className={styles.appleName} lang={guessLang(spot.name) ?? 'en'}>
+            {spot.name}
+          </p>
+          {spot.address && <p className={styles.appleAddress}>{spot.address}</p>}
+          <p className={styles.appleHint}>{t.form.fromAppleHint}</p>
+        </div>
+      )}
+      {!fromApple && (
+        <Field label={t.form.name} error={errors.name}>
+          {({ id, describedBy, invalid }) => (
+            <InkBox>
+              <input
+                id={id}
+                className={inputClass}
+                value={v.name}
+                maxLength={LIMITS.name}
+                autoComplete="off"
+                placeholder={t.form.namePlaceholder}
+                aria-invalid={invalid}
+                aria-describedby={describedBy}
+                onChange={(e) => {
+                  set('name', e.target.value);
+                }}
+              />
+            </InkBox>
+          )}
+        </Field>
+      )}
 
       <Choice
         legend={t.form.kind}
@@ -209,39 +226,41 @@ function SpotForm({ spot }: { spot?: Spot }) {
         }}
       />
 
-      <div className={styles.where}>
-        <Field
-          label={t.form.where}
-          hint={point ? t.form.pinned(fmt(point.lat), fmt(point.lng)) : t.form.orTypeLatLng}
-          error={errors.where}
-        >
-          {({ id, describedBy, invalid }) => (
-            <div className={rowClass}>
-              <InkButton onClick={pinHere} busy={locating} disabled={locating}>
-                <Icon name="locate" size={18} strokeWidth={2} />
-                {locating ? t.findingYou : t.form.useWhereIAm}
-              </InkButton>
-              <span className={styles.coords}>
-                <InkBox>
-                  <input
-                    id={id}
-                    className={inputClass}
-                    inputMode="decimal"
-                    autoComplete="off"
-                    placeholder="47.61, -122.33"
-                    value={v.where}
-                    aria-invalid={invalid}
-                    aria-describedby={describedBy}
-                    onChange={(e) => {
-                      set('where', e.target.value);
-                    }}
-                  />
-                </InkBox>
-              </span>
-            </div>
-          )}
-        </Field>
-      </div>
+      {!fromApple && (
+        <div className={styles.where}>
+          <Field
+            label={t.form.where}
+            hint={point ? t.form.pinned(fmt(point.lat), fmt(point.lng)) : t.form.orTypeLatLng}
+            error={errors.where}
+          >
+            {({ id, describedBy, invalid }) => (
+              <div className={rowClass}>
+                <InkButton onClick={pinHere} busy={locating} disabled={locating}>
+                  <Icon name="locate" size={18} strokeWidth={2} />
+                  {locating ? t.findingYou : t.form.useWhereIAm}
+                </InkButton>
+                <span className={styles.coords}>
+                  <InkBox>
+                    <input
+                      id={id}
+                      className={inputClass}
+                      inputMode="decimal"
+                      autoComplete="off"
+                      placeholder="47.61, -122.33"
+                      value={v.where}
+                      aria-invalid={invalid}
+                      aria-describedby={describedBy}
+                      onChange={(e) => {
+                        set('where', e.target.value);
+                      }}
+                    />
+                  </InkBox>
+                </span>
+              </div>
+            )}
+          </Field>
+        </div>
+      )}
 
       <div className={styles.pair}>
         <Field label={t.form.cuisine} optional>
@@ -373,7 +392,7 @@ function SpotForm({ spot }: { spot?: Spot }) {
         <InkButton type="submit" primary busy={saving} disabled={saving}>
           {saving ? t.form.saving : editing ? t.form.save : t.form.add}
         </InkButton>
-        <Link viewTransition to={spot ? `/place/${spot.id}` : '/'} className={styles.cancel}>
+        <Link viewTransition to={spot ? `/place/${spot.id}` : '/add'} className={styles.cancel}>
           {t.form.cancel}
         </Link>
       </div>
@@ -383,10 +402,11 @@ function SpotForm({ spot }: { spot?: Spot }) {
 
 export function AddSpotPage() {
   const t = useT();
+  const [params] = useSearchParams();
   return (
     <main id="main" className={styles.main}>
       <Headline className={styles.title} parts={parseHeadline(t.addTitle)} />
-      <SpotForm />
+      <SpotForm name={params.get('name')?.slice(0, LIMITS.name) ?? ''} />
     </main>
   );
 }

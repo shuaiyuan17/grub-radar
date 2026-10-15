@@ -55,7 +55,11 @@ export async function getHome(
   );
 }
 
-function homeStatement(db: D1Database, user: UserRef): D1PreparedStatement {
+/** The home from a homeStatement result (e.g. prefetched with the session). */
+export const homeFromResult = (result: D1Result | undefined) =>
+  toHome((result?.results as HomeRow[] | undefined)?.[0]);
+
+export function homeStatement(db: D1Database, user: UserRef): D1PreparedStatement {
   return db
     .prepare(`SELECT home_lat, home_lng FROM user_private WHERE user_id = ${user.sql}`)
     .bind(...user.binds);

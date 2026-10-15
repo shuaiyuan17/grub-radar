@@ -16,7 +16,10 @@ export class ApiRequestError extends Error {
  * fetch() for our own API. Same-origin, cookie session; writes carry the JSON
  * content type and the CSRF header the Worker insists on.
  */
-export async function api(path: string, init: { method?: string; body?: unknown } = {}) {
+export async function api(
+  path: string,
+  init: { method?: string; body?: unknown; signal?: AbortSignal } = {},
+) {
   const method = init.method ?? 'GET';
   const headers: Record<string, string> = { accept: 'application/json' };
   if (method !== 'GET' && method !== 'HEAD') {
@@ -27,6 +30,7 @@ export async function api(path: string, init: { method?: string; body?: unknown 
     method,
     headers,
     credentials: 'same-origin',
+    signal: init.signal,
     body:
       init.body === undefined ? (method === 'GET' ? undefined : '{}') : JSON.stringify(init.body),
   });
