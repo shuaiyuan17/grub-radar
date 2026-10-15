@@ -1,3 +1,4 @@
+import { Ink } from './Ink';
 import type { IconName } from '../domain/spot';
 import { FOOD_ICONS, UI_ICONS } from './icons';
 
@@ -72,6 +73,7 @@ export function FoodTile({
         transform: `rotate(${tilt})`,
       }}
     >
+      <Ink />
       <svg
         width={Math.round(size * 0.6)}
         height={Math.round(size * 0.6)}

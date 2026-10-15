@@ -27,6 +27,22 @@
   color: var(--note-red);
 }
 
+.setHome {
+  padding: 3px 2px;
+  font-size: 12.5px;
+  color: var(--pencil);
+  text-decoration: underline dashed;
+  text-underline-offset: 3px;
+}
+.demoNote {
+  flex-basis: 100%;
+  font-size: 12.5px;
+  color: var(--pencil);
+}
+.setHome:hover {
+  color: var(--note-red);
+}
+
 /* ---- mode switch ---- */
 .modes {
   border-radius: var(--r-seg);
@@ -160,11 +176,6 @@
 }
 .rollMeta {
   font-size: 13px;
-}
-.rollEmpty {
-  font-family: var(--font-note);
-  font-size: 21px;
-  color: var(--dice-red);
 }
 
 /* ---- dice buttons ---- */

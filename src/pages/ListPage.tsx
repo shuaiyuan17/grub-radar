@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { Ink } from '../components/Ink';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { Headline, Logo } from '../components/bits';
 import {
@@ -20,11 +21,13 @@ import { getPageHeadline } from '../lib/pageHeadline';
 import { useSpotViews } from '../lib/useSpotViews';
 import styles from './ListPage.module.css';
 
+let headlineDrawn = false;
+
 type ParamPatch = Partial<Record<'mode' | 'tag' | 'q' | 'roll', string | null>>;
 
 export function ListPage() {
   const [params, setParams] = useSearchParams();
-  const { from, chooseHere } = useOrigin();
+  const { from, origin, chooseHere } = useOrigin();
   const views = useSpotViews();
 
   // picked once per page load from the local time (see domain/headlines.ts)
@@ -34,22 +37,40 @@ export function ListPage() {
   const q = params.get('q') ?? '';
   const rollId = params.get('roll');
   const result = listSpots(views, { mode, tag: params.get('tag') ?? ALL, q });
+  // an unknown or stale ?roll= id simply shows no roll
   const rolled = rollId ? (result.items.find((v) => v.spot.id === rollId) ?? null) : null;
   const def = MODE_DEFS[mode];
 
   const [searchOpen, setSearchOpen] = useState(q !== '');
+  // the highlighter draws in on the first list render of this page load only
+  const [drawHeadline] = useState(() => !headlineDrawn);
+  useEffect(() => {
+    headlineDrawn = true;
+  }, []);
+
+  // a roll was "in range" of the old origin; moving invalidates it
+  const lastOrigin = useRef(origin);
+  useEffect(() => {
+    if (lastOrigin.current === origin) return;
+    lastOrigin.current = origin;
+    setParams(
+      (prev) => {
+        if (!prev.has('roll')) return prev;
+        const next = new URLSearchParams(prev);
+        next.delete('roll');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [origin, setParams]);
 
   const update = (patch: ParamPatch) => {
     setParams(
       (prev) => {
         const next = new URLSearchParams(prev);
         for (const [k, v] of Object.entries(patch)) {
-          if (
-            v === null ||
-            v === '' ||
-            (k === 'mode' && v === opening.defaultMode) ||
-            (k === 'tag' && v === ALL)
-          ) {
+          // a mode you pick is always written (?mode=near), even if it's today's default
+          if (v === null || v === '' || (k === 'tag' && v === ALL)) {
             next.delete(k);
           } else {
             next.set(k, v);
@@ -66,7 +87,7 @@ export function ListPage() {
       result.items.map((v) => ({ id: v.spot.id })),
       rollId,
     );
-    update({ roll: pick?.id ?? 'none' });
+    if (pick) update({ roll: pick.id });
   };
   const clearRoll = () => {
     update({ roll: null });
@@ -89,9 +110,11 @@ export function ListPage() {
             aria-expanded={searchOpen}
             aria-controls="search-phone-row"
             onClick={() => {
-              setSearchOpen((o) => !o);
+              if (searchOpen && q) update({ q: null }); // closing search clears it
+              setSearchOpen(!searchOpen);
             }}
           >
+            <Ink />
             <Icon name="search" size={21} />
           </button>
           <button
@@ -100,6 +123,7 @@ export function ListPage() {
             aria-label="Use my current location"
             onClick={chooseHere}
           >
+            <Ink />
             <Icon name="locate" size={22} strokeWidth={2} />
           </button>
         </div>
@@ -126,6 +150,7 @@ export function ListPage() {
         <Headline
           parts={mode === opening.defaultMode ? opening.parts : def.headline}
           className={styles.title}
+          draw={drawHeadline}
         />
         <ModeSwitch
           mode={mode}
@@ -155,7 +180,7 @@ export function ListPage() {
           </div>
 
           <div className="phone-only">
-            <RollResult view={rolled} rolled={rollId !== null} onClear={clearRoll} />
+            <RollResult view={rolled} onClear={clearRoll} />
           </div>
 
           {n === 0 ? (
@@ -163,9 +188,10 @@ export function ListPage() {
               {result.searching ? `nothing matches “${q.trim()}”.` : def.emptyHint}
             </p>
           ) : (
-            <ul className={styles.cards}>
+            // keyed by mode + chip so the cards stagger in again when they change
+            <ul className={styles.cards} key={`${mode}|${result.tag}|${String(result.searching)}`}>
               {result.items.map((v, i) => (
-                <li key={v.spot.id}>
+                <li key={v.spot.id} className="enter" style={{ '--i': i }}>
                   <SpotCard view={v} index={i} />
                 </li>
               ))}
@@ -175,14 +201,15 @@ export function ListPage() {
 
         <aside aria-label="Radar and dice" className={`desktop-only ${styles.aside}`}>
           {/* top of the aside so the pick is on screen right after rolling */}
-          <RollResult view={rolled} rolled={rollId !== null} onClear={clearRoll} />
+          <RollResult view={rolled} onClear={clearRoll} />
           <div className={`sk ${styles.radarCard}`}>
+            <Ink />
             <div className={styles.radarCardHead}>
               <h2>around {from === 'home' ? 'home' : 'you'}</h2>
               <span className="note">rings = travel time</span>
             </div>
             <Radar views={views} from={from} className={styles.miniRadar} />
-            <Link to="/radar" className={styles.radarLink}>
+            <Link viewTransition to="/radar" className={styles.radarLink}>
               open the full radar
             </Link>
           </div>

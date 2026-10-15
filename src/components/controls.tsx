@@ -1,3 +1,5 @@
+import { Ink } from './Ink';
+import { useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router';
 import { MODE_DEFS, MODES, type Mode } from '../domain/modes';
 import { useOrigin } from '../lib/origin';
@@ -9,7 +11,7 @@ import { Icon } from './Icon';
 import type { UI_ICONS } from './icons';
 
 export function FromToggle({ compact = false }: { compact?: boolean }) {
-  const { from, status, chooseHome, chooseHere } = useOrigin();
+  const { from, status, chooseHome, chooseHere, openHomeEditor, homeIsDemo } = useOrigin();
   const locating = status === 'locating';
   const opts = [
     { key: 'home', label: 'home', on: from === 'home' && !locating, pick: chooseHome },
@@ -30,12 +32,30 @@ export function FromToggle({ compact = false }: { compact?: boolean }) {
           type="button"
           aria-pressed={o.on}
           aria-busy={o.key === 'here' && locating}
-          className={o.on ? `sk flat ${styles.fromOn}` : styles.fromOff}
+          className={`tap ${o.on ? `sk flat ${styles.fromOn}` : styles.fromOff}`}
           onClick={o.pick}
         >
+          {o.on && <Ink />}
           {o.label}
         </button>
       ))}
+      {homeIsDemo && !compact ? (
+        <span className={styles.demoNote}>
+          from a demo home in downtown seattle ·{' '}
+          <button type="button" className={`tap ${styles.setHome}`} onClick={openHomeEditor}>
+            set your home
+          </button>
+        </span>
+      ) : (
+        <button
+          type="button"
+          className={`tap ${styles.setHome}`}
+          onClick={openHomeEditor}
+          aria-label={homeIsDemo ? 'Set your home location' : 'Change your home location'}
+        >
+          {homeIsDemo ? 'set home' : 'edit home'}
+        </button>
+      )}
     </div>
   );
 }
@@ -49,6 +69,7 @@ const MODE_ICONS: Record<Mode, keyof typeof UI_ICONS> = {
 export function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
   return (
     <div className={`sk flat ${styles.modes}`} role="group" aria-label="What kind of idea">
+      <Ink />
       {MODES.map((m) => {
         const on = m === mode;
         return (
@@ -56,11 +77,12 @@ export function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (m: Mode)
             key={m}
             type="button"
             aria-pressed={on}
-            className={`${on ? 'sk flat ' : ''}${styles.mode}`}
+            className={`tap ${on ? 'sk flat ' : ''}${styles.mode}`}
             onClick={() => {
               onChange(m);
             }}
           >
+            {on && <Ink />}
             <Icon name={MODE_ICONS[m]} size={18} strokeWidth={on ? 2.2 : 2} />
             {MODE_DEFS[m].label}
           </button>
@@ -92,6 +114,7 @@ export function ChipRow({
             onChange(c);
           }}
         >
+          <Ink />
           {c}
         </button>
       ))}
@@ -114,6 +137,7 @@ export function SearchBox({
 }) {
   return (
     <label className={`sk flat ${styles.search} ${className}`} htmlFor={id}>
+      <Ink />
       <Icon name="search" size={20} />
       <span className="visually-hidden">Search my spots</span>
       <input
@@ -141,15 +165,24 @@ export function DiceButton({
   big?: boolean;
   disabled?: boolean;
 }) {
+  // remounting the icon (new key) replays the wiggle on every roll
+  const [rolls, setRolls] = useState(0);
+  const roll = () => {
+    setRolls((n) => n + 1);
+    onRoll();
+  };
   if (big) {
     return (
       <button
         type="button"
         className={`sk press boil ${styles.diceBig}`}
-        onClick={onRoll}
+        onClick={roll}
         disabled={disabled}
       >
-        <Icon name="dice" size={44} strokeWidth={1.8} />
+        <Ink boil />
+        <span key={rolls} className={rolls ? 'wiggle' : undefined}>
+          <Icon name="dice" size={44} strokeWidth={1.8} />
+        </span>
         <span>
           <span className={styles.diceBigTitle}>can&apos;t decide?</span>
           <span className={styles.diceBigSub}>roll the dice on what&apos;s in range</span>
@@ -162,10 +195,13 @@ export function DiceButton({
       <button
         type="button"
         className={`sk press boil ${styles.diceSmall}`}
-        onClick={onRoll}
+        onClick={roll}
         disabled={disabled}
       >
-        <Icon name="dice" size={20} strokeWidth={2.1} />
+        <Ink boil />
+        <span key={rolls} className={rolls ? 'wiggle' : undefined}>
+          <Icon name="dice" size={20} strokeWidth={2.1} />
+        </span>
         can&apos;t decide? roll
       </button>
     </span>
@@ -173,43 +209,31 @@ export function DiceButton({
 }
 
 /** "the dice says…" sticky. Lives in a polite live region so rolls are announced. */
-export function RollResult({
-  view,
-  rolled,
-  onClear,
-}: {
-  view: SpotView | null;
-  rolled: boolean;
-  onClear: () => void;
-}) {
+export function RollResult({ view, onClear }: { view: SpotView | null; onClear: () => void }) {
   const location = useLocation();
   return (
     <div aria-live="polite">
-      {rolled && (
+      {view && (
         <div className={`sk ${styles.roll}`}>
+          <Ink />
           <div className={styles.rollBody}>
             <div className={styles.rollKicker}>the dice says…</div>
-            {view ? (
-              <>
-                <Link
-                  className={styles.rollName}
-                  to={`/place/${view.spot.id}`}
-                  state={{ back: location.pathname + location.search }}
-                >
-                  {view.spot.name}
-                </Link>
-                <div className={styles.rollMeta}>
-                  {formatMinutes(view.travel.minutes)} {view.travel.mode} · {view.spot.cuisine}
-                </div>
-              </>
-            ) : (
-              <div className={styles.rollEmpty}>nothing in range. widen the net.</div>
-            )}
+            <Link
+              viewTransition
+              className={styles.rollName}
+              to={`/place/${view.spot.id}`}
+              state={{ back: location.pathname + location.search }}
+            >
+              {view.spot.name}
+            </Link>
+            <div className={styles.rollMeta}>
+              {formatMinutes(view.travel.minutes)} {view.travel.mode} · {view.spot.cuisine}
+            </div>
           </div>
-          {view && <GoLink spot={view.spot} travel={view.travel} />}
+          <GoLink spot={view.spot} travel={view.travel} />
           <button
             type="button"
-            className={styles.closeBtn}
+            className={`tap ${styles.closeBtn}`}
             aria-label="Clear the roll"
             onClick={onClear}
           >
@@ -230,15 +254,18 @@ export function BottomNav() {
   return (
     <nav aria-label="View" className={`phone-only ${styles.bottomNav}`}>
       <div className={`sk ${styles.bottomNavInner}`}>
+        <Ink />
         {items.map((it) => {
           const active = it.end ? location.pathname === '/' : location.pathname.startsWith(it.to);
           return (
             <NavLink
+              viewTransition
               key={it.to}
               to={it.to}
               end={it.end}
-              className={`${active ? 'sk flat ' : ''}${styles.navItem}`}
+              className={`tap ${active ? 'sk flat ' : ''}${styles.navItem}`}
             >
+              {active && <Ink />}
               <Icon name={it.icon} size={18} />
               {it.label}
             </NavLink>
@@ -255,10 +282,11 @@ export function OriginNotice() {
     <div role="status">
       {notice && (
         <div className={`sk ${styles.notice}`}>
+          <Ink />
           <p>{notice}</p>
           <button
             type="button"
-            className={styles.closeBtn}
+            className={`tap ${styles.closeBtn}`}
             aria-label="Dismiss"
             onClick={dismissNotice}
           >

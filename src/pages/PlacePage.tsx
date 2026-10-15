@@ -1,3 +1,4 @@
+import { Ink } from '../components/Ink';
 import { Link, useLocation, useParams } from 'react-router';
 import { Icon } from '../components/Icon';
 import { appleMapsUrl, mapsLabel } from '../domain/maps';
@@ -69,7 +70,9 @@ export function PlacePage() {
         <p className="note" style={{ fontSize: 24 }}>
           maybe it got renamed. maybe it closed. either way:
         </p>
-        <Link to="/">back to the list</Link>
+        <Link viewTransition to="/">
+          back to the list
+        </Link>
       </main>
     );
   }
@@ -84,7 +87,13 @@ export function PlacePage() {
   return (
     <main id="main" className={styles.main}>
       <div className={styles.topRow}>
-        <Link className={`sk press ${styles.back}`} to={back} aria-label="Back to the list">
+        <Link
+          viewTransition
+          className={`sk press ${styles.back}`}
+          to={back}
+          aria-label="Back to the list"
+        >
+          <Ink />
           <Icon name="back" size={22} strokeWidth={2.4} />
           <span className={styles.backLabel} aria-hidden="true">
             back
@@ -93,11 +102,13 @@ export function PlacePage() {
         <span className={styles.statusTilt}>
           {spot.status === 'been' ? (
             <span className={`sk flat ${styles.status}`}>
+              <Ink />
               <Icon name="check" size={15} strokeWidth={3} />
               been here{spot.rating !== undefined ? ` · ${spot.rating}/10` : ''}
             </span>
           ) : (
             <span className={`sk flat ${styles.status} ${styles.statusWant}`}>
+              <Ink />
               <Icon name="star" size={15} strokeWidth={2.4} />
               want to try
             </span>
@@ -109,6 +120,7 @@ export function PlacePage() {
         <div className={styles.colA}>
           <div className={styles.photoWrap}>
             <div className={`sk ${styles.photo}`}>
+              <Ink />
               <svg
                 width="74"
                 height="74"
@@ -130,14 +142,17 @@ export function PlacePage() {
 
           <dl className={styles.stats}>
             <div className={`sk flat ${styles.stat}`}>
+              <Ink />
               <dt>{travel.mode}</dt>
               <dd>{formatMinutes(travel.minutes)}</dd>
             </div>
             <div className={`sk flat ${styles.stat}`}>
+              <Ink />
               <dt>from {where === 'you' ? 'here' : 'home'}</dt>
               <dd>{formatMiles(travel.miles)}</dd>
             </div>
             <div className={`sk flat ${styles.stat}`}>
+              <Ink />
               <dt>{spot.openTill ? 'open till' : 'kind'}</dt>
               <dd>{spot.openTill ?? spot.kind}</dd>
             </div>
@@ -160,6 +175,7 @@ export function PlacePage() {
           {spot.why && (
             <section aria-labelledby="why" className={styles.why}>
               <div className={`sk ${styles.whyNote}`}>
+                <Ink />
                 <h2 id="why" className={styles.kicker}>
                   why it&apos;s on the list
                 </h2>
@@ -211,6 +227,7 @@ export function PlacePage() {
               rel="noopener noreferrer"
               aria-label={mapsLabel(spot, travel)}
             >
+              <Ink />
               <Icon name="go" size={22} />
               take me there
             </a>

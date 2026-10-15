@@ -1,7 +1,17 @@
-import { useMemo } from 'react';
+import { Ink } from './Ink';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Kind } from '../domain/spot';
 import type { From } from '../lib/origin';
-import { HUB_DIAMETER, layoutRadar, RING_DIAMETERS } from '../lib/radar';
+import {
+  DOT_TARGET_PX,
+  HUB_DIAMETER,
+  layoutRadar,
+  PHONE_RADAR_PX,
+  RING_DIAMETERS,
+} from '../lib/radar';
+
+/** Non-interactive dots (desktop mini radar) only need to not overlap visually. */
+const STATIC_DOT_PX = 16;
 import { byTravelTime, describeDot, type SpotView } from '../domain/spotView';
 import { RING_LABELS, type Ring } from '../domain/travel';
 import { Icon } from './Icon';
@@ -41,6 +51,22 @@ export function Radar({
   onSelect,
   className = '',
 }: RadarProps) {
+  const interactive = Boolean(onSelect);
+  const ref = useRef<HTMLDivElement>(null);
+  // spacing depends on the rendered size: 40px tap targets must not overlap
+  const [size, setSize] = useState(interactive ? PHONE_RADAR_PX : 260);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([entry]) => {
+      const w = entry?.contentRect.width;
+      if (w) setSize(Math.round(w));
+    });
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+    };
+  }, []);
   const sorted = useMemo(() => [...views].sort(byTravelTime), [views]);
   const points = useMemo(
     () =>
@@ -51,14 +77,15 @@ export function Radar({
           ring: v.ring,
           bearing: v.bearing,
         })),
+        { size, target: interactive ? DOT_TARGET_PX : STATIC_DOT_PX },
       ),
-    [sorted],
+    [sorted, size, interactive],
   );
   const where = from === 'home' ? 'home' : 'you';
-  const interactive = Boolean(onSelect);
 
   return (
     <div
+      ref={ref}
       className={`${styles.radar} ${className}`}
       role={interactive ? 'group' : 'img'}
       aria-label={
@@ -77,7 +104,9 @@ export function Radar({
             height: `${(RING_DIAMETERS[i] ?? 1) * 100}%`,
             opacity: i === 0 || i <= reach ? 1 : 0.3,
           }}
-        />
+        >
+          <Ink />
+        </span>
       ))}
       {interactive &&
         RING_LABELS.map((label, i) => (
@@ -95,17 +124,24 @@ export function Radar({
           </span>
         ))}
       <span
-        className={`sk flat boil ${styles.home}`}
+        className={`sk flat ${styles.home}`}
         style={{ width: `clamp(32px, ${HUB_DIAMETER * 100}%, 52px)` }}
         role="img"
         aria-label={from === 'home' ? 'Home' : 'You are here'}
       >
+        <Ink />
         <Icon name={from === 'home' ? 'home' : 'pin'} size={22} />
       </span>
       {sorted.map((v, i) => {
         const p = points[i];
         if (!p) return null;
-        const pos = { left: `${p.x * 100}%`, top: `${p.y * 100}%` };
+        const pos = {
+          left: `${p.x * 100}%`,
+          top: `${p.y * 100}%`,
+          '--i': i,
+          '--dx': `${(0.5 - p.x) * 100}cqw`,
+          '--dy': `${(0.5 - p.y) * 100}cqw`,
+        };
         const inReach = v.ring <= reach;
         if (!onSelect) {
           return (
@@ -127,7 +163,11 @@ export function Radar({
               onSelect(v.spot.id);
             }}
           >
-            {selected && <span aria-hidden="true" className={`sk flat boil ${styles.selRing}`} />}
+            {selected && (
+              <span aria-hidden="true" className={`sk flat ${styles.selRing}`}>
+                <Ink />
+              </span>
+            )}
             <KindMark kind={v.spot.kind} />
           </button>
         );

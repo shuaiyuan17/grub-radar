@@ -1,3 +1,4 @@
+import { Ink } from './Ink';
 import { Link } from 'react-router';
 import type { Spot } from '../domain/spot';
 import { appleMapsUrl, mapsLabel } from '../domain/maps';
@@ -7,8 +8,9 @@ import { Icon } from './Icon';
 
 export function Logo() {
   return (
-    <Link to="/" className={styles.logo} aria-label="grub radar, home">
+    <Link viewTransition to="/" className={styles.logo} aria-label="grub radar, home">
       <span className={`sk flat boil ${styles.logoBlob}`} aria-hidden="true">
+        <Ink boil />
         <Icon name="radar" size={24} strokeWidth={2} />
       </span>
       <span className={styles.logoText} aria-hidden="true">
@@ -54,6 +56,7 @@ export function GoLink({
       rel="noopener noreferrer"
       aria-label={mapsLabel(spot, travel)}
     >
+      <Ink />
       <Icon name="go" size={20} />
       <span className={labelClassName ?? 'visually-hidden'}>{label}</span>
     </a>
@@ -65,16 +68,19 @@ export function Headline({
   parts,
   className,
   id,
+  draw = false,
 }: {
   parts: readonly [string, string, string];
   className?: string;
   id?: string;
+  /** Animate the highlighter in. */
+  draw?: boolean;
 }) {
   const [pre, hl, post] = parts;
   return (
     <h1 className={className} id={id}>
       {pre}
-      <span className="hl">{hl}</span>
+      <span className={draw ? 'hl hl-draw' : 'hl'}>{hl}</span>
       {post}
     </h1>
   );

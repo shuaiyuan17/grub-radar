@@ -2,6 +2,19 @@
   position: relative;
   width: 100%;
   aspect-ratio: 1;
+  container-type: inline-size;
+}
+/* dots pop out from the centre, slightly staggered (--dx/--dy point home) */
+.dot,
+.staticDot {
+  animation: dot-pop var(--dot-duration) var(--ease-pop) backwards;
+  animation-delay: calc(min(var(--i, 0), 14) * var(--dot-stagger));
+}
+@keyframes dot-pop {
+  from {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, 0px))) scale(0.3);
+  }
 }
 
 .radar .ring {
@@ -10,7 +23,7 @@
   transform: translate(-50%, -50%);
   left: 50%;
   top: 50%;
-  transition: opacity 0.25s ease;
+  transition: opacity var(--fade-duration) var(--ease-out);
 }
 .ring0 {
   --fill: var(--card);
@@ -27,7 +40,7 @@
 .ring3 {
   --fill: transparent;
   --bw: 2px;
-  --bs: dashed;
+  --dash: 7 6;
 }
 
 .label {
@@ -41,7 +54,7 @@
   line-height: 20px;
   border-radius: 6px;
   white-space: nowrap;
-  transition: opacity 0.25s ease;
+  transition: opacity var(--fade-duration) var(--ease-out);
 }
 
 .radar .home {
@@ -57,7 +70,7 @@
   align-items: center;
   justify-content: center;
 }
-.home svg {
+.home svg:not(:global(.ink)) {
   width: 55%;
   height: 55%;
 }
@@ -71,8 +84,8 @@
   align-items: center;
   justify-content: center;
   transition:
-    opacity 0.25s ease,
-    transform 0.2s ease;
+    opacity var(--fade-duration) var(--ease-out),
+    transform var(--press-duration) var(--ease-out);
 }
 .dot:hover {
   transform: translate(-50%, -50%) scale(1.15);

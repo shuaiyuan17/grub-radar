@@ -15,10 +15,10 @@ describe('list page', () => {
     );
     expect(cardNames()).toEqual([
       'Lucky Thread Noodle Bar',
+      "Mama Ko's Dumpling Window",
       'Ondo Soup House',
       'Two Fires Taqueria',
       'Brine & Bun',
-      "Mama Ko's Dumpling Window",
     ]);
     expect(screen.getByText('5 spots · closest first')).toBeInTheDocument();
   });
@@ -41,7 +41,7 @@ describe('list page', () => {
     );
     expect(screen.getByRole('button', { name: 'weekend' })).toHaveAttribute('aria-pressed', 'true');
     expect(router.state.location.search).toBe('?mode=weekend');
-    expect(screen.getByText(/by drive time/)).toBeInTheDocument();
+    expect(screen.getByText('5 spots · closest first')).toBeInTheDocument();
     expect(cardNames()[0]).toBe('Harbor Night Market');
   });
 
@@ -167,5 +167,45 @@ describe('time-of-day headline', () => {
     await user.click(screen.getByRole('link', { name: 'Ondo Soup House' }));
     await user.click(await screen.findByRole('link', { name: 'Back to the list' }));
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(text);
+  });
+});
+
+describe('list URL state', () => {
+  it('always writes ?mode= when you pick a mode, even the default', async () => {
+    const { user, router } = renderAt('/');
+    await user.click(await screen.findByRole('button', { name: 'near me' }));
+    expect(router.state.location.search).toBe('?mode=near');
+  });
+
+  it('ignores an unknown ?roll= id', async () => {
+    renderAt('/?roll=no-such-spot');
+    expect(await screen.findAllByRole('article')).toHaveLength(5);
+    expect(screen.queryByText('the dice says…')).not.toBeInTheDocument();
+  });
+
+  it('clears ?q= when you close the phone search', async () => {
+    const { user, router } = renderAt('/?q=noodle');
+    const toggle = await screen.findByRole('button', { name: 'Search my spots', expanded: true });
+    await user.click(toggle);
+    expect(router.state.location.search).toBe('');
+  });
+
+  it('clears ?roll= when the origin changes', async () => {
+    const geo = fakeGeolocation();
+    const { user, router } = renderAt('/?roll=lucky-thread');
+    expect(await screen.findAllByText('the dice says…')).not.toHaveLength(0);
+    await user.click(screen.getByRole('button', { name: 'Use my current location' }));
+    act(() => {
+      geo.succeed(47.6062, -122.3245);
+    });
+    expect(router.state.location.search).toBe('');
+    expect(screen.queryByText('the dice says…')).not.toBeInTheDocument();
+  });
+
+  it('staggers cards in (each card gets its index)', async () => {
+    renderAt('/');
+    const items = (await screen.findAllByRole('article')).map((a) => a.closest('li')!);
+    expect(items[2]).toHaveClass('enter');
+    expect(items[2]!.style.getPropertyValue('--i')).toBe('2');
   });
 });

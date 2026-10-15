@@ -1,3 +1,4 @@
+import { Ink } from '../components/Ink';
 import { Link, useLocation, useSearchParams } from 'react-router';
 import { GoLink } from '../components/bits';
 import { BottomNav, DiceButton } from '../components/controls';
@@ -20,8 +21,9 @@ import { useSpotViews } from '../lib/useSpotViews';
 import styles from './RadarPage.module.css';
 
 function parseReach(raw: string | null): Ring {
+  if (raw === null || raw.trim() === '') return MAX_RING; // Number('') would be 0
   const n = Number(raw);
-  return raw !== null && isRing(n) ? n : MAX_RING;
+  return isRing(n) ? n : MAX_RING;
 }
 
 function parseKinds(raw: string | null): Set<Kind> {
@@ -86,7 +88,7 @@ export function RadarPage() {
     <main id="main" className={styles.main}>
       <div className={styles.layout}>
         <div className={styles.panel}>
-          <Link to="/" className={`desktop-only ${styles.backLink}`}>
+          <Link viewTransition to="/" className={`desktop-only ${styles.backLink}`}>
             ← back to the list
           </Link>
           <h1 className={styles.title}>
@@ -118,7 +120,7 @@ export function RadarPage() {
               <button
                 key={k}
                 type="button"
-                className={styles.kind}
+                className={`tap ${styles.kind}`}
                 aria-pressed={kinds.has(k)}
                 onClick={() => {
                   toggleKind(k);
@@ -136,9 +138,11 @@ export function RadarPage() {
           <div aria-live="polite" className={styles.cardSlot}>
             {selected ? (
               <article className={`sk ${styles.card}`} aria-label={selected.spot.name}>
+                <Ink />
                 <FoodTile icon={selected.spot.icon} index={selectedIndex} />
                 <div className={styles.cardBody}>
                   <Link
+                    viewTransition
                     className={styles.cardName}
                     to={`/place/${selected.spot.id}`}
                     state={{ back: location.pathname + location.search }}

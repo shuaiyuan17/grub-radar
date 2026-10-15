@@ -1,7 +1,7 @@
 import { Outlet, ScrollRestoration, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { Logo } from '../components/bits';
 import { FromToggle, OriginNotice, SearchBox } from '../components/controls';
-import { SketchFilters } from '../components/SketchFilters';
+import { HomeEditor } from '../components/HomeControls';
 import { OriginProvider } from '../components/OriginProvider';
 import { SpotsProvider } from '../components/SpotsProvider';
 import styles from './Layout.module.css';
@@ -33,7 +33,6 @@ function HeaderSearch() {
 export function Layout() {
   return (
     <OriginProvider>
-      <SketchFilters />
       <a className={styles.skip} href="#main">
         skip to content
       </a>
@@ -46,6 +45,7 @@ export function Layout() {
           <FromToggle compact />
         </header>
         <OriginNotice />
+        <HomeEditor />
         <SpotsProvider>
           <Outlet />
         </SpotsProvider>

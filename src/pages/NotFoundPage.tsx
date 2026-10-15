@@ -13,7 +13,9 @@ export function NotFoundPage() {
       <p className="note" style={{ fontSize: 24 }}>
         wrong turn. happens to the best of us.
       </p>
-      <Link to="/">back to the list</Link>
+      <Link viewTransition to="/">
+        back to the list
+      </Link>
       <BottomNav />
     </main>
   );

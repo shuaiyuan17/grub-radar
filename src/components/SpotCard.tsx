@@ -1,3 +1,4 @@
+import { Ink } from './Ink';
 import { Link, useLocation } from 'react-router';
 import type { SpotView } from '../domain/spotView';
 import { formatMinutes } from '../domain/travel';
@@ -10,12 +11,17 @@ export function SpotCard({ view, index }: { view: SpotView; index: number }) {
   const location = useLocation();
   return (
     <article className={`sk lift ${styles.card}`} aria-labelledby={`card-${spot.id}`}>
+      <Ink />
       <span className={styles.tile}>
         <FoodTile icon={spot.icon} index={index} />
       </span>
       <div className={styles.head}>
         <h3 className={styles.name} id={`card-${spot.id}`}>
-          <Link to={`/place/${spot.id}`} state={{ back: location.pathname + location.search }}>
+          <Link
+            viewTransition
+            to={`/place/${spot.id}`}
+            state={{ back: location.pathname + location.search }}
+          >
             {spot.name}
           </Link>
         </h3>

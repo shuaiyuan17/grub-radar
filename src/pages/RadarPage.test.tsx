@@ -53,3 +53,16 @@ describe('radar page', () => {
     expect(screen.getByRole('article', { name: 'Little Ember Coffee' })).toBeInTheDocument();
   });
 });
+
+describe('radar URL state', () => {
+  it('treats an empty ?reach= as the default (road trip)', async () => {
+    renderAt('/radar?reach=');
+    expect(await screen.findByRole('slider')).toHaveAttribute('aria-valuetext', 'road trip');
+    expect(screen.getByText('13 in reach')).toBeInTheDocument();
+  });
+
+  it('treats a junk ?reach= as the default', async () => {
+    renderAt('/radar?reach=9');
+    expect(await screen.findByRole('slider')).toHaveAttribute('aria-valuetext', 'road trip');
+  });
+});
