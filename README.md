@@ -19,22 +19,29 @@ Needs Node 22.22+ (see `.nvmrc`).
 
 ```sh
 npm install
-npm run dev          # http://localhost:5173
+npm run dev:vars          # once: writes .dev.vars (gitignored) with fresh local secrets
+npm run db:migrate:local  # once per new migration: local D1 under .wrangler/
+npm run apple-stub        # in another terminal: a local stand-in for Sign in with Apple
+npm run dev               # http://localhost:5173 (SPA + Worker + local D1)
 ```
 
-| script             | what it does                                      |
-| ------------------ | ------------------------------------------------- |
-| `npm run check`    | typecheck + ESLint + Prettier check + unit tests  |
-| `npm run build`    | static build into `dist/`                         |
-| `npm run preview`  | serve the build                                   |
-| `npm test`         | unit + component tests (Vitest, Testing Library)  |
-| `npm run test:e2e` | Playwright smoke tests at phone and desktop sizes |
-| `npm run format`   | Prettier                                          |
+The app is behind a login wall. Locally, "Sign in with Apple" goes to the stub (Apple only
+returns people to `https://grub.shuaiyuan.me`), where you pick any name and continue.
+
+| script                      | what it does                                                          |
+| --------------------------- | --------------------------------------------------------------------- |
+| `npm run check`             | typecheck + ESLint + Prettier check + all Vitest projects             |
+| `npm run build`             | SPA into `dist/client`, Worker + output config into `dist/grub_radar` |
+| `npm run preview`           | serve the build in workerd, like production                           |
+| `npm test`                  | Vitest: `spa` (jsdom), `domain` (node), `worker` (workerd + D1)       |
+| `npm run test:e2e`          | Playwright at phone and desktop sizes (starts the stub + preview)     |
+| `npm run deploy:dry-run`    | bundle + config check, no upload                                      |
+| `npm run db:migrate:local`  | apply D1 migrations locally                                           |
+| `npm run db:migrate:remote` | apply D1 migrations to the real database                              |
+| `npm run dev:vars`          | write `.dev.vars` (`-- --from-keychain` for the real Apple key)       |
+| `npm run format`            | Prettier                                                              |
 
 The first `test:e2e` run needs `npx playwright install chromium`.
-
-`dist/` is a plain static SPA, ready for Cloudflare Pages (with no `404.html`, Pages serves
-`index.html` for unknown paths, so `/place/...` and `/radar` deep links work).
 
 ## Views and URLs
 
@@ -126,7 +133,9 @@ The data is validated with zod when the app loads and in `npm test`, so a typo f
 ## Privacy: this repo is public
 
 Everything in `src/data/seed.ts` is **fictional demo data** scattered around a demo origin in
-downtown Seattle. Don't commit real addresses, real names or private notes.
+downtown Seattle. Don't commit real addresses, real names or private notes. It is not in the
+app bundle: signed-out visitors get the login wall and nothing else, and the Worker serves
+spots only to a session (Playwright checks the DOM and every network response for it).
 
 Your real home is **never** in the code, the config or the build: there is no env var for it.
 You set it in the app and it lives in your browser's `localStorage` on that device. The site
@@ -153,6 +162,48 @@ can be deployed publicly without leaking where you live.
 - `node scripts/perf.mjs <url>` measures resize frame times and idle work against a running
   `npm run preview` (see the script for options).
 
+## Backend: one Cloudflare Worker
+
+The site is a single Worker with Static Assets (`wrangler.jsonc`). Files in `dist/client` are
+served by Cloudflare directly; only the paths in `assets.run_worker_first` (`/api/*`,
+`/auth/*`, and the reserved agent paths) run `worker/index.ts` (Hono). D1 (`grub-radar`) holds
+accounts and sessions; spots move there in the next PR.
+
+| endpoint                       | auth    | what                                                          |
+| ------------------------------ | ------- | ------------------------------------------------------------- |
+| `GET /api/health`              | none    | `{ ok, version }`                                             |
+| `GET /auth/apple/start`        | none    | 302 to Apple (`?returnTo=/same/origin/path`)                  |
+| `POST /auth/callback`          | Apple   | Apple's form_post; 303 back with a session, or `/?signin=…`   |
+| `POST /auth/logout`            | session | 204, session deleted                                          |
+| `GET /api/me`, `PATCH /api/me` | session | `{ user, home, signupOpen }`; change name / avatar emoji      |
+| `GET /api/spots[/:id]`         | session | the demo spots (until spots live in D1)                       |
+| `GET /api/mapkit-token`        | none    | 30-minute MapKit JS token locked to our origin; 20/min per IP |
+| `POST /auth/dev-login`         | secret  | local only (localhost, non-production, `DEV_LOGIN_SECRET`)    |
+
+**Sign in with Apple** (`worker/auth/siwa.ts`): web flow with `response_type=code` and
+`response_mode=form_post`. `state` and a hashed `nonce` ride in an HMAC-signed, 10-minute,
+single-use `__Host-grub_siwa` cookie (`SameSite=None`, because Apple's callback is a
+cross-site POST). The callback exchanges the code with a fresh 5-minute ES256 client secret,
+verifies the id_token (RS256 against Apple's JWKS; `iss`, `aud`, `exp`, nonce), then finds or
+creates the user by Apple `sub`. Apple sends the person's name only on the first
+authorization; it's stored then.
+
+**Sessions** (`worker/auth/session.ts`): a random 32-byte token in `__Host-grub_session`
+(HttpOnly, Secure, SameSite=Lax, 30 days, sliding). D1 stores only its SHA-256.
+**CSRF** (`worker/auth/csrf.ts`): cookie-authenticated writes need JSON, `X-Grub-Request: 1`
+and a same-origin `Sec-Fetch-Site`/`Origin`; no CORS headers anywhere.
+
+**Who can sign up**: `SIGNUP_OPEN` in `wrangler.jsonc`. `"false"` (the default) lets exactly
+one account be created, the first, and then closes the door; others see "invite-only".
+`"true"` opens sign-up to any Apple ID.
+
+**Secrets** (production, `wrangler secret put`): `APPLE_PRIVATE_KEY` (the ES256 `.p8` as
+PEM) and `SESSION_HMAC_KEY` (32+ random bytes). Locally they live in `.dev.vars`
+(gitignored; see `.dev.vars.example`).
+
+**Database**: migrations in `migrations/`, applied with Wrangler's D1 migrations
+(`db:migrate:*`); Worker tests apply the same files. Forward-only, additive.
+
 ## Architecture
 
 ```
@@ -161,9 +212,14 @@ src/
             filters, findNearby, roll, pickHeadline, the SpotRepository interface. No React, no DOM.
   copy/     editable UI copy (time-of-day headlines, per language).
   i18n/     locales, the typed message catalog, language provider, zh font loading.
-  data/     where spots come from. v0: StaticSpotRepository over the in-repo seed.
-  lib/      React glue: origin (home / geolocation), spots context, radar geometry.
+  contracts/ wire schemas (zod) shared by the SPA and the Worker.
+  data/     where spots come from: HttpSpotRepository (the app), StaticSpotRepository over
+            the demo seed (tests).
+  lib/      React glue: auth, origin (home / geolocation), spots context, radar geometry.
   components/, pages/   the UI.
+worker/     the Cloudflare Worker: auth (SIWA, sessions, CSRF), D1 access, routes. Imports
+            only src/domain and src/contracts (ESLint), typechecks without the DOM.
+migrations/ D1 SQL migrations.
 ```
 
 The UI only reads spots through `SpotRepository` (`list()`, `get(id)`, plus an optional
@@ -172,8 +228,9 @@ validated lazily, so bad data shows an error in the app instead of a blank page.
 boundaries are enforced twice:
 
 - **ESLint**: `src/domain` can't import React, app code or config, and can't touch browser
-  globals (`window`, `location`, `fetch`, `globalThis`, ...). Only `src/data` may import the
-  seed.
+  globals (`window`, `location`, `fetch`, `globalThis`, ...). App code can't import the
+  seed or the static repository (tests can). `worker/` may import only `src/domain` and
+  `src/contracts` (plus, for now, the demo seed it serves).
 - **TypeScript**: `tsconfig.domain.json` typechecks the domain on its own with no DOM lib, so
   a stray browser API fails `tsc -b`, not just lint.
 
@@ -187,15 +244,13 @@ The domain operations are shaped to map 1:1 onto future API endpoints / MCP tool
 | `mark_been`   | `WritableSpotRepository.markBeen(id, rating?)`            | planned |
 | `add_note`    | `WritableSpotRepository.addNote(id, note)`                | planned |
 
-Planned later, not built yet: a Cloudflare Workers + D1 backend implementing
-`WritableSpotRepository` behind an HTTP API, a remote MCP server at `/mcp` exposing the tools
-above, and the site on Cloudflare Pages. Swapping the data source means writing an
-`HttpSpotRepository` and passing it to `<SpotsProvider repository={...}>`; components don't
-change.
+Next: spots in D1 behind `WritableSpotRepository` over HTTP, then the agent door (OAuth +
+a remote MCP server at `/mcp` exposing the tools above).
 
 ## Stack
 
 Vite 8, React 19, TypeScript 6 (strict, `noUncheckedIndexedAccess`), React Router 8, zod 4 (`zod/mini`),
-plain CSS (custom properties + CSS modules), self-hosted fonts via Fontsource. Vitest 5 +
+plain CSS (custom properties + CSS modules), self-hosted fonts via Fontsource. Cloudflare
+Workers (Static Assets + D1) with Hono and jose, built by `@cloudflare/vite-plugin`. Vitest 5 +
 Testing Library, Playwright with axe-core checks, ESLint 10 (typescript-eslint strict,
 type-checked) + Prettier, GitHub Actions CI.

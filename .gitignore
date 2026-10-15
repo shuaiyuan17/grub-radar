@@ -24,3 +24,10 @@ playwright/.cache/
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# Cloudflare: local Worker state and dev secrets (never commit the Apple key)
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+dist-worker/

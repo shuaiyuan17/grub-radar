@@ -1,11 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { StaticSpotRepository } from '../data/staticRepository';
 import type { SpotRepository } from '../domain/repository';
 import type { Spot } from '../domain/spot';
 import { useT } from '../i18n/context';
 import { SpotsContext } from '../lib/spots';
-
-const defaultRepository = new StaticSpotRepository();
 
 type Load =
   { state: 'loading' } | { state: 'ready'; spots: Spot[] } | { state: 'error'; error: Error };
@@ -23,15 +20,15 @@ function initialLoad(repository: SpotRepository): Load {
 }
 
 /**
- * Loads spots from the repository and hands them to the tree. Pass a
- * different repository (e.g. an HTTP one) to point the UI elsewhere.
+ * Loads spots from the repository and hands them to the tree: the HTTP one
+ * in the app, the static demo data in tests.
  */
 export function SpotsProvider({
   children,
-  repository = defaultRepository,
+  repository,
 }: {
   children: ReactNode;
-  repository?: SpotRepository;
+  repository: SpotRepository;
 }) {
   const t = useT();
   // load state belongs to one repository; when the prop changes, start over

@@ -1,4 +1,4 @@
-/// <reference types="vitest/config" />
+import { cloudflare } from '@cloudflare/vite-plugin';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 import { bootLangScript } from './src/i18n/boot.ts';
@@ -11,14 +11,9 @@ function bootLang(): Plugin {
   };
 }
 
-// https://vite.dev/config/
+// `vite dev` / `vite preview` run the SPA and the Worker (worker/index.ts,
+// local D1, .dev.vars) together, with wrangler.jsonc's asset routing.
+// Tests live in vitest.config.ts.
 export default defineConfig({
-  plugins: [react(), bootLang()],
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}'],
-    css: false,
-  },
+  plugins: [react(), bootLang(), cloudflare()],
 });

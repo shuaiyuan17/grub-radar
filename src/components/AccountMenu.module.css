@@ -1,0 +1,63 @@
+.account {
+  position: relative;
+}
+.chip {
+  --fill: var(--card);
+  --sx: 2px;
+  --sy: 3px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0 14px 0 8px;
+  border-radius: var(--r-pill);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 15px;
+}
+.compact {
+  padding: 0;
+  justify-content: center;
+  border-radius: var(--r-round);
+}
+.avatar {
+  font-size: 22px;
+  line-height: 1;
+}
+.name {
+  max-width: 10em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menu {
+  --fill: var(--card);
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  z-index: 20;
+  min-width: 190px;
+  padding: 12px 14px;
+  border-radius: var(--r-tile);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.who {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.signOut {
+  align-self: flex-start;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--note-red);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}

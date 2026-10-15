@@ -1,3 +1,4 @@
+import type { SigninResult } from '../contracts/errors';
 import type { Day, Hours, Kind } from '../domain/spot';
 import { formatMiles, formatMinutes, type TravelMode } from '../domain/travel';
 import type { Mode } from '../domain/modes';
@@ -189,6 +190,19 @@ const en = {
   save: 'save',
   latLngError: "that doesn't look like lat, lng (e.g. 47.61, -122.33).",
   forgetHome: 'forget my home (back to the demo)',
+
+  wallTagline: 'where should we *eat*?',
+  /** Apple's own title for the button (HIG); keep it verbatim. */
+  appleSignIn: 'Sign in with Apple',
+  checkingWho: 'checking who you are…',
+  accountLabel: (name: string) => `Signed in as ${name}`,
+  signOut: 'sign out',
+  signingOut: 'signing out…',
+  signinResult: {
+    cancelled: 'sign-in cancelled. no worries, try again whenever.',
+    closed: 'grub radar is invite-only for now. that Apple ID doesn’t have an account.',
+    failed: 'that didn’t work. try signing in again?',
+  } satisfies Record<SigninResult, string>,
 };
 
 export type Messages = typeof en;
@@ -356,6 +370,19 @@ const zh: Messages = {
   save: '保存',
   latLngError: '格式不对，应该是“纬度, 经度”（比如 47.61, -122.33）。',
   forgetHome: '忘掉我的家（回到示例）',
+
+  wallTagline: '今天去哪儿*吃*？',
+  /** Apple's localized button title (HIG). */
+  appleSignIn: '通过 Apple 登录',
+  checkingWho: '确认一下你是谁…',
+  accountLabel: (name) => `已登录：${name}`,
+  signOut: '退出登录',
+  signingOut: '正在退出…',
+  signinResult: {
+    cancelled: '登录已取消。随时可以再来。',
+    closed: 'grub radar 目前仅限邀请，这个 Apple ID 还没有账号。',
+    failed: '没成功，再登录一次试试？',
+  },
 };
 
 export const MESSAGES: Record<Locale, Messages> = { en, 'zh-Hans': zh };

@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { devLogin } from './session';
 
 async function noHorizontalScroll(page: Page) {
   const overflow = await page.evaluate(
@@ -32,6 +33,11 @@ async function pinTime(page: Page, date: Date) {
 }
 
 const WEEKDAY_DINNER = new Date(2026, 9, 14, 19, 0); // Wednesday 19:00 local
+
+// the app is behind the login wall: every test here starts signed in
+test.beforeEach(async ({ page }) => {
+  await devLogin(page);
+});
 
 test('list -> place -> back -> radar', async ({ page }, info) => {
   const phone = info.project.name === 'phone';
