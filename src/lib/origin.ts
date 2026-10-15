@@ -13,6 +13,18 @@ export interface OriginValue {
   chooseHome: () => void;
   chooseHere: () => void;
   dismissNotice: () => void;
+
+  /** The home origin in use: yours (saved on this device) or the demo one. */
+  home: LatLng;
+  homeIsDemo: boolean;
+  homeEditorOpen: boolean;
+  openHomeEditor: () => void;
+  closeHomeEditor: () => void;
+  /** Validated + saved to this device. Returns false if it couldn't be. */
+  setHome: (home: LatLng) => boolean;
+  /** Asks the browser where you are and saves that as home. */
+  setHomeFromHere: () => void;
+  forgetHome: () => void;
 }
 
 export const OriginContext = createContext<OriginValue | null>(null);
