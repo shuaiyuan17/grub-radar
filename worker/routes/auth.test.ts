@@ -477,8 +477,8 @@ async function callbackVia(envOverride: Partial<Env>, start: { cookie: string },
     },
     config,
   );
-  return followHandoff(handoff, (path, cookie) =>
-    app.request(`https://grub.test${path}`, { headers: cookie ? { cookie } : {} }, config),
+  return followHandoff(handoff, (init) =>
+    app.request('https://grub.test/auth/finish', init, config),
   );
 }
 

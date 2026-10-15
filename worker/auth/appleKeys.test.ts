@@ -127,16 +127,33 @@ describe('verifyWithAppleKeys', () => {
     expect(mock.keyFetches).toHaveLength(3);
   });
 
-  it('keys straight from Apple are not refetched on failure', async () => {
+  it('a rotation racing the first fetch: keys fresh from Apple still get one refetch', async () => {
+    const before = await fakeAppleKeys('kid-old');
+    const after = await fakeAppleKeys('kid-new');
+    // Apple hands us the old set, then rotates before the token is checked
+    const sets = [before.jwks, { keys: [...before.jwks.keys, ...after.jwks.keys] }];
+    const mock = mockApple(
+      before,
+      () => tokenResponse(''),
+      () => Response.json(sets[Math.min(mock.keyFetches.length - 1, 1)]),
+    );
+    const keys = await appleKeys(env);
+    expect(keys.source).toBe('network');
+    const identity = await verify(await after.idToken({ nonce: NONCE }), keys);
+    expect(identity.sub).toBe('000123.fictional-sub.0456');
+    expect(mock.keyFetches).toHaveLength(2);
+  });
+
+  it('keys straight from Apple: an unknown kid refetches once (cooldown), then is refused', async () => {
     const apple = await fakeAppleKeys();
     const stranger = await fakeAppleKeys('stranger');
     const mock = mockApple(apple, () => tokenResponse(''));
     const keys = await appleKeys(env);
     expect(keys.source).toBe('network');
-    await expect(verify(await stranger.idToken({ nonce: NONCE }), keys)).rejects.toBeInstanceOf(
-      SiwaError,
-    );
-    expect(mock.keyFetches).toHaveLength(1);
+    const token = await stranger.idToken({ nonce: NONCE });
+    await expect(verify(token, keys)).rejects.toBeInstanceOf(SiwaError);
+    await expect(verify(token, keys)).rejects.toBeInstanceOf(SiwaError);
+    expect(mock.keyFetches).toHaveLength(2);
   });
 
   it('a nonce mismatch is never a reason to refetch', async () => {

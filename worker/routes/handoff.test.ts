@@ -1,20 +1,21 @@
 /**
- * POST /auth/callback answers with the "signing you in…" page; GET
- * /auth/finish does the slow part. These pin down that splitting it kept
+ * POST /auth/callback answers with the "signing you in…" page; its form
+ * POSTs to /auth/finish, which does the slow part. These pin down that splitting it kept
  * every guarantee: state checked before anything, single use, the nonce,
  * nothing usable without the page's `t`, strict CSP, no script.
  */
-import { env } from 'cloudflare:workers';
+import { env, exports } from 'cloudflare:workers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetAppleKeys } from '../auth/appleKeys';
 import { PENDING_COOKIE } from '../auth/pending';
-import { SIGNING_IN_STYLE } from '../auth/signingInPage';
+import { SIGNING_IN_SCRIPT, SIGNING_IN_STYLE } from '../auth/signingInPage';
 import {
   call,
   cookieFrom,
   fakeAppleKeys,
   followHandoff,
-  handoffTarget,
+  finishInit,
+  handoffValue,
   mockApple,
   postCallback,
   setCookieLine,
@@ -51,9 +52,20 @@ async function handoff(headers: Record<string, string> = {}) {
     },
     body: new URLSearchParams({ code: 'c.fictional', state: start.state }).toString(),
   });
-  const target = (await handoffTarget(page)) ?? '';
+  const t = (await handoffValue(page)) ?? '';
   const cookie = cookieFrom(page, PENDING_COOKIE) ?? '';
-  return { mock, start, page, target, cookie };
+  return { mock, start, page, t, cookie };
+}
+
+/** The page's form submit (or a forgery of it). */
+function finish(
+  t: string | undefined,
+  cookie: string | undefined,
+  headers?: Record<string, string>,
+) {
+  return exports.default.fetch(
+    new Request('https://grub.test/auth/finish', finishInit(t, cookie, headers)),
+  );
 }
 
 const countRows = async (table: string) =>
@@ -73,36 +85,46 @@ afterEach(() => {
 
 describe('POST /auth/callback: the "signing you in…" page', () => {
   it('answers at once, before any Apple or D1 work, with no session yet', async () => {
-    const { page, mock, target } = await handoff();
+    const { page, mock, t } = await handoff();
     expect(page.status).toBe(200);
     expect(page.headers.get('content-type')).toMatch(/^text\/html/);
     expect(mock.calls).toHaveLength(0);
     expect(mock.keyFetches).toHaveLength(0);
     expect(cookieFrom(page, '__Host-grub_session')).toBeNull();
     expect(await countRows('users')).toBe(0);
-    expect(target).toMatch(/^\/auth\/finish\?t=[\w-]{32}$/);
+    expect(t).toMatch(/^[\w-]{32}$/);
+    // `t` is in the form body only: no URL anywhere on the page carries it
+    const html = await page.clone().text();
+    expect(html).toContain('<form id="go" method="POST" action="/auth/finish">');
+    expect(html).not.toMatch(/finish\?/);
+    expect(html).not.toMatch(/http-equiv="refresh"/);
     // no D1 at all on this request
     expect(timingNames(page)).not.toContain('d1_1');
     expect(page.headers.get('server-timing')).toContain('d1;desc="0 round trips"');
   });
 
-  it('is static: no script, CSP allows only its own style by hash', async () => {
-    const { page, target } = await handoff();
+  it('runs only its own one-line script and style, both allowed by hash', async () => {
+    const { page, t } = await handoff();
     const html = await page.text();
-    expect(html).not.toMatch(/<script/i);
+    expect(html.match(/<script/gi)).toHaveLength(1);
+    expect(html).toContain(`<script>${SIGNING_IN_SCRIPT}</script>`);
     expect(html).toContain(`<style>${SIGNING_IN_STYLE}</style>`);
-    expect(html).toContain(`<a href="${target}">`);
-    const digest = await crypto.subtle.digest(
-      'SHA-256',
-      new TextEncoder().encode(SIGNING_IN_STYLE),
-    );
-    const hash = btoa(String.fromCharCode(...new Uint8Array(digest)));
+    expect(html).toContain(`<input type="hidden" name="t" value="${t}">`);
+    // the no-JS fallback: a real submit button in the same form
+    expect(html).toMatch(/<button type="submit">[^<]+<\/button>\s*<\/form>/);
+    const hash = async (text: string) =>
+      btoa(
+        String.fromCharCode(
+          ...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))),
+        ),
+      );
     const csp = page.headers.get('content-security-policy') ?? '';
     expect(csp.split('; ')).toEqual([
       "default-src 'none'",
-      `style-src 'sha256-${hash}'`,
+      `style-src 'sha256-${await hash(SIGNING_IN_STYLE)}'`,
+      `script-src 'sha256-${await hash(SIGNING_IN_SCRIPT)}'`,
       "base-uri 'none'",
-      "form-action 'none'",
+      "form-action 'self'",
       "frame-ancestors 'none'",
     ]);
     expect(page.headers.get('cache-control')).toBe('no-store');
@@ -148,10 +170,11 @@ describe('POST /auth/callback: the "signing you in…" page', () => {
   });
 });
 
-describe('GET /auth/finish', () => {
-  it('signs in and goes back to returnTo, with the timing breakdown', async () => {
-    const { target, cookie, mock } = await handoff();
-    const res = await call(target, { cookie });
+describe('POST /auth/finish', () => {
+  it('signs in and goes back to returnTo, with the timing breakdown, and never logs `t`', async () => {
+    const log = vi.spyOn(console, 'log');
+    const { t, cookie, mock } = await handoff();
+    const res = await finish(t, cookie);
     expect(res.status).toBe(303);
     expect(res.headers.get('location')).toBe('/radar');
     expect(cookieFrom(res, '__Host-grub_session')).not.toBeNull();
@@ -160,6 +183,9 @@ describe('GET /auth/finish', () => {
     expect(timingNames(res)).toEqual(
       expect.arrayContaining(['apple_token', 'jwks', 'id_token_verify', 'signin_db', 'total']),
     );
+    const logged = JSON.stringify(log.mock.calls);
+    expect(logged).toContain('/auth/finish');
+    expect(logged).not.toContain(t);
   });
 
   it('runs the token exchange and the key fetch at the same time', async () => {
@@ -195,45 +221,56 @@ describe('GET /auth/finish', () => {
     expect(res.headers.get('location')).toBe('/');
   });
 
-  it('without the page’s `t`, it neither signs in nor spends or clears the hand-off', async () => {
+  it('without the matching `t` in the body, it neither signs in nor spends or clears the hand-off', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { target, cookie, mock } = await handoff();
-    for (const path of ['/auth/finish', '/auth/finish?t=guess', `${target}x`]) {
-      const res = await call(path, { cookie });
-      expect(res.headers.get('location'), path).toBe('/?signin=failed');
-      expect(setCookieLine(res, PENDING_COOKIE), path).toBeUndefined();
+    const { t, cookie, mock } = await handoff();
+    for (const sent of [undefined, '', 'guess', `${t}x`]) {
+      const res = await finish(sent, cookie);
+      expect(res.headers.get('location'), String(sent)).toBe('/?signin=failed');
+      expect(setCookieLine(res, PENDING_COOKIE), String(sent)).toBeUndefined();
+    }
+    // `t` in the query string is not `t` in the body
+    const inUrl = await exports.default.fetch(
+      new Request(`https://grub.test/auth/finish?t=${t}`, finishInit(undefined, cookie)),
+    );
+    expect(inUrl.headers.get('location')).toBe('/?signin=failed');
+    expect(mock.calls).toHaveLength(0);
+    // the real page's submit still completes it
+    expect((await finish(t, cookie)).headers.get('location')).toBe('/radar');
+  });
+
+  it('refuses a cross-site (or same-site) submit even with the right cookie and `t`', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { t, cookie, mock } = await handoff();
+    for (const site of ['cross-site', 'same-site', 'none']) {
+      const res = await finish(t, cookie, { 'sec-fetch-site': site });
+      expect(res.headers.get('location'), site).toBe('/?signin=failed');
+      expect(setCookieLine(res, PENDING_COOKIE), site).toBeUndefined();
     }
     expect(mock.calls).toHaveLength(0);
-    // the real page's refresh still completes it
-    expect((await call(target, { cookie })).headers.get('location')).toBe('/radar');
+    expect((await finish(t, cookie)).headers.get('location')).toBe('/radar');
   });
 
   it('refuses a missing, forged or tampered hand-off cookie', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { target, cookie, mock } = await handoff();
+    const { t, cookie, mock } = await handoff();
     const [name, value = ''] = cookie.split('=');
     const flipped = value.slice(0, -2) + (value.endsWith('A') ? 'B' : 'A') + value.slice(-1);
     for (const c of [undefined, `${name}=${btoa('{}')}.AAAA`, `${name}=${flipped}`]) {
-      const res = await call(target, { cookie: c });
+      const res = await finish(t, c);
       expect(res.headers.get('location')).toBe('/?signin=failed');
     }
     expect(mock.calls).toHaveLength(0);
   });
 
-  it('never runs for a prefetch or prerender (a one-time code must not be spent)', async () => {
-    const { target, cookie, mock } = await handoff();
-    const speculative: Record<string, string>[] = [
-      { 'sec-purpose': 'prefetch' },
-      { purpose: 'prefetch' },
-      { 'sec-purpose': 'prefetch;prerender' },
-    ];
-    for (const h of speculative) {
-      const res = await call(target, { cookie, headers: h });
-      expect(res.status).toBe(503);
-      expect(setCookieLine(res, PENDING_COOKIE)).toBeUndefined();
-    }
+  it('a GET (preload, stale history entry) does nothing and goes home', async () => {
+    const { t, cookie, mock } = await handoff();
+    const res = await call(`/auth/finish?t=${t}`, { cookie });
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toBe('/');
+    expect(setCookieLine(res, PENDING_COOKIE)).toBeUndefined();
     expect(mock.calls).toHaveLength(0);
-    expect((await call(target, { cookie })).headers.get('location')).toBe('/radar');
+    expect((await finish(t, cookie)).headers.get('location')).toBe('/radar');
   });
 
   it('still checks the nonce from the original state', async () => {

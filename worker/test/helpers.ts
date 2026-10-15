@@ -136,31 +136,45 @@ export function postCallback(fields: Record<string, string>, cookie?: string) {
   });
 }
 
-/** The `t` the "signing you in…" page moves on with (its meta refresh URL). */
-export async function handoffTarget(page: Response): Promise<string | null> {
+/** The `t` the "signing you in…" page posts on with (its hidden form field). */
+export async function handoffValue(page: Response): Promise<string | null> {
   const html = await page.clone().text();
-  return (
-    /http-equiv="refresh" content="0; url=([^"]+)"/.exec(html)?.[1]?.replaceAll('&amp;', '&') ??
-    null
-  );
+  return /<input type="hidden" name="t" value="([^"]*)">/.exec(html)?.[1] ?? null;
+}
+
+/** The page's form submit: a same-origin POST to /auth/finish with `t` in the body. */
+export function finishInit(
+  t: string | undefined,
+  cookie: string | undefined,
+  headers: Record<string, string> = {},
+): RequestInit {
+  return {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'sec-fetch-site': 'same-origin',
+      ...(cookie ? { cookie } : {}),
+      ...headers,
+    },
+    body: t === undefined ? '' : new URLSearchParams({ t }).toString(),
+    redirect: 'manual',
+  };
 }
 
 /**
  * What the browser does with the callback's answer: a redirect is final; the
- * "signing you in…" page is followed (meta refresh) to /auth/finish with the
- * hand-off cookie. `get` lets a test keep its env overrides for that request.
+ * "signing you in…" page submits its form to /auth/finish with the hand-off
+ * cookie. `post` lets a test keep its env overrides for that request.
  */
 export async function followHandoff(
   handoff: Response,
-  get: (path: string, cookie: string | undefined) => Response | Promise<Response> = (
-    path,
-    cookie,
-  ) => call(path, { cookie }),
+  post: (init: RequestInit) => Response | Promise<Response> = (init) =>
+    exports.default.fetch(new Request(`${ORIGIN}/auth/finish`, init)),
 ): Promise<Response> {
   if (handoff.status !== 200) return handoff;
-  const next = await handoffTarget(handoff);
-  if (!next) throw new Error('hand-off page without a refresh target');
-  return get(next, cookieFrom(handoff, '__Host-grub_signin') ?? undefined);
+  const t = await handoffValue(handoff);
+  if (!t) throw new Error('hand-off page without a form value');
+  return post(finishInit(t, cookieFrom(handoff, '__Host-grub_signin') ?? undefined));
 }
 
 /** The `d1;desc="N round trips"` count from a Server-Timing header. */

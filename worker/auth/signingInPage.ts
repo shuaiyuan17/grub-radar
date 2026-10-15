@@ -1,7 +1,10 @@
 /**
- * The "signing you in…" page POST /auth/callback answers with. Static markup,
- * one inline <style> allowed by its hash, no script at all: it moves on by
- * <meta http-equiv="refresh">, with a plain link as the fallback.
+ * The "signing you in…" page POST /auth/callback answers with. Static markup
+ * plus one inline <style> and one one-line inline <script>, both allowed by
+ * hash (nothing else may run). The script submits a same-origin POST form to
+ * /auth/finish carrying the hand-off value `t` in its body, so `t` never
+ * appears in a URL (history, devtools, request logs). Without JavaScript, the
+ * form's "continue" button does the same.
  */
 export type PageLocale = 'en' | 'zh-Hans';
 
@@ -20,20 +23,22 @@ const COPY = {
     title: 'signing you in… · grub radar',
     heading: 'signing you in…',
     sub: 'checking with Apple, one sec.',
-    stuck: 'nothing happening? tap here',
+    stuck: 'nothing happening? continue',
   },
   'zh-Hans': {
     title: '正在登录… · grub radar',
     heading: '正在登录…',
     sub: '正在和 Apple 确认，稍等一下。',
-    stuck: '没反应？点这里',
+    stuck: '没反应？继续',
   },
 } as const;
 
 /**
  * The only CSS on the page; its hash goes in the CSP. The fallback link shows
- * only after 6 s: tapping it while the refresh is already on its way would
- * spend Apple's one-time code twice and lose the first answer.
+ * only after 6 s: tapping it while the scripted submit is already on its way
+ * would spend Apple's one-time code twice and lose the first answer. (A
+ * browser without JavaScript waits those 6 s; there's no CSS-only way to
+ * show it sooner just for them without a second hashed style.)
  */
 export const SIGNING_IN_STYLE = `
 :root{color-scheme:light}
@@ -47,28 +52,37 @@ svg{width:132px;height:132px;display:block;margin:0 auto 18px;overflow:visible}
 .blip{fill:#e4572e;animation:blip 1.6s ease-in-out infinite}
 h1{font-size:30px;font-weight:700;margin:0 0 6px;letter-spacing:.2px}
 p{font-size:18px;margin:0 0 22px;opacity:.75}
-a{font-size:15px;color:inherit;text-decoration-style:wavy;text-underline-offset:4px;opacity:.6;visibility:hidden;animation:late 0s 6s forwards}
+button{font:inherit;font-size:15px;color:inherit;background:none;border:0;padding:4px;cursor:pointer;text-decoration:underline wavy;text-underline-offset:4px;opacity:.6;visibility:hidden;animation:late 0s 6s forwards}
+form{margin:0}
 @keyframes sweep{to{transform:rotate(360deg)}}
 @keyframes late{to{visibility:visible}}
 @keyframes blip{0%,100%{opacity:.2}50%{opacity:1}}
 @media (prefers-reduced-motion:reduce){.sweep,.blip{animation:none}}
 `;
 
-let styleHash: Promise<string> | undefined;
-/** CSP for this page: nothing but its own inline style. */
-export function signingInCsp(): Promise<string> {
-  styleHash ??= crypto.subtle
-    .digest('SHA-256', new TextEncoder().encode(SIGNING_IN_STYLE))
+/** The only script on the page: submit the hand-off form. Its hash goes in the CSP. */
+export const SIGNING_IN_SCRIPT = "document.getElementById('go').submit();";
+
+const sha256B64 = (text: string) =>
+  crypto.subtle
+    .digest('SHA-256', new TextEncoder().encode(text))
     .then((d) => btoa(String.fromCharCode(...new Uint8Array(d))));
-  return styleHash.then((hash) =>
-    [
-      "default-src 'none'",
-      `style-src 'sha256-${hash}'`,
-      "base-uri 'none'",
-      "form-action 'none'",
-      "frame-ancestors 'none'",
-    ].join('; '),
+
+let csp: Promise<string> | undefined;
+/** CSP for this page: its own style and script by hash, forms only to us. */
+export function signingInCsp(): Promise<string> {
+  csp ??= Promise.all([sha256B64(SIGNING_IN_STYLE), sha256B64(SIGNING_IN_SCRIPT)]).then(
+    ([style, script]) =>
+      [
+        "default-src 'none'",
+        `style-src 'sha256-${style}'`,
+        `script-src 'sha256-${script}'`,
+        "base-uri 'none'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+      ].join('; '),
   );
+  return csp;
 }
 
 const esc = (s: string) =>
@@ -77,10 +91,9 @@ const esc = (s: string) =>
     (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch] ?? ch,
   );
 
-/** `next` is our own /auth/finish URL (no user input in it). */
-export function signingInPage(locale: PageLocale, next: string): string {
+/** `finish` is the hand-off value (random base64url; escaped anyway). */
+export function signingInPage(locale: PageLocale, finish: string): string {
   const t = COPY[locale];
-  const url = esc(next);
   // a wobbly hand-drawn radar: three uneven rings, a sweeping arm, one blip
   return `<!doctype html>
 <html lang="${locale}">
@@ -89,7 +102,7 @@ export function signingInPage(locale: PageLocale, next: string): string {
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f7f3ea">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="refresh" content="0; url=${url}">
+<meta name="robots" content="noindex">
 <title>${esc(t.title)}</title>
 <style>${SIGNING_IN_STYLE}</style>
 </head>
@@ -104,8 +117,12 @@ export function signingInPage(locale: PageLocale, next: string): string {
 </svg>
 <h1>${esc(t.heading)}</h1>
 <p>${esc(t.sub)}</p>
-<a href="${url}">${esc(t.stuck)}</a>
+<form id="go" method="POST" action="/auth/finish">
+<input type="hidden" name="t" value="${esc(finish)}">
+<button type="submit">${esc(t.stuck)}</button>
+</form>
 </main>
+<script>${SIGNING_IN_SCRIPT}</script>
 </body>
 </html>
 `;

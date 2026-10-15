@@ -94,10 +94,34 @@ test.describe('Sign in with Apple (against the local Apple stub)', () => {
     const who = `tess${info.project.name}`;
     await page.goto('/radar');
     await wallButton(page).click();
+    const blocked: string[] = [];
+    page.on('console', (m) => {
+      if (/Content Security Policy/i.test(m.text())) blocked.push(m.text());
+    });
+    const handoff = page.waitForResponse(
+      (r) => r.url().endsWith('/auth/callback') && r.request().method() === 'POST',
+    );
+    const finish = page.waitForResponse(
+      (r) => r.url().endsWith('/auth/finish') && r.request().method() === 'POST',
+    );
     await appleStub(page, 'Continue', who);
 
+    // Apple's form_post gets the "signing you in…" page at once, with no D1 work...
+    const page1 = await handoff;
+    expect(page1.status()).toBe(200);
+    // (its body is gone by now: the page posts itself on immediately)
+    expect(page1.headers()['content-type']).toMatch(/^text\/html/);
+    expect(page1.headers()['content-security-policy']).toMatch(/script-src 'sha256-[^']+'/);
+    expect(page1.headers()['server-timing']).toContain('d1;desc="0 round trips"');
+    // ...whose hash-allowed script posts on to /auth/finish with `t` in the body, never
+    // the URL: one D1 round trip, then a redirect
+    const page2 = await finish;
+    expect(page2.request().postData()).toMatch(/^t=[\w-]{32}$/);
+    expect(page2.status()).toBe(303);
+    expect(page2.headers()['server-timing']).toContain('d1;desc="1 round trips"');
+    expect(blocked).toEqual([]);
+
     // back where we started, signed in, with the name Apple gave us
-    // via the "signing you in…" page and /auth/finish, back where we started
     await expect(page).toHaveURL(/localhost:4173\/radar$/);
     await expect(page.getByRole('slider')).toBeVisible();
     const cookie = (await context.cookies()).find((c) => c.name === '__Host-grub_session');

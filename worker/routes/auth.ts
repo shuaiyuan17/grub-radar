@@ -94,24 +94,32 @@ auth.post('/callback', async (c) => {
   });
   c.header('Content-Security-Policy', await signingInCsp());
   const locale = localeFromAcceptLanguage(c.req.header('accept-language'));
-  return c.html(signingInPage(locale, `/auth/finish?t=${pending.finish}`));
+  return c.html(signingInPage(locale, pending.finish));
 });
 
-/** Speculative loads (prefetch/prerender) must never spend a one-time code. */
-function isSpeculative(c: Context<AppEnv>): boolean {
-  const purpose = `${c.req.header('sec-purpose') ?? ''} ${c.req.header('purpose') ?? ''} ${c.req.header('x-moz') ?? ''}`;
-  return /prefetch|prerender/i.test(purpose);
-}
+/**
+ * Only POST finishes a sign-in (the page's form, with `t` in the body). A GET
+ * here is a stale history entry or a preload: nothing to do, go home.
+ */
+auth.get('/finish', (c) => c.redirect('/', 303));
 
 /**
- * The slow half of signing in: Apple's token exchange and its keys at the
+ * The slow half of signing in, posted by the "signing you in…" page: needs
+ * the sealed hand-off cookie AND the matching `t` in the body (never in the
+ * URL, so never in history or logs). Then Apple's token exchange and its keys at the
  * same time, the id_token check (signature, iss, aud, exp, nonce), then one D1
  * batch that finds or creates the user and starts the session.
  */
-auth.get('/finish', async (c) => {
-  if (isSpeculative(c)) return c.body(null, 503);
+auth.post('/finish', async (c) => {
   const timing = c.var.timing;
-  const pending = await openPending(c.env, getCookie(c, PENDING_COOKIE), c.req.query('t'));
+  // the form is on our own page: a browser that says otherwise isn't it
+  const site = c.req.header('sec-fetch-site');
+  const form = await c.req.parseBody();
+  const sent = typeof form.t === 'string' ? form.t : undefined;
+  const pending =
+    site === undefined || site === 'same-origin'
+      ? await openPending(c.env, getCookie(c, PENDING_COOKIE), sent)
+      : null;
   if (!pending) {
     // like the state: a request without the matching `t` leaves the cookie alone
     console.warn('sign in with apple failed', 'missing, forged, expired or mismatched hand-off');

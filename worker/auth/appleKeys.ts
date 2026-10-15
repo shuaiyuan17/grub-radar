@@ -10,8 +10,8 @@
  * 5 min .. 24 h). Today it sends `no-store`, which is about its HTTP caches,
  * not about how long a published public key stays valid, so then we keep the
  * set for an hour. Key rotation is covered by the refetch: a token whose `kid`
- * we don't have (or whose signature fails against a cached key) makes us ask
- * Apple again, at most once a minute per isolate, and verify once more.
+ * we don't have (or whose signature fails), wherever our set came from, makes
+ * us ask Apple again, at most once a minute per isolate, and verify once more.
  */
 import { createLocalJWKSet, decodeProtectedHeader, type JSONWebKeySet } from 'jose';
 import { z } from 'zod/mini';
@@ -158,15 +158,17 @@ export async function verifyWithAppleKeys(
     timing?.note('jwks_refetched', fresh !== null);
     return fresh;
   };
-  if (keys.source !== 'network' && !hasKid(keys.jwks, kid)) {
+  // even a set fresh from Apple may predate a rotation that raced it: refetch
+  // whatever the source (forceRefresh's cooldown keeps it to once a minute)
+  if (!hasKid(keys.jwks, kid)) {
     const fresh = await retry();
     return verify(fresh?.jwks ?? keys.jwks);
   }
   try {
     return await verify(keys.jwks);
   } catch (e) {
-    // a cached key that no longer matches what Apple signs with
-    if (!(e instanceof SiwaError) || e.reason !== 'id_token' || keys.source === 'network') throw e;
+    // a key that no longer matches what Apple signs with
+    if (!(e instanceof SiwaError) || e.reason !== 'id_token') throw e;
     const fresh = await retry();
     if (!fresh) throw e;
     return verify(fresh.jwks);
