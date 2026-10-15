@@ -26,6 +26,7 @@ import { defer, type AppEnv } from '../app';
 import { csrf } from '../auth/csrf';
 import {
   actingUser,
+  isAgent,
   limitWrites,
   prefetched,
   requireScope,
@@ -111,7 +112,7 @@ spots.get('/nearby', read, async (c) => {
   const q = parseNearbyQuery(new URL(c.req.url).searchParams);
   if ('error' in q) return apiError(c, 400, 'bad_request', q.error);
   const { userId } = actingUser(c.var.principal);
-  const origin = await resolveOrigin(c.env.DB, userId, q.origin);
+  const origin = await resolveOrigin(c.env.DB, userId, q.origin, { coarse: isAgent(c) });
   if (!origin.ok) return noHome(c);
   return c.json({ spots: await nearby(repoFor(c), origin, q) });
 });
@@ -168,6 +169,7 @@ spots.post('/', ...write, async (c) => {
         userId,
         input.data.near,
         pre ? homeFromResult(pre[0]) : undefined,
+        { coarse: isAgent(c) },
       );
       if (!centre.ok) return noHome(c);
       if (!centre.near)
@@ -256,7 +258,9 @@ rollRoute.post('/', read, csrf, async (c) => {
   const body = await readJson(c, RollBodySchema);
   if (!body.ok) return body.res;
   const { userId } = actingUser(c.var.principal);
-  const origin = await resolveOrigin(c.env.DB, userId, body.data.origin);
+  const origin = await resolveOrigin(c.env.DB, userId, body.data.origin, {
+    coarse: isAgent(c),
+  });
   if (!origin.ok) return noHome(c);
   return c.json({ spot: await rollSpot(repoFor(c), origin, body.data) });
 });

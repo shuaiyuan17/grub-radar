@@ -238,6 +238,9 @@ accounts, sessions, places and everyone's own list.
 | `GET /api/photos/:id`           | session  | the image (`no-cache` + ETag): owner or friends; else a 404     |
 | `PATCH /api/photos/:id`         | session  | `{ caption }` (≤ 140, `''` clears) on one of yours              |
 | `DELETE /api/photos/:id`        | session  | one of yours, row and R2 bytes; 204                             |
+| `GET /api/me/agents`, `DELETE`  | session  | connected OAuth agents (grants); disconnect one, 204            |
+| `GET /api/me/tokens`, `POST`    | session  | personal tokens; `POST { name, scopes }` → secret once (201)    |
+| `DELETE /api/me/tokens/:id`     | session  | revoke a personal token, 204                                    |
 
 **Photos** (`worker/routes/photos.ts`, `worker/db/photos.ts`, migration 0005). Bytes live
 in the private R2 bucket `grub-radar-photos` (binding `PHOTOS`, no public URL) under
@@ -447,7 +450,8 @@ Worker test that applies the earlier files, writes old-shape rows, then the rest
 test (`worker/db/migration0004.test.ts`) checks a production-shaped database comes through
 unchanged. `0006` (single-use sign-in states) adds one table, `auth_states_used`
 (`worker/db/migration0006.test.ts`). `0007` adds `users.name_set_at` and backfills it: every
-name but the stand-in `'you'` counts as chosen (`worker/db/migration0007.test.ts`). `users.friend_code` from `0001` is unused (friends are by invite link only) and
+name but the stand-in `'you'` counts as chosen (`worker/db/migration0007.test.ts`). `0008`
+(the agent door) adds `api_tokens`, `agent_grants_seen` and `oauth_registrations`. `users.friend_code` from `0001` is unused (friends are by invite link only) and
 stays: SQLite can't drop a `UNIQUE` column in place.
 
 **Deploying**: always `npm run deploy` (or `deploy:built` after a build, e.g. in Workers
@@ -456,6 +460,36 @@ config the Vite plugin generates with the SPA attached. A bare `wrangler deploy`
 checkout refuses to run (`wrangler.jsonc` has no `assets.directory` on purpose). There is no
 `*.workers.dev` URL and no preview URLs (`workers_dev`/`preview_urls` off), since those would
 run against the production D1 and secrets.
+
+## The agent door: OAuth, MCP, REST
+
+Agents (Claude Code, Codex, Cursor, Claude desktop, a bot) act for one person with that
+person's consent. Code in `worker/agents/`; settings at `/settings` in the app.
+
+- **Principal** (`worker/auth/principal.ts`): a live session cookie wins; otherwise a bearer
+  token: a personal token (`grub_pat_…`, D1 `api_tokens`, SHA-256 only), or an OAuth access
+  token issued for `<origin>/api`. Agents reach exactly the spot and place routes (`read` /
+  `write` above, by scope `spots:read` / `spots:write`); every `session` route answers an
+  agent 403. Test: `worker/agents/access.test.ts` (every route × every kind of caller).
+- **OAuth 2.1 server** (`@cloudflare/workers-oauth-provider` 1.x split API, same Worker):
+  `/.well-known/oauth-authorization-server`, `/oauth/token`, `/oauth/register` (DCR, capped
+  per day), Client ID Metadata Documents, PKCE S256. `/authorize` is ours: not signed in →
+  Sign in with Apple → back (`/oauth/resume`) → the consent page (client name, redirect host,
+  scopes; en + zh) → the client. Grants live in KV (`OAUTH_KV`); access tokens 4 h, refresh
+  sliding 30 days; "last used" in D1. `friends:read` is reserved, never granted.
+- **MCP** at `/mcp` (`createMcpHandler` from `agents/mcp/server`, stateless, behind an
+  `OAuthResourceServer`; personal tokens work too). Tools: `list_spots`, `find_nearby`,
+  `roll`, `search_places`, `add_spot`, `mark_been`, `add_note`. Write tools need
+  `spots:write` (else a 403 step-up challenge). Spots an agent adds say "found by <agent>".
+- **Home stays private**: for an agent, `origin: home` is snapped to the centre of a ~1 km grid
+  cell before any distance is measured, distances come back as minutes, ring and km/miles to
+  the nearest 0.5, never coordinates. `worker/agents/home.test.ts` trilaterates from three
+  known spots: ~800 m off for an agent (52 m on the person's own precise view).
+- **Docs for agents**: `/agent-setup.md` (how to connect each client; the "connect your agent"
+  button copies a sentence pointing at it), `/llms.txt`, `/openapi.json` (from the zod
+  contracts).
+- **Brakes**: `AGENT_LIMITER` 120/min per credential, `OAUTH_LIMITER` 30/min per IP on
+  `/authorize` and `/oauth/*`, plus the existing write and search limiters.
 
 ## Architecture
 

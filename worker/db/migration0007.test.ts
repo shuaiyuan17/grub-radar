@@ -29,6 +29,9 @@ let before: unknown[] = [];
 
 beforeAll(async () => {
   for (const t of [
+    'oauth_registrations',
+    'agent_grants_seen',
+    'api_tokens',
     'auth_states_used',
     'photo_deletions',
     'photos',

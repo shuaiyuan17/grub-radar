@@ -68,8 +68,9 @@ describe('writing your list over HTTP', () => {
     [{ ...NEW_SPOT, verdict: 'good' }, /only give a verdict on places you have been to/],
     // a verdict is a word, not a number; a legacy `rating` outside 1-10 is still refused
     [{ ...NEW_SPOT, status: 'been', verdict: 8 }, /^verdict/],
-    [{ ...NEW_SPOT, status: 'been', rating: 11 }, /Invalid input/],
-    [{ ...NEW_SPOT, status: 'been', rating: 7.5 }, /Invalid input/],
+    // (the MCP server loads zod's English messages, so the refusal names the key)
+    [{ ...NEW_SPOT, status: 'been', rating: 11 }, /rating/],
+    [{ ...NEW_SPOT, status: 'been', rating: 7.5 }, /rating/],
     [{ ...NEW_SPOT, note: 'x'.repeat(61) }, /^note/],
     [{ ...NEW_SPOT, tags: Array.from({ length: 11 }, (_, i) => `t${i}`) }, /^tags/],
     [{ ...NEW_SPOT, id: 'lucky-thread' }, /id/],

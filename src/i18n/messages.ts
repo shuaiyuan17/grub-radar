@@ -168,7 +168,9 @@ const en = {
     (h.days ? ` (${h.days.join(', ')})` : ''),
   noPhoto: 'no photo yet',
   whyTitle: "why it's on the list",
-  foundBy: (date: string) => `found by your agent · ${date}`,
+  foundBy: (date: string, agent?: string) => `found by ${agent ?? 'your agent'} · ${date}`,
+  /** On a card: the agent that added the spot (its name is data, in any language). */
+  foundByAgent: 'found by',
   formatDate: (iso: string) =>
     new Intl.DateTimeFormat('en-US', {
       month: 'short',
@@ -386,6 +388,39 @@ const en = {
   },
 
   navFriends: 'friends',
+  agents: {
+    title: 'your *agents*',
+    menuLink: 'agents & tokens',
+    intro:
+      'let an AI agent (Claude, Codex, Cursor, a bot) read your list, add spots and note where you went. it never sees where home is.',
+    connectTitle: 'connect your agent',
+    connectHint:
+      'copy this and paste it to your agent. it reads the setup page, adds grub, and a browser page asks you to allow it.',
+    copyPrompt: 'copy for your agent',
+    copied: 'copied. paste it to your agent.',
+    copyFailed: "couldn't copy: select the line and copy it yourself.",
+    connectedTitle: 'connected agents',
+    noneConnected: 'no agents connected yet.',
+    tokensTitle: 'personal tokens',
+    tokensHint:
+      'for agents that can’t sign in (a bot calling the API). paste the token into the agent; it’s shown once.',
+    noTokens: 'no tokens.',
+    tokenName: 'name it (it shows as “found by …”)',
+    allowWrite: 'can add and edit spots',
+    makeToken: 'make a token',
+    makingToken: 'making…',
+    tokenReady: 'your new token: copy it now, it won’t be shown again',
+    copyToken: 'copy',
+    canRead: 'reads your spots',
+    canWrite: 'reads, adds and edits spots',
+    since: (date: string) => `since ${date}`,
+    lastUsed: (date: string) => `last used ${date}`,
+    neverUsed: 'not used yet',
+    disconnect: 'disconnect',
+    revoke: 'revoke',
+    loadFailed: 'couldn’t load your agents. try again in a bit.',
+    published: (domain: string) => `from ${domain}`,
+  },
   friends: {
     title: 'your *friends*',
     intro:
@@ -615,7 +650,8 @@ const zh: Messages = {
     (h.days ? `（${h.days.map((d) => ZH_DAYS[d]).join('、')}）` : ''),
   noPhoto: '还没有照片',
   whyTitle: '为什么在清单上',
-  foundBy: (date) => `由你的 agent 发现 · ${date}`,
+  foundBy: (date, agent) => `由${agent ? ` ${agent} ` : '你的 agent '}发现 · ${date}`,
+  foundByAgent: '发现者',
   formatDate: (iso) =>
     new Intl.DateTimeFormat('zh-Hans', {
       year: 'numeric',
@@ -822,6 +858,37 @@ const zh: Messages = {
   },
 
   navFriends: '好友',
+  agents: {
+    title: '你的 *agent*',
+    menuLink: 'agent 和令牌',
+    intro:
+      '让 AI agent（Claude、Codex、Cursor、机器人）读你的清单、加店、记下你去过哪。它永远看不到家在哪。',
+    connectTitle: '连接你的 agent',
+    connectHint: '复制这句话发给你的 agent。它会读设置说明、接上 grub，浏览器会弹出页面请你允许。',
+    copyPrompt: '复制给 agent',
+    copied: '已复制，发给你的 agent 吧。',
+    copyFailed: '复制失败：请手动选中这句话复制。',
+    connectedTitle: '已连接的 agent',
+    noneConnected: '还没有连接 agent。',
+    tokensTitle: '个人令牌',
+    tokensHint: '给不能登录的 agent 用（调 API 的机器人）。把令牌给它；令牌只显示一次。',
+    noTokens: '没有令牌。',
+    tokenName: '起个名字（会显示为“发现者”）',
+    allowWrite: '可以加店和修改',
+    makeToken: '生成令牌',
+    makingToken: '生成中…',
+    tokenReady: '新令牌：现在就复制，之后不会再显示',
+    copyToken: '复制',
+    canRead: '可读你的店',
+    canWrite: '可读、加店、修改',
+    since: (date) => `连接于 ${date}`,
+    lastUsed: (date) => `最近使用 ${date}`,
+    neverUsed: '还没用过',
+    disconnect: '断开',
+    revoke: '撤销',
+    loadFailed: '加载失败，稍后再试。',
+    published: (domain) => `来自 ${domain}`,
+  },
   friends: {
     title: '你的*好友*',
     intro:

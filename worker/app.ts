@@ -49,3 +49,22 @@ export function defer(c: Context<AppEnv>, work: Promise<unknown>) {
     c.var.deferred.push(p);
   }
 }
+
+/**
+ * The request's ExecutionContext, as the Workers types spell it (for handing
+ * a request on to a library's fetch). Tests calling app.request() have none:
+ * then a stand-in whose waitUntil defers.
+ */
+export function executionCtx(c: Context<AppEnv>): ExecutionContext {
+  try {
+    return c.executionCtx as unknown as ExecutionContext;
+  } catch {
+    return {
+      waitUntil: (p: Promise<unknown>) => {
+        defer(c, p);
+      },
+      passThroughOnException: () => undefined,
+      props: {},
+    } as unknown as ExecutionContext;
+  }
+}

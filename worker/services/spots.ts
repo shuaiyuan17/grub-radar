@@ -9,6 +9,7 @@ import type { NearbyQuery, Origin, RollBody } from '../../src/contracts/spots';
 import { SpotOpError, type AddSpot } from '../../src/domain/edits';
 import type { LatLng } from '../../src/domain/geo';
 import { findNearby, toNearbySpot, type NearbySpot } from '../../src/domain/nearby';
+import type { SpotView } from '../../src/domain/spotView';
 import type { SpotRepository } from '../../src/domain/repository';
 import { normalizeSearch } from '../../src/domain/modes';
 import { roll } from '../../src/domain/roll';
@@ -17,23 +18,74 @@ import type { D1SpotRepository } from '../db/spots';
 import { getHome } from '../db/users';
 import type { AppleMaps } from './appleMaps';
 
-export type OriginResult = { ok: true; origin: LatLng; isHome: boolean } | { ok: false };
+// ---------------------------------------------------------------------------
+// Home, for agents (memo S2): an agent may measure from "home", but must not be
+// able to work out where home is. Distances from a precise home to spots whose
+// coordinates it knows would give it away by trilateration, so for anyone but
+// the person themselves home is first snapped to the centre of a ~1 km grid
+// cell, and distances come back coarse. Home's coordinates are never returned.
 
-/** 'home' becomes the saved home (never echoed back); coordinates pass through. */
+/** Grid cell size for an agent's view of home. */
+export const HOME_GRID_KM = 1;
+const KM_PER_DEGREE_LAT = 111.32;
+
+/**
+ * The centre of the ~HOME_GRID_KM grid cell `p` falls in. Every point in the
+ * cell gives the same answer, so nothing computed from it can tell them apart.
+ */
+export function snapToGrid(p: LatLng, cellKm = HOME_GRID_KM): LatLng {
+  const latStep = cellKm / KM_PER_DEGREE_LAT;
+  const lat = (Math.floor(p.lat / latStep) + 0.5) * latStep;
+  // longitude cells keep ~cellKm wide at this latitude band (fixed per band, so still a grid)
+  const lngStep = latStep / Math.max(0.01, Math.cos((lat * Math.PI) / 180));
+  const lng = (Math.floor(p.lng / lngStep) + 0.5) * lngStep;
+  return { lat, lng };
+}
+
+/** km and miles to the nearest 0.5: what an agent sees for a distance from home. */
+const half = (n: number) => Math.round(n * 2) / 2;
+
+export type OriginResult =
+  | {
+      ok: true;
+      origin: LatLng;
+      isHome: boolean;
+      /** Home, as an agent sees it: snapped to the grid, distances rounded to 0.5. */
+      coarse: boolean;
+    }
+  | { ok: false };
+
+/**
+ * 'home' becomes the saved home (never echoed back); coordinates pass
+ * through. `coarse`: the caller isn't the person themselves (an agent), so
+ * home is snapped to the grid before any distance is measured from it.
+ */
 export async function resolveOrigin(
   db: D1Database,
   userId: string,
   origin: Origin,
+  { coarse = false }: { coarse?: boolean } = {},
 ): Promise<OriginResult> {
-  if (origin !== 'home') return { ok: true, origin, isHome: false };
+  if (origin !== 'home') return { ok: true, origin, isHome: false, coarse: false };
   const home = await getHome(db, userId);
-  return home ? { ok: true, origin: home, isHome: true } : { ok: false };
+  if (!home) return { ok: false };
+  return coarse
+    ? { ok: true, origin: snapToGrid(home), isHome: true, coarse: true }
+    : { ok: true, origin: home, isHome: true, coarse: false };
+}
+
+type ResolvedOrigin = Extract<OriginResult, { ok: true }>;
+
+/** One result as the caller may see it: no location from home; coarse distances for agents. */
+function present(v: SpotView, origin: ResolvedOrigin): NearbySpot {
+  const out = toNearbySpot(v, !origin.isHome);
+  return origin.coarse ? { ...out, km: half(out.km), miles: half(out.miles) } : out;
 }
 
 /** `find_nearby`: closest first, within reach, at most `limit`. */
 export async function nearby(
   repo: SpotRepository,
-  origin: { origin: LatLng; isHome: boolean },
+  origin: ResolvedOrigin,
   q: Omit<NearbyQuery, 'origin'>,
 ): Promise<NearbySpot[]> {
   const views = findNearby(await repo.list(), {
@@ -41,13 +93,13 @@ export async function nearby(
     maxMinutes: q.maxMinutes,
     kinds: q.kinds,
   });
-  return views.slice(0, q.limit).map((v) => toNearbySpot(v, !origin.isHome));
+  return views.slice(0, q.limit).map((v) => present(v, origin));
 }
 
 /** `roll`: one random spot within reach (never the previous pick if there's another). */
 export async function rollSpot(
   repo: SpotRepository,
-  origin: { origin: LatLng; isHome: boolean },
+  origin: ResolvedOrigin,
   body: Omit<RollBody, 'origin'>,
   random: () => number = Math.random,
 ): Promise<NearbySpot | null> {
@@ -61,7 +113,7 @@ export async function rollSpot(
     body.previousId ?? null,
     random,
   );
-  return pick ? toNearbySpot(pick.v, !origin.isHome) : null;
+  return pick ? present(pick.v, origin) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -186,9 +238,11 @@ export async function resolveSearchCentre(
   near: Origin | undefined,
   /** Your home if it was already read (prefetched with the session); undefined: not read yet. */
   knownHome?: LatLng | null,
+  /** An agent is asking: search around home's grid cell, not home. */
+  { coarse = false }: { coarse?: boolean } = {},
 ): Promise<{ ok: true; near: LatLng | undefined } | { ok: false }> {
   if (near !== undefined && near !== 'home') return { ok: true, near };
   const home = knownHome === undefined ? await getHome(db, userId) : knownHome;
   if (near === 'home' && !home) return { ok: false };
-  return { ok: true, near: home ?? undefined };
+  return { ok: true, near: home ? (coarse ? snapToGrid(home) : home) : undefined };
 }

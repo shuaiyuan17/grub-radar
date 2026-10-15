@@ -176,7 +176,9 @@ export function PlacePage() {
                 <p className={styles.whyText} lang={lang}>
                   {spot.why.text}
                 </p>
-                <p className={styles.whyBy}>{t.foundBy(t.formatDate(spot.why.foundOn))}</p>
+                <p className={styles.whyBy}>
+                  {t.foundBy(t.formatDate(spot.why.foundOn), spot.foundBy)}
+                </p>
               </div>
             </section>
           )}

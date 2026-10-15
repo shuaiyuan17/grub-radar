@@ -56,12 +56,14 @@ interface Row {
   lang: string | null;
   visibility: string;
   version: number;
+  found_by: string;
 }
 
 // explicit columns, always joined through user_places for this user
 const SELECT = `SELECT p.id, p.name, p.lat, p.lng, p.created_by, p.apple_place_id, p.address,
   up.kind, up.cuisine, up.price, up.icon, up.hours_json, up.status, up.verdict, up.note, up.my_note,
-  up.order_json, up.tags_json, up.why_text, up.why_found_on, up.lang, up.visibility, up.version
+  up.order_json, up.tags_json, up.why_text, up.why_found_on, up.lang, up.visibility, up.version,
+  up.found_by
   FROM user_places up JOIN places p ON p.id = up.place_id
   WHERE up.user_id = ?`;
 
@@ -83,6 +85,10 @@ export function spotsFromRows(result: D1Result | undefined): Spot[] {
 }
 
 const json = (s: string | null): unknown => (s === null ? undefined : JSON.parse(s));
+
+/** `found_by` as a Spot shows it: an agent's name, or nothing ('me', and v2's 'friend:…'). */
+const agentFoundBy = (f: string | undefined): string | undefined =>
+  f && f !== 'me' && f !== 'demo' && !f.startsWith('friend:') ? f : undefined;
 
 /**
  * A saved spot that no longer passes SpotSchema. Never dropped quietly (the
@@ -125,6 +131,7 @@ function toSpot(r: Row): Spot {
         // absent = the default ('friends'); anything else in the column is a CHECK violation
         visibility: r.visibility === 'private' ? 'private' : undefined,
         version: r.version,
+        foundBy: agentFoundBy(r.found_by),
       }),
     );
     if (parsed.success) return parsed.data;
@@ -204,7 +211,12 @@ export class D1SpotRepository implements WritableSpotRepository {
 
   async add(input: AddSpot): Promise<Spot> {
     const id = newPlaceId();
-    const spot = { ...spotFromInput(id, input, this.#today()), version: 1 };
+    const foundBy = agentFoundBy(this.#foundBy);
+    const spot = {
+      ...spotFromInput(id, input, this.#today()),
+      version: 1,
+      ...(foundBy ? { foundBy } : {}),
+    };
     const at = iso(this.#now());
     const db = this.#db;
     const cap = this.#underCap();

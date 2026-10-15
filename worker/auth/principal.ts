@@ -1,8 +1,10 @@
 /**
- * Who is calling. PR 1 knows only sessions; PR 5 adds personal tokens and
- * OAuth bearer tokens (agents) here, resolved before the cookie.
+ * Who is calling: a person (session cookie), or an agent acting for one (a
+ * personal API token, or an OAuth access token issued for /api). Resolved in
+ * that order: a live session cookie wins; otherwise a bearer token is tried.
  */
 import type { Context, MiddlewareHandler } from 'hono';
+import { agentFromToken, agentOrigin, bearerToken, resourcesFor } from '../agents/oauth';
 import { defer, type AppEnv } from '../app';
 import { apiError } from '../lib/http';
 import {
@@ -20,16 +22,21 @@ import {
  */
 export type Scope = 'spots:read' | 'spots:write' | 'friends:read';
 
+export interface AgentPrincipal {
+  kind: 'agent';
+  userId: string;
+  via: 'oauth' | 'pat';
+  /** The OAuth grant id or the personal token's id: what rate limits key on. */
+  credentialId: string;
+  /** "Claude Code", "grok bot": stamped as "found by" on spots it adds. */
+  clientName: string;
+  scopes: Scope[];
+}
+
 export type Principal =
   | { kind: 'anonymous' }
   | { kind: 'user'; userId: string; via: 'session'; sessionId: string }
-  | {
-      kind: 'agent';
-      userId: string;
-      via: 'oauth' | 'pat';
-      clientName: string;
-      scopes: Scope[];
-    };
+  | AgentPrincipal;
 
 /**
  * Reads a route wants alongside the session lookup: `key` names them for the
@@ -73,9 +80,26 @@ export function principalResolver(
     } else {
       c.set('principal', { kind: 'anonymous' });
       if (result.kind === 'invalid') clearSessionCookie(c);
+      const bearer = bearerToken(c.req.header('authorization'));
+      if (bearer) {
+        const agent = await c.var.timing.measure('agent', () =>
+          agentFromToken(c, resourcesFor(agentOrigin(c)).api, bearer),
+        );
+        if (!agent) return apiError(c, 401, 'unauthorized', 'that token is not valid (any more)');
+        if (!(await agentAllowed(c, agent))) return apiError(c, 429, 'rate_limited', 'slow down');
+        c.set('principal', agent);
+      }
     }
     await next();
   };
+}
+
+/** Per-credential brake on everything an agent does (AGENT_LIMITER: 120/min). */
+export async function agentAllowed(c: Context<AppEnv>, agent: AgentPrincipal): Promise<boolean> {
+  const { success } = await c.env.AGENT_LIMITER.limit({
+    key: `agent:${agent.via}:${agent.credentialId}`,
+  });
+  return success;
 }
 
 export const resolvePrincipal = principalResolver();
@@ -86,9 +110,16 @@ export function prefetched(c: Context<AppEnv>, key: string): D1Result[] | null {
   return p?.key === key && c.var.principal.kind === 'user' ? p.results : null;
 }
 
-/** 401 unless a signed-in human (session). Agents never pass this one. */
+/**
+ * Only a signed-in person (session). Agents never pass: 403 for an agent
+ * (its token is fine, this just isn't something an agent may do), 401 for
+ * nobody at all.
+ */
 export const requireSession: MiddlewareHandler<AppEnv> = async (c, next) => {
-  if (c.var.principal.kind !== 'user') return apiError(c, 401, 'unauthorized', 'sign in first');
+  const p = c.var.principal;
+  if (p.kind === 'agent')
+    return apiError(c, 403, 'forbidden', 'only the person themselves can do this, not an agent');
+  if (p.kind !== 'user') return apiError(c, 401, 'unauthorized', 'sign in first');
   await next();
 };
 
@@ -129,3 +160,6 @@ export function actingUser(p: Principal): { userId: string; foundBy: string } {
   if (p.kind === 'anonymous') throw new Error('requireScope must run first');
   return { userId: p.userId, foundBy: p.kind === 'agent' ? p.clientName : 'me' };
 }
+
+/** Is an agent (not the person themselves) asking? Then home is coarse (see services/spots.ts). */
+export const isAgent = (c: Context<AppEnv>) => c.var.principal.kind === 'agent';

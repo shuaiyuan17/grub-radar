@@ -1,0 +1,127 @@
+/* /settings: connect an agent, connected agents, personal tokens */
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 0;
+}
+.title {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+.intro {
+  max-width: 560px;
+  color: var(--pencil);
+  font-size: 15px;
+}
+.layout {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.panel {
+  --fill: var(--card);
+  border-radius: var(--r-panel);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.connect {
+  --fill: var(--tint-yellow);
+}
+.subTitle {
+  font-size: 20px;
+  font-weight: 800;
+}
+.muted {
+  color: var(--pencil);
+  font-size: 14px;
+}
+.label {
+  font-weight: 700;
+  font-size: 15px;
+}
+.prompt {
+  font-size: 21px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.done {
+  font-size: 19px;
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  padding: 8px 10px;
+  border: 1.6px dashed var(--rule);
+  border-radius: var(--r-tile);
+  overflow-wrap: anywhere;
+}
+.itemHead {
+  min-width: 0;
+}
+.name {
+  font-weight: 700;
+}
+.form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  margin-top: 6px;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+.check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--ink);
+}
+.secretBox {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+.secretBox > :first-of-type + * {
+  align-self: stretch;
+}
+.secret {
+  width: 100%;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 13px;
+}
+
+@media (min-width: 960px) {
+  .layout {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .connect {
+    grid-column: 1 / -1;
+  }
+}

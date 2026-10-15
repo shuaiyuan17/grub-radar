@@ -47,6 +47,8 @@ export const LIMITS = {
   spots: 1000,
   /** A place's one-line street address (from Apple Maps). */
   address: 200,
+  /** The name of the agent that added a spot ("found by …"). */
+  foundBy: 40,
 } as const;
 
 export const PRICES = ['$', '$$', '$$$', '$$$$'] as const;
@@ -151,6 +153,11 @@ export const SpotSchema = z
     order: OrderSchema,
     /** Written by the agent that found the place. */
     why: z.optional(WhySchema),
+    /**
+     * The agent that added it to your list ("Claude Code", "grok bot"), as it
+     * was named when it connected. Absent when you added it yourself. Not editable.
+     */
+    foundBy: z.optional(text(LIMITS.foundBy)),
     /** Longer notes; `add_note` appends dated lines ("— 2026-10-14: …"). */
     myNote: z.optional(text(LIMITS.myNote)),
     /**

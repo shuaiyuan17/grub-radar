@@ -13,6 +13,12 @@ export interface Env {
   PHOTO_UPLOAD_LIMITER: RateLimit;
   /** Photo bytes (bucket grub-radar-photos). Private: only the Worker serves them. */
   PHOTOS: R2Bucket;
+  /** 120 requests a minute per agent credential (MCP, and REST with a bearer token). */
+  AGENT_LIMITER: RateLimit;
+  /** 30 requests a minute per client IP to /authorize, /oauth/token and /oauth/register. */
+  OAUTH_LIMITER: RateLimit;
+  /** workers-oauth-provider's store: agent clients, grants, tokens (hashed/encrypted by it). */
+  OAUTH_KV: KVNamespace;
 
   /**
    * "production" on Cloudflare. Dev-only features (dev login, the Apple stub,
