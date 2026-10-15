@@ -32,7 +32,14 @@ const snapshot = async () =>
 let before: Record<string, unknown[]> = {};
 
 beforeAll(async () => {
-  for (const t of ['photos', 'invites', 'friendships', ...[...TABLES].reverse(), 'd1_migrations'])
+  for (const t of [
+    'photo_deletions',
+    'photos',
+    'invites',
+    'friendships',
+    ...[...TABLES].reverse(),
+    'd1_migrations',
+  ])
     await env.DB.exec(`DROP TABLE IF EXISTS ${t}`);
   await applyD1Migrations(env.DB, upTo(3));
 

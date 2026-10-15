@@ -23,7 +23,7 @@ import {
   PHOTOS_PER_SPOT,
   type PlacePhotosResponse,
 } from '../../src/contracts/photos';
-import type { AppEnv } from '../app';
+import { defer, type AppEnv } from '../app';
 import { csrf, csrfFor } from '../auth/csrf';
 import {
   limitWrites,
@@ -33,7 +33,6 @@ import {
   type Prefetch,
 } from '../auth/principal';
 import {
-  deleteObjects,
   deleteOwnPhoto,
   insertPhoto,
   photoKey,
@@ -43,6 +42,7 @@ import {
   servableFromResult,
   servableStatement,
   setCaption,
+  sweepPhotoDeletions,
   usageFromResult,
   usageStatement,
 } from '../db/photos';
@@ -66,8 +66,13 @@ const photoIdFrom = (path: string): string | null => {
   return id && PhotoIdSchema.safeParse(id).success ? id : null;
 };
 
-/** A browser keeps a photo for a year: its bytes never change (a new photo is a new id). */
-export const PHOTO_CACHE_CONTROL = 'private, max-age=31536000, immutable';
+/**
+ * The browser may keep a copy but must ask again before every use: access can
+ * end (unfriended, spot made private, photo deleted), and every revalidation
+ * goes through the access check. The bytes never change for an id, so the
+ * answer is almost always a 304 with no body.
+ */
+export const PHOTO_CACHE_CONTROL = 'private, no-cache';
 
 /** Not yours, not shared with you, not there, not signed in: all the same answer. */
 const noSuchPhoto = (c: Ctx) => apiError(c, 404, 'not_found', 'no such photo');
@@ -241,11 +246,13 @@ photos.post(
         createdAt: iso(Date.now()),
       });
     } catch (e) {
-      await deleteObjects(c.env.PHOTOS, [key]);
+      // D1 failed, so the outbox may not have it either: best effort, now
+      defer(c, c.env.PHOTOS.delete(key));
       throw e;
     }
     if (!stored.ok) {
-      await deleteObjects(c.env.PHOTOS, [key]);
+      // the refused row's bytes are on the outbox (same batch); sweep them after the answer
+      defer(c, sweepPhotoDeletions(c.env.DB, c.env.PHOTOS, { keys: [key] }));
       return refuse(c, stored.why);
     }
     return c.json(stored.photo, 201);
@@ -264,6 +271,7 @@ photos.delete('/:id', csrf, limitWrites, async (c) => {
   const { userId } = sessionUser(c.var.principal);
   const key = await deleteOwnPhoto(c.env.DB, userId, c.req.param('id'));
   if (!key) return noSuchPhoto(c);
-  await deleteObjects(c.env.PHOTOS, [key]);
+  // the row is gone and its key is on the outbox (trigger); the bytes go after the answer
+  defer(c, sweepPhotoDeletions(c.env.DB, c.env.PHOTOS, { keys: [key] }));
   return c.body(null, 204);
 });

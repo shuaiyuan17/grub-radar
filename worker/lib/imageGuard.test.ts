@@ -14,10 +14,34 @@ describe('checkImage: JPEG', () => {
     });
   });
 
-  it('passes an ICC profile (APP2) and an Adobe segment (APP14): no metadata in them', () => {
-    const icc = segment(0xe2, [...enc.encode('ICC_PROFILE\0'), 1, 1, 0, 0]);
+  it('passes an exact JFIF APP0 and Adobe’s APP14, nothing else in APPn', () => {
     const adobe = segment(0xee, [...enc.encode('Adobe'), 0, 100, 0, 0, 0, 0, 1]);
-    expect(checkImage(jpeg({ before: [icc, adobe] })).ok).toBe(true);
+    expect(checkImage(jpeg({ before: [adobe] })).ok).toBe(true);
+    const jfxx = segment(0xe0, [...enc.encode('JFXX\0'), 0x10]);
+    expect(checkImage(jpeg({ before: [jfxx] })).ok).toBe(true);
+  });
+
+  it('refuses every other APPn, whatever it says it is (fail closed)', () => {
+    const payloads = [
+      // Chrome's canvas adds this one; the app strips it before upload
+      segment(0xe2, [...enc.encode('ICC_PROFILE\0'), 1, 1, 0, 0]),
+      segment(0xe5, enc.encode('lat=47.6205;lng=-122.3493')),
+      segment(0xe3, enc.encode('Meta\0anything')),
+      segment(0xef, [1, 2, 3]),
+      // APP0 that isn't JFIF/JFXX, and an Adobe APP14 with room for more
+      segment(0xe0, enc.encode('NOTJFIF-47.62N')),
+      segment(0xee, [...enc.encode('Adobe'), 0, 100, 0, 0, 0, 0, 1, ...enc.encode('47.62N')]),
+    ];
+    for (const s of payloads)
+      expect(checkImage(jpeg({ before: [s] }))).toMatchObject({ ok: false, reason: 'metadata' });
+  });
+
+  it('refuses markers it doesn’t know (JPGn, DHP, …)', () => {
+    for (const m of [0xf0, 0xf7, 0xde, 0xdf])
+      expect(checkImage(jpeg({ before: [segment(m, [0, 0])] }))).toMatchObject({
+        ok: false,
+        reason: 'malformed',
+      });
   });
 
   it('refuses EXIF with a GPS position (APP1)', () => {
@@ -105,6 +129,22 @@ describe('checkImage: WebP', () => {
       [vp8x(100, 100, 0x08), vp8l(100, 100)],
     ])
       expect(checkImage(webp({ chunks }))).toMatchObject({ ok: false, reason: 'metadata' });
+  });
+
+  it('passes a colour profile (ICCP) only where VP8X declares it, before the image', () => {
+    const { chunk, vp8 } = webpParts;
+    const iccp = chunk('ICCP', [0, 0, 2, 0]);
+    // Chrome's canvas WebP: VP8X, ICCP, VP8
+    expect(checkImage(webp({ chunks: [vp8x(64, 48, 0x20), iccp, vp8(64, 48)] })).ok).toBe(true);
+    expect(checkImage(webp({ chunks: [vp8x(64, 48), iccp, vp8(64, 48)] })).ok).toBe(false);
+    expect(checkImage(webp({ chunks: [iccp, vp8(64, 48)] })).ok).toBe(false);
+    expect(checkImage(webp({ chunks: [vp8x(64, 48, 0x20), vp8(64, 48), iccp] })).ok).toBe(false);
+  });
+
+  it('refuses reserved VP8X flags', () => {
+    const { vp8l } = webpParts;
+    for (const flags of [0x01, 0x40, 0x80])
+      expect(checkImage(webp({ chunks: [vp8x(10, 10, flags), vp8l(10, 10)] })).ok).toBe(false);
   });
 
   it('refuses animation, unknown chunks, trailing bytes and a lying RIFF size', () => {

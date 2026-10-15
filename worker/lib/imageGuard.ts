@@ -3,15 +3,22 @@
  * just enough of the container to know what the file is, how big it claims to
  * be, and whether anything in it could carry metadata.
  *
- *   JPEG  SOI, then marker segments up to EOI. Refused: APP1 (EXIF and XMP
- *         both live there), APP13 (Photoshop/IPTC, which can hold a place),
- *         an APP2 that is an MPF index (extra embedded images, each with
- *         its own EXIF), COM, any segment that runs past the end, and
- *         anything after EOI. Size: from the frame header (SOFn).
- *   WebP  RIFF/WEBP whose size field matches the upload. Refused: EXIF and
- *         "XMP " chunks, a VP8X header whose EXIF/XMP flags are set,
- *         animation, unknown chunks, trailing bytes. Size: from VP8X, VP8 or
- *         VP8L, which must agree when more than one is present.
+ *   JPEG  SOI, then marker segments up to EOI. An allowlist: frame headers
+ *         (SOFn), tables (DQT, DHT, DAC, DRI), scans (SOS, RSTn), APP0 only
+ *         when it's exactly JFIF or JFXX, and APP14 only when it's Adobe's
+ *         colour-transform note. Every other APPn (APP1 EXIF/XMP, APP2 ICC
+ *         or MPF, APP13 IPTC, …) and COM is refused as metadata; any other
+ *         marker, a segment running past the end, or bytes after EOI is
+ *         refused as malformed. Size: from the frame header (SOFn).
+ *         (Canvas encoders add more than this, e.g. Chrome an APP2 ICC
+ *         profile, Safari APP1 EXIF and APP13: the app strips them before
+ *         upload, src/lib/stripImageMetadata.ts.)
+ *   WebP  RIFF/WEBP whose size field matches the upload. Chunks: VP8/VP8L
+ *         (exactly one), ALPH, ICCP (a colour profile, only after a VP8X
+ *         that declares it), VP8X first if present. Refused: EXIF and
+ *         "XMP " chunks, a VP8X whose EXIF/XMP flags are set, reserved
+ *         flags, animation, unknown chunks, trailing bytes. Size: from VP8X,
+ *         VP8 or VP8L, which must agree when more than one is present.
  *
  * Fail closed: anything this doesn't understand is refused.
  */
@@ -58,6 +65,17 @@ const u32le = (b: Uint8Array, at: number) => (u24le(b, at) + (b[at + 3] ?? 0) * 
 const isSof = (m: number) => m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc;
 /** Markers with no length field. */
 const standalone = (m: number) => m === 0x01 || (m >= 0xd0 && m <= 0xd7);
+/** DHT, DAC, DQT, DRI, SOS. */
+const TABLES_AND_SCANS = new Set([0xc4, 0xcc, 0xdb, 0xdd, 0xda]);
+
+/** APP0 that is exactly JFIF/JFXX, APP14 that is Adobe's: no room for metadata in either. */
+function allowedApp(m: number, b: Uint8Array, body: number, size: number): boolean {
+  const id = ascii(b, body, 5);
+  if (m === 0xe0) return id === 'JFIF\0' || id === 'JFXX\0';
+  // "Adobe" + version (2) + flags0 (2) + flags1 (2) + transform (1)
+  if (m === 0xee) return id === 'Adobe' && size === 12;
+  return false;
+}
 
 function checkJpeg(b: Uint8Array): ImageCheck {
   let i = 2; // after SOI
@@ -86,10 +104,13 @@ function checkJpeg(b: Uint8Array): ImageCheck {
     const body = i + 2;
     const end = i + len;
 
-    if (m === 0xe1) return meta('APP1 (EXIF/XMP)');
-    if (m === 0xed) return meta('APP13 (IPTC)');
-    if (m === 0xfe) return meta('comment');
-    if (m === 0xe2 && ascii(b, body, 4) === 'MPF\0') return meta('MPF (embedded images)');
+    if (m >= 0xe0 && m <= 0xef) {
+      if (!allowedApp(m, b, body, len - 2)) return meta(`APP${String(m - 0xe0)} segment`);
+    } else if (m === 0xfe) {
+      return meta('comment');
+    } else if (!isSof(m) && !TABLES_AND_SCANS.has(m)) {
+      return bad(`unexpected marker 0x${m.toString(16)}`);
+    }
     if (isSof(m)) {
       if (width) return bad('two frames');
       if (len < 8) return bad('short frame header');
@@ -130,6 +151,7 @@ function checkWebp(b: Uint8Array): ImageCheck {
   let i = 12;
   const sizes: { w: number; h: number }[] = [];
   let bitstreams = 0;
+  let iccDeclared = false;
   while (i < b.length) {
     if (i + 8 > b.length) return bad('truncated chunk header');
     const fourcc = ascii(b, i, 4);
@@ -150,7 +172,12 @@ function checkWebp(b: Uint8Array): ImageCheck {
       if (flags & 0x08) return meta('VP8X says EXIF');
       if (flags & 0x04) return meta('VP8X says XMP');
       if (flags & 0x02) return bad('animated');
+      if (flags & 0xc1) return bad('reserved VP8X flags');
+      iccDeclared = (flags & 0x20) !== 0;
       sizes.push({ w: u24le(b, body + 4) + 1, h: u24le(b, body + 7) + 1 });
+    } else if (fourcc === 'ICCP') {
+      if (!iccDeclared) return bad('ICCP without a VP8X that declares it');
+      if (bitstreams) return bad('ICCP after the image');
     } else if (fourcc === 'VP8 ') {
       bitstreams++;
       // frame tag (3), start code 9d 01 2a, then 14-bit width and height

@@ -20,6 +20,8 @@ import { isPhotoUpload, photos, photosPrefetch } from './routes/photos';
 import { places, placesSearchPrefetch } from './routes/places';
 import { rollRoute, spots, spotsPrefetch } from './routes/spots';
 import { VERSION } from './version';
+import { sweepPhotoDeletions } from './db/photos';
+import type { Env } from './env';
 
 const app = new Hono<AppEnv>();
 
@@ -111,4 +113,18 @@ app.onError((err, c) => {
   return apiError(c, 500, 'internal', 'something broke');
 });
 
-export default app;
+/**
+ * Cron (wrangler.jsonc triggers.crons, hourly): delete the photo bytes still
+ * on the deletion outbox (anything a request's own sweep didn't finish, and
+ * everything an account deletion cascaded).
+ */
+const scheduled: ExportedHandlerScheduledHandler<Env> = (_controller, env, ctx) => {
+  ctx.waitUntil(
+    sweepPhotoDeletions(env.DB, env.PHOTOS, { limit: 5000 }).then((r) => {
+      if (r.deleted || r.failed) console.log('photo sweep', r);
+    }),
+  );
+};
+
+// the Hono app (fetch, and app.request for tests) plus the cron handler
+export default Object.assign(app, { scheduled });

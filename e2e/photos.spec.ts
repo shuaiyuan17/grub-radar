@@ -155,7 +155,7 @@ test('add photos, a friend sees them, a stranger gets a 404, delete one', async 
   const one = await served(ana.page, firstUrl);
   expect(one.res.status()).toBe(200);
   expect(one.res.headers()['content-type']).toBe('image/webp');
-  expect(one.res.headers()['cache-control']).toMatch(/^private, max-age=/);
+  expect(one.res.headers()['cache-control']).toBe('private, no-cache');
   expect(containsExif(one.bytes)).toBe(false);
   expect(checkImage(one.bytes)).toEqual({
     ok: true,

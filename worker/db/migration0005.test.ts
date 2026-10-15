@@ -34,7 +34,7 @@ const snapshot = async () =>
 let before: Record<string, unknown[]> = {};
 
 beforeAll(async () => {
-  for (const t of ['photos', ...[...TABLES].reverse(), 'd1_migrations'])
+  for (const t of ['photo_deletions', 'photos', ...[...TABLES].reverse(), 'd1_migrations'])
     await env.DB.exec(`DROP TABLE IF EXISTS ${t}`);
   await applyD1Migrations(env.DB, upTo(4));
 
@@ -131,8 +131,9 @@ describe('migration 0005: photos', () => {
     expect(await new D1SpotRepository(env.DB, 'u_a').list()).toHaveLength(2);
   });
 
-  it('adds an empty photos table whose checks hold the Worker’s limits', async () => {
+  it('adds empty photos and photo_deletions tables; checks hold the Worker’s limits', async () => {
     expect(await all('SELECT * FROM photos')).toEqual([]);
+    expect(await all('SELECT * FROM photo_deletions')).toEqual([]);
     await photo();
     for (const bad of [
       { content_type: 'image/png' },
@@ -161,5 +162,10 @@ describe('migration 0005: photos', () => {
       env.DB.prepare("DELETE FROM places WHERE id = 'p-a'"),
     ]);
     expect(await all('SELECT id FROM photos')).toEqual([]);
+    // every one of those deletes queued its bytes (the trigger fires on cascades too)
+    expect(await all('SELECT r2_key FROM photo_deletions ORDER BY r2_key')).toEqual([
+      { r2_key: 'u/u_a/p-a/ph_1' },
+      { r2_key: 'u/u_b/p-a/ph_b' },
+    ]);
   });
 });

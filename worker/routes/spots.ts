@@ -22,7 +22,7 @@ import {
   withLegacyRating,
 } from '../../src/domain/edits';
 import { parseSpots } from '../../src/domain/spot';
-import type { AppEnv } from '../app';
+import { defer, type AppEnv } from '../app';
 import { csrf } from '../auth/csrf';
 import {
   actingUser,
@@ -31,6 +31,7 @@ import {
   requireScope,
   type Prefetch,
 } from '../auth/principal';
+import { sweepPhotoDeletions } from '../db/photos';
 import { D1SpotRepository, listStatement, spotsFromRows } from '../db/spots';
 import { homeFromResult } from '../db/users';
 import { isDevelopment, type Env } from '../env';
@@ -51,7 +52,13 @@ type Ctx = Context<AppEnv>;
 
 function repoFor(c: Ctx) {
   const { userId, foundBy } = actingUser(c.var.principal);
-  return new D1SpotRepository(c.env.DB, userId, { foundBy, photos: c.env.PHOTOS });
+  return new D1SpotRepository(c.env.DB, userId, {
+    foundBy,
+    // a removed spot's photos: their bytes go after the response (the outbox has them)
+    photosDeleted: (keys) => {
+      defer(c, sweepPhotoDeletions(c.env.DB, c.env.PHOTOS, { keys }));
+    },
+  });
 }
 
 /** SpotOpError -> HTTP; anything else goes to the 500 handler. */

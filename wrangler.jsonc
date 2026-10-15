@@ -62,6 +62,8 @@
   // Photo bytes. Private bucket: no public access, no r2.dev URL, no custom domain. The Worker
   // serves every photo at /api/photos/:id after checking who's asking (worker/routes/photos.ts).
   "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "grub-radar-photos" }],
+  // Hourly: delete photo bytes still on the deletion outbox (photo_deletions), see worker/index.ts.
+  "triggers": { "crons": ["23 * * * *"] },
   "vars": {
     "ENVIRONMENT": "production",
     "APPLE_TEAM_ID": "TMTJYK5V5B",

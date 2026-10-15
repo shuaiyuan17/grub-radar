@@ -8,7 +8,20 @@ import {
   PlacePhotosResponseSchema,
   type Photo,
 } from '../../src/contracts/photos';
-import { insertPhoto, photoKey, purgeUserPhotos } from '../db/photos';
+import {
+  createExecutionContext,
+  createScheduledController,
+  waitOnExecutionContext,
+} from 'cloudflare:test';
+import worker from '../index';
+import {
+  deleteOwnPhoto,
+  insertPhoto,
+  MAX_SWEEP_ATTEMPTS,
+  photoKey,
+  purgeUserPhotos,
+  sweepPhotoDeletions,
+} from '../db/photos';
 import { newPhotoId } from '../lib/ids';
 import { call, d1RoundTrips, send, userSession } from '../test/helpers';
 import { exifBody, jpeg, segment, vp8x, webp, webpParts, xmpBody } from '../test/images';
@@ -84,6 +97,21 @@ async function keys(prefix: string): Promise<string[]> {
   return (await env.PHOTOS.list({ prefix })).objects.map((o) => o.key);
 }
 
+/** The cron, as Cloudflare would run it. */
+async function runCron() {
+  const ctx = createExecutionContext();
+  await worker.scheduled(createScheduledController(), env, ctx);
+  await waitOnExecutionContext(ctx);
+}
+
+const outbox = async () =>
+  (
+    await env.DB.prepare('SELECT r2_key, attempts FROM photo_deletions ORDER BY r2_key').all<{
+      r2_key: string;
+      attempts: number;
+    }>()
+  ).results;
+
 const rows = async (sql: string, ...binds: unknown[]) =>
   (
     await env.DB.prepare(sql)
@@ -126,7 +154,9 @@ describe('upload', () => {
     const res = await call(photo.url, { cookie: who('ana') });
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toBe('image/jpeg');
-    expect(res.headers.get('cache-control')).toMatch(/^private, max-age=\d{7,}/);
+    // cached, but asked again every time: access can end, and each ask passes the check
+    expect(res.headers.get('cache-control')).toBe('private, no-cache');
+    expect(res.headers.get('cache-control')).not.toContain('immutable');
     expect(res.headers.get('etag')).toBe(`"${photo.id}"`);
     expect(res.headers.get('vary')).toBe('Cookie');
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
@@ -276,7 +306,7 @@ describe('upload: what the Worker refuses', () => {
   // every refusal above must leave neither a row nor an object behind
   it('left nothing behind: no rows, no objects', async () => {
     expect(await rows("SELECT id FROM photos WHERE user_id = 'u_cyd'")).toEqual([]);
-    expect(await keys('u/u_cyd/')).toEqual([]);
+    await expect.poll(() => keys('u/u_cyd/')).toEqual([]);
   });
 });
 
@@ -288,7 +318,7 @@ describe('caps', () => {
     const over = await upload(who('dot'), 'full-up');
     expect(over.status).toBe(409);
     expect(await errorCode(over)).toBe('photo_limit');
-    expect(await keys('u/u_dot/full-up/')).toHaveLength(PHOTOS_PER_SPOT);
+    await expect.poll(() => keys('u/u_dot/full-up/')).toHaveLength(PHOTOS_PER_SPOT);
     await uploaded(who('dot'), 'roomy');
   });
 
@@ -301,7 +331,7 @@ describe('caps', () => {
     expect(await rows("SELECT id FROM photos WHERE user_id = 'u_eve'")).toHaveLength(
       PHOTOS_PER_SPOT,
     );
-    expect(await keys('u/u_eve/')).toHaveLength(PHOTOS_PER_SPOT);
+    await expect.poll(() => keys('u/u_eve/')).toHaveLength(PHOTOS_PER_SPOT);
   });
 
   it('the INSERT itself enforces the per-spot cap (no pre-check involved)', async () => {
@@ -369,7 +399,7 @@ describe('caps', () => {
     const over = await upload(who('gus'), 'next', padded);
     expect(over.status).toBe(409);
     expect(await errorCode(over)).toBe('storage_full');
-    expect(await keys('u/u_gus/')).toEqual([]);
+    await expect.poll(() => keys('u/u_gus/')).toEqual([]);
     await uploaded(who('gus'), 'next', fits);
   });
 
@@ -475,7 +505,7 @@ describe('delete', () => {
     await spot('ana', 'delete-one');
     const photo = await uploaded(who('ana'), 'delete-one');
     expect((await send('DELETE', photo.url, who('ana'))).status).toBe(204);
-    expect(await keys('u/u_ana/delete-one/')).toEqual([]);
+    await expect.poll(() => keys('u/u_ana/delete-one/')).toEqual([]);
     expect((await call(photo.url, { cookie: who('ana') })).status).toBe(404);
     expect((await send('DELETE', photo.url, who('ana'))).status).toBe(404);
   });
@@ -487,15 +517,15 @@ describe('delete', () => {
     const before = await keys('u/u_ana/');
     expect((await send('DELETE', '/api/spots/delete-spot', who('ana'))).status).toBe(204);
     expect(await rows('SELECT id FROM photos WHERE id IN (?, ?)', a.id, b.id)).toEqual([]);
-    expect(await keys('u/u_ana/delete-spot/')).toEqual([]);
-    expect(await keys('u/u_ana/')).toHaveLength(before.length - 2);
+    await expect.poll(() => keys('u/u_ana/delete-spot/')).toEqual([]);
+    await expect.poll(() => keys('u/u_ana/')).toHaveLength(before.length - 2);
     // Ben's photos of a place Ana removes aren't hers to take
     expect((await call('/api/photos?place=shared-noodles', { cookie: who('ben') })).status).toBe(
       200,
     );
   });
 
-  it('an account: rows cascade with the user, the bytes go by prefix, nobody else’s', async () => {
+  it('an account: rows cascade with the user, the bytes go via the outbox, nobody else’s', async () => {
     await person('zed');
     await spot('zed', 'last-meal');
     await uploaded(who('zed'), 'last-meal');
@@ -504,8 +534,81 @@ describe('delete', () => {
 
     await env.DB.prepare("DELETE FROM users WHERE id = 'u_zed'").run();
     expect(await rows("SELECT id FROM photos WHERE user_id = 'u_zed'")).toEqual([]);
-    expect(await purgeUserPhotos(env.PHOTOS, 'u_zed')).toBe(2);
+    // the cascade fired the trigger: both keys are queued
+    expect((await outbox()).filter((r) => r.r2_key.startsWith('u/u_zed/'))).toHaveLength(2);
+    await runCron();
     expect(await keys('u/u_zed/')).toEqual([]);
+    expect(await outbox()).toEqual([]);
     expect((await keys('u/')).sort()).toEqual(others.sort());
+  });
+
+  it('purgeUserPhotos also takes objects no row knows (an upload that died between R2 and D1)', async () => {
+    await env.PHOTOS.put('u/u_ghost/somewhere/ph_x', new Uint8Array([1]));
+    await env.PHOTOS.put('u/u_ghostly/elsewhere/ph_y', new Uint8Array([1]));
+    expect(await purgeUserPhotos(env.PHOTOS, 'u_ghost')).toBe(1);
+    expect(await keys('u/u_ghost/')).toEqual([]);
+    expect(await keys('u/u_ghostly/')).toHaveLength(1);
+  });
+});
+
+describe('the deletion outbox', () => {
+  const failingBucket = {
+    delete: () => Promise.reject(new Error('R2 is having a moment')),
+  } as unknown as R2Bucket;
+
+  it('a failed R2 delete keeps the key queued (attempt counted); the cron finishes it', async () => {
+    await spot('ana', 'flaky');
+    const photo = await uploaded(who('ana'), 'flaky');
+    const key = photoKey('u_ana', 'flaky', photo.id);
+    expect(await deleteOwnPhoto(env.DB, 'u_ana', photo.id)).toBe(key);
+    expect(await outbox()).toEqual([{ r2_key: key, attempts: 0 }]);
+
+    expect(await sweepPhotoDeletions(env.DB, failingBucket, { keys: [key] })).toEqual({
+      deleted: 0,
+      failed: 1,
+    });
+    expect(await outbox()).toEqual([{ r2_key: key, attempts: 1 }]);
+    expect(await keys('u/u_ana/flaky/')).toEqual([key]);
+    // nobody can see it meanwhile: the row is gone
+    expect((await call(photo.url, { cookie: who('ana') })).status).toBe(404);
+
+    await runCron();
+    expect(await keys('u/u_ana/flaky/')).toEqual([]);
+    expect(await outbox()).toEqual([]);
+  });
+
+  it('the cron gives up on a key after MAX_SWEEP_ATTEMPTS (left for a person to look at)', async () => {
+    await env.DB.prepare(
+      "INSERT INTO photo_deletions (r2_key, created_at, attempts) VALUES ('u/stuck/p/ph_z', 'x', ?)",
+    )
+      .bind(MAX_SWEEP_ATTEMPTS)
+      .run();
+    await env.PHOTOS.put('u/stuck/p/ph_z', new Uint8Array([1]));
+    await runCron();
+    expect(await keys('u/stuck/')).toEqual(['u/stuck/p/ph_z']);
+    expect(await outbox()).toEqual([{ r2_key: 'u/stuck/p/ph_z', attempts: MAX_SWEEP_ATTEMPTS }]);
+    await env.DB.prepare('DELETE FROM photo_deletions').run();
+  });
+
+  it('a refused upload’s bytes are queued in the same batch as the refusal, then swept', async () => {
+    // straight to the INSERT (no pre-check): a place that isn't on the list
+    const id = 'ph_00000000000000000000000000';
+    await env.PHOTOS.put(photoKey('u_ana', 'nowhere', id), new Uint8Array([1]));
+    const refused = await insertPhoto(env.DB, {
+      id,
+      userId: 'u_ana',
+      placeId: 'nowhere',
+      key: photoKey('u_ana', 'nowhere', id),
+      type: 'image/webp',
+      width: 10,
+      height: 10,
+      bytes: 10,
+      createdAt: new Date().toISOString(),
+    });
+    expect(refused).toEqual({ ok: false, why: 'no_spot' });
+    expect(await outbox()).toEqual([{ r2_key: photoKey('u_ana', 'nowhere', id), attempts: 0 }]);
+    await runCron();
+    expect(await keys('u/u_ana/nowhere/')).toEqual([]);
+    expect(await outbox()).toEqual([]);
   });
 });

@@ -203,8 +203,9 @@ export interface NewPhoto {
 /**
  * Stores the row, only if the place is on the uploader's list, the spot has
  * room (PHOTOS_PER_SPOT) and so does the person (PHOTO_STORAGE_BYTES), all
- * judged inside the one INSERT. One round trip: the read after it says why,
- * when nothing was inserted.
+ * judged inside the one INSERT. Same batch (one transaction, one round trip):
+ * when the row wasn't inserted, the bytes already in R2 go on the deletion
+ * outbox, and a read says why.
  */
 export async function insertPhoto(
   db: D1Database,
@@ -212,7 +213,7 @@ export async function insertPhoto(
 ): Promise<
   { ok: true; photo: Photo } | { ok: false; why: 'no_spot' | 'photo_limit' | 'storage_full' }
 > {
-  const [inserted, after] = await db.batch([
+  const [inserted, , after] = await db.batch([
     db
       .prepare(
         `INSERT INTO photos (id, user_id, place_id, r2_key, content_type, width, height, bytes, created_at)
@@ -240,6 +241,12 @@ export async function insertPhoto(
         p.bytes,
         PHOTO_STORAGE_BYTES,
       ),
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO photo_deletions (r2_key, created_at)
+         SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM photos WHERE id = ?)`,
+      )
+      .bind(p.key, p.createdAt, p.id),
     usageStatement(db, userIdRef(p.userId), p.placeId),
   ]);
   if (inserted?.meta.changes) {
@@ -259,7 +266,10 @@ export async function insertPhoto(
   return { ok: false, why: refusal(usageFromResult(after), p.bytes) ?? 'photo_limit' };
 }
 
-/** Deletes one of your photos. Its R2 key, or null when it isn't yours (or doesn't exist). */
+/**
+ * Deletes one of your photos. Its R2 key, or null when it isn't yours (or
+ * doesn't exist). The trigger puts the key on the outbox in the same statement.
+ */
 export async function deleteOwnPhoto(
   db: D1Database,
   userId: string,
@@ -289,7 +299,10 @@ export async function setCaption(
   return row ? toPhoto(row) : null;
 }
 
-/** Deletes your photos of one spot (with the spot, in its batch), returning their R2 keys. */
+/**
+ * Deletes your photos of one spot (with the spot, in its batch), returning
+ * their R2 keys; the trigger puts them on the outbox in the same transaction.
+ */
 export function deleteSpotPhotosStatement(
   db: D1Database,
   userId: string,
@@ -306,22 +319,75 @@ export const keysFromResult = (result: D1Result | undefined): string[] =>
 // ---------------------------------------------------------------------------
 // R2
 
-/** Deletes objects from R2, 1000 keys per call (R2's limit). Failures are logged, not thrown. */
-export async function deleteObjects(bucket: R2Bucket, keys: string[]): Promise<void> {
+/** Sweeps that fail this many times are left for a person to look at (the cron skips them). */
+export const MAX_SWEEP_ATTEMPTS = 10;
+
+/**
+ * Deletes R2 objects on the outbox (photo_deletions), then their outbox rows.
+ * `keys`: just these (right after the request that deleted them); otherwise
+ * the oldest `limit` rows still under MAX_SWEEP_ATTEMPTS (the cron). A failed
+ * R2 delete leaves the rows, one attempt more, for the next sweep. Never throws.
+ */
+export async function sweepPhotoDeletions(
+  db: D1Database,
+  bucket: R2Bucket,
+  opts: { keys?: string[]; limit?: number } = {},
+): Promise<{ deleted: number; failed: number }> {
+  let keys = opts.keys;
+  try {
+    keys ??= (
+      await db
+        .prepare(
+          `SELECT r2_key FROM photo_deletions WHERE attempts < ?
+           ORDER BY attempts, created_at LIMIT ?`,
+        )
+        .bind(MAX_SWEEP_ATTEMPTS, opts.limit ?? 1000)
+        .all<{ r2_key: string }>()
+    ).results.map((r) => r.r2_key);
+  } catch (e) {
+    console.error('photo sweep: outbox read failed', e instanceof Error ? e.message : e);
+    return { deleted: 0, failed: 0 };
+  }
+  let deleted = 0;
+  let failed = 0;
+  // R2 takes at most 1000 keys per delete
   for (let i = 0; i < keys.length; i += 1000) {
+    const chunk = keys.slice(i, i + 1000);
+    const list = JSON.stringify(chunk);
     try {
-      await bucket.delete(keys.slice(i, i + 1000));
+      await bucket.delete(chunk);
     } catch (e) {
-      // the D1 rows are gone, so nothing can serve these; they're orphans, not leaks
-      console.error('R2 delete failed', e instanceof Error ? e.message : e, keys.length);
+      failed += chunk.length;
+      console.error('photo sweep: R2 delete failed', e instanceof Error ? e.message : e);
+      await db
+        .prepare(
+          'UPDATE photo_deletions SET attempts = attempts + 1 WHERE r2_key IN (SELECT value FROM json_each(?))',
+        )
+        .bind(list)
+        .run()
+        .catch(() => undefined);
+      continue;
+    }
+    try {
+      await db
+        .prepare('DELETE FROM photo_deletions WHERE r2_key IN (SELECT value FROM json_each(?))')
+        .bind(list)
+        .run();
+      deleted += chunk.length;
+    } catch (e) {
+      // the objects are gone; the rows stay and a later sweep deletes nothing again (harmless)
+      console.error('photo sweep: outbox cleanup failed', e instanceof Error ? e.message : e);
     }
   }
+  return { deleted, failed };
 }
 
 /**
- * Every photo object of one person, by prefix, whether or not D1 still has
- * rows for them. For account deletion: the D1 rows go with the user row
- * (ON DELETE CASCADE); this takes the bytes. Returns how many were deleted.
+ * Every photo object of one person, by prefix, whether or not D1 or the
+ * outbox still knows them. For account deletion: the rows go with the user
+ * row (ON DELETE CASCADE, and the trigger queues their keys for the sweeper);
+ * this also catches an object whose upload died between R2 and D1. Returns
+ * how many were deleted.
  */
 export async function purgeUserPhotos(bucket: R2Bucket, userId: string): Promise<number> {
   const prefix = userPhotoPrefix(userId);

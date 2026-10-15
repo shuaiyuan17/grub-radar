@@ -32,12 +32,25 @@ describe('stripImageMetadata', () => {
     expect(checkImage(clean)).toEqual({ ok: true, type: 'image/jpeg', width: 800, height: 600 });
   });
 
-  it('keeps everything else of a JPEG byte for byte, and drops bytes after the end', () => {
+  it('keeps the rest of a JPEG byte for byte, and drops bytes after the end', () => {
     const plain = jpeg();
     expect(strip(plain)).toEqual(plain);
     expect(strip(jpeg({ after: [1, 2, 3] }))).toEqual(plain);
-    const icc = segment(0xe2, [...enc.encode('ICC_PROFILE\0'), 1, 1]);
-    expect(strip(jpeg({ before: [icc] }))).toEqual(jpeg({ before: [icc] }));
+    const adobe = segment(0xee, [...enc.encode('Adobe'), 0, 100, 0, 0, 0, 0, 1]);
+    expect(strip(jpeg({ before: [adobe] }))).toEqual(jpeg({ before: [adobe] }));
+  });
+
+  it('drops every APPn the Worker would refuse: what Chrome and Safari canvases add', () => {
+    // Chrome: APP2 ICC profile. Safari: APP1 EXIF + APP13 Photoshop. Plus odd ones.
+    const added = [
+      segment(0xe2, [...enc.encode('ICC_PROFILE\0'), 1, 1]),
+      segment(0xe1, exifBody({ gps: false })),
+      segment(0xed, enc.encode('Photoshop 3.0\0')),
+      segment(0xe5, enc.encode('anything')),
+    ];
+    const clean = strip(jpeg({ before: added }));
+    expect(clean).toEqual(jpeg());
+    expect(checkImage(clean).ok).toBe(true);
   });
 
   it('takes EXIF and XMP chunks out of a WebP and clears their VP8X flags', () => {
