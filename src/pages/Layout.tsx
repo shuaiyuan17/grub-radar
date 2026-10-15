@@ -17,6 +17,7 @@ import { Ink } from '../components/Ink';
 import { OriginProvider } from '../components/OriginProvider';
 import { SpotsProvider } from '../components/SpotsProvider';
 import { useT } from '../i18n/context';
+import { TYPED_NAV_STATE } from '../lib/ime';
 import { useAuth } from '../lib/auth';
 import { useHomeClient } from '../lib/homeClient';
 import { useSpotSource } from '../lib/spotSource';
@@ -40,7 +41,10 @@ function HeaderSearch() {
         if (q) next.set('q', q);
         else next.delete('q');
         const search = next.toString();
-        void navigate({ pathname: '/', search: search ? `?${search}` : '' }, { replace: onList });
+        void navigate(
+          { pathname: '/', search: search ? `?${search}` : '' },
+          { replace: onList, state: TYPED_NAV_STATE },
+        );
       }}
     />
   );

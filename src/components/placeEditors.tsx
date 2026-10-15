@@ -17,6 +17,7 @@ import { formErrorClass, inputClass, linkButtonClass } from './fieldClasses';
 import { Icon } from './Icon';
 import { Ink } from './Ink';
 import styles from './placeEditors.module.css';
+import { preventImeEnter } from '../lib/ime';
 
 /**
  * Runs one save at a time and keeps its error. `run` resolves true when the
@@ -310,7 +311,7 @@ export function OrderEditor({ spot }: { spot: Spot }) {
         </ul>
       )}
       {canWrite && !full && (
-        <form className={styles.inline} onSubmit={(e) => void add(e)}>
+        <form className={styles.inline} onSubmit={(e) => void add(e)} onKeyDown={preventImeEnter}>
           <label htmlFor={inputId} className="visually-hidden">
             {t.addDish}
           </label>

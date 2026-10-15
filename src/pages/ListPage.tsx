@@ -25,6 +25,7 @@ import {
   type Mode,
 } from '../domain/modes';
 import { useI18n } from '../i18n/context';
+import { TYPED_NAV_STATE } from '../lib/ime';
 import { useOrigin } from '../lib/origin';
 import { roll } from '../domain/roll';
 import { getPageHeadline } from '../lib/pageHeadline';
@@ -79,7 +80,8 @@ export function ListPage() {
     );
   }, [origin, setParams]);
 
-  const update = (patch: ParamPatch) => {
+  /** `typed`: the search box's own write (it doesn't reset the box). */
+  const update = (patch: ParamPatch, typed = false) => {
     setParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -93,7 +95,7 @@ export function ListPage() {
         }
         return next;
       },
-      { replace: true },
+      { replace: true, ...(typed ? { state: TYPED_NAV_STATE } : {}) },
     );
   };
 
@@ -168,7 +170,7 @@ export function ListPage() {
                 autoFocus
                 value={q}
                 onChange={(value) => {
-                  update({ q: value, roll: null });
+                  update({ q: value, roll: null }, true);
                 }}
               />
             </div>

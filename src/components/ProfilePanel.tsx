@@ -9,6 +9,7 @@ import { formErrorClass, inputClass } from './fieldClasses';
 import { InkBox, InkButton } from './fields';
 import styles from './ProfilePanel.module.css';
 import { Ink } from './Ink';
+import { preventImeEnter } from '../lib/ime';
 
 /**
  * How friends see you: your display name and an emoji. Apple sends a name
@@ -55,7 +56,11 @@ export function ProfilePanel({ user }: { user: MeUser }) {
   };
 
   return (
-    <form className={`sk ${styles.panel}`} onSubmit={(e) => void save(e)}>
+    <form
+      className={`sk ${styles.panel}`}
+      onSubmit={(e) => void save(e)}
+      onKeyDown={preventImeEnter}
+    >
       <Ink />
       <h2 className={styles.title}>{t.friends.profileTitle}</h2>
       <div className={styles.preview} aria-hidden="true">

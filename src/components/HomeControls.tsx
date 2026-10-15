@@ -7,6 +7,7 @@ import { inputClass } from './fieldClasses';
 import { InkBox } from './fields';
 import { Icon } from './Icon';
 import { Ink } from './Ink';
+import { preventImeEnter } from '../lib/ime';
 
 /** "set home": from where you are, or typed as lat, lng. Saved on this device only. */
 export function HomeEditor() {
@@ -68,7 +69,7 @@ export function HomeEditor() {
           {status === 'locating' ? t.findingYou : t.useWhereIAmNow}
         </button>
       </div>
-      <form className={styles.form} onSubmit={submit} noValidate>
+      <form className={styles.form} onSubmit={submit} onKeyDown={preventImeEnter} noValidate>
         <label htmlFor={`${id}-coords`} className={styles.small}>
           {t.typeLatLng}
         </label>

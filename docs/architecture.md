@@ -73,12 +73,15 @@ Phone first (~390px wide), with a desktop layout at ≥960px (card grid, with a 
   - Search looks across every spot (name, cuisine, tags, notes, dishes) regardless of mode.
     It ignores case, accents, apostrophes (straight or curly) and punctuation, so `mama kos`
     finds "Mama Ko's".
+  - Text typed through an IME (pinyin and the like) reaches `?q=` only once it's committed:
+    mid-composition the box holds the pinyin and nothing else moves (see `src/lib/ime.ts`).
 - `/place/:id` one spot: mark it been with a verdict (loved it / it was fine / nope: three
   stamps), change the verdict or move it back to "want to try", tick off and edit "order
   this", add dated notes, photos, who sees it (friends / just me), edit, delete. Friends who
   have been show their verdicts here.
 - `/add` find a place on Apple Maps (restaurants, cafés, bakeries around where you measure
-  from) and put it on your radar in one tap; `?q=pho` keeps the search. Places already on
+  from) and put it on your radar in one tap; `?q=pho` keeps the search (written after a pause
+  or Enter, never mid-composition, so Safari's pinyin IME isn't disturbed). Places already on
   your list say so and open your entry. Apple's places appear only here, never on the list or
   radar.
 - `/add/manual` add a spot by hand (name, kind, where: "use where i am" or `lat, lng`,

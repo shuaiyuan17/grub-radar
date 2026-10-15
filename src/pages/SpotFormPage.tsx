@@ -27,6 +27,7 @@ import { parseTags } from '../lib/tags';
 import { locate } from '../lib/geolocate';
 import { useSpots } from '../lib/spots';
 import styles from './SpotFormPage.module.css';
+import { preventImeEnter } from '../lib/ime';
 
 /** The price Choice's "?" option: not sure. */
 const UNKNOWN_PRICE = 'unknown';
@@ -191,7 +192,12 @@ function SpotForm({ spot, name }: { spot?: Spot; name?: string }) {
   const fromApple = spot?.applePlaceId !== undefined;
 
   return (
-    <form className={styles.form} onSubmit={(e) => void submit(e)} noValidate>
+    <form
+      className={styles.form}
+      onSubmit={(e) => void submit(e)}
+      onKeyDown={preventImeEnter}
+      noValidate
+    >
       {fromApple && (
         <div className={styles.apple}>
           <p className={styles.appleName} lang={guessLang(spot.name) ?? 'en'}>

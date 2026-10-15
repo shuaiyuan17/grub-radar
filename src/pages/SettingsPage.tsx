@@ -12,6 +12,7 @@ import { useT } from '../i18n/context';
 import { connectPrompt, useAgentsClient } from '../lib/agents';
 import { saveErrorMessage } from '../lib/errors';
 import styles from './SettingsPage.module.css';
+import { preventImeEnter } from '../lib/ime';
 
 type Copied = 'copied' | 'copyFailed' | null;
 
@@ -174,7 +175,7 @@ function NewToken({ onMade }: { onMade: (token: PersonalToken) => void }) {
   };
 
   return (
-    <form className={styles.form} onSubmit={(e) => void make(e)}>
+    <form className={styles.form} onSubmit={(e) => void make(e)} onKeyDown={preventImeEnter}>
       <label htmlFor={nameId} className={styles.label}>
         {t.agents.tokenName}
       </label>

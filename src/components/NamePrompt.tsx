@@ -10,6 +10,7 @@ import { formErrorClass, inputClass } from './fieldClasses';
 import { InkBox, InkButton } from './fields';
 import { Ink } from './Ink';
 import styles from './NamePrompt.module.css';
+import { preventImeEnter } from '../lib/ime';
 
 /** What Tab can land on inside the dialog (a radio group is one stop: its checked radio). */
 const TABBABLE =
@@ -114,7 +115,12 @@ export function NamePrompt({ user }: { user: MeUser }) {
         <div className={styles.lang}>
           <LangToggle />
         </div>
-        <form className={styles.form} noValidate onSubmit={(e) => void save(e)}>
+        <form
+          className={styles.form}
+          noValidate
+          onSubmit={(e) => void save(e)}
+          onKeyDown={preventImeEnter}
+        >
           <span key={emoji} className={styles.coin} aria-hidden="true">
             {emoji}
           </span>

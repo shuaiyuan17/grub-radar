@@ -1,4 +1,4 @@
-import { useMemo, useState, type SyntheticEvent } from 'react';
+import { useEffect, useMemo, useState, type SyntheticEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { Headline } from '../components/bits';
 import { FromToggle } from '../components/controls';
@@ -16,8 +16,9 @@ import { estimateTravel } from '../domain/travel';
 import { useI18n } from '../i18n/context';
 import { useAuth } from '../lib/auth';
 import { saveErrorMessage } from '../lib/errors';
+import { TYPED_NAV_STATE, useExternalNavKey, useImeSafeInput } from '../lib/ime';
 import { useOrigin } from '../lib/origin';
-import { usePlaceSearch, type PlaceSearchState } from '../lib/placeSearch';
+import { SEARCH_DEBOUNCE_MS, usePlaceSearch, type PlaceSearchState } from '../lib/placeSearch';
 import { useSpots } from '../lib/spots';
 import styles from './AddSearchPage.module.css';
 
@@ -42,17 +43,35 @@ export function AddSearchPage() {
   const { t, locale } = useI18n();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  // the box owns the text; the URL only mirrors it (driving a controlled input
-  // from the URL drops keystrokes when you type fast)
-  const [text, setTextState] = useState(() => params.get('q') ?? '');
+  const urlQ = params.get('q') ?? '';
+  // While the page is mounted, what's typed is the truth. The URL is read on
+  // mount, and again only after a navigation we didn't make (back/forward, the
+  // header's bare /add): our own debounced ?q= writes, however late, never
+  // come back into the box. `query` is the settled text (never pinyin still
+  // being composed): it drives the search, and the URL mirrors it after a pause.
+  const resetKey = useExternalNavKey();
+  const [query, setQuery] = useState(urlQ);
+  const [seenKey, setSeenKey] = useState(resetKey);
+  if (resetKey !== seenKey) {
+    setSeenKey(resetKey);
+    setQuery(urlQ);
+  }
+  const [failed, setFailed] = useState<string | null>(null);
+  const box = useImeSafeInput({
+    value: urlQ,
+    resetKey,
+    onCommit: (q) => {
+      setQuery(q);
+      setFailed(null);
+    },
+  });
   const { from } = useOrigin();
   const { near, origin } = useSearchCentre();
   const { spots, actions } = useSpots();
-  const { state, now } = usePlaceSearch(text, near, locale, origin);
+  const { state, now } = usePlaceSearch(query, near, locale, origin);
   // while a newer search loads, the old results are only a placeholder: no taps
   const stale = state.status === 'loading';
   const [adding, setAdding] = useState<string | null>(null);
-  const [failed, setFailed] = useState<string | null>(null);
 
   // places already on your list, by Apple id: tapping one opens your entry
   const mine = useMemo(() => {
@@ -61,12 +80,21 @@ export function AddSearchPage() {
     return m;
   }, [spots]);
 
-  const setText = (q: string) => {
-    setTextState(q);
-    setFailed(null);
-    // in the URL, so "back" from a place returns to the same search
-    setParams(q ? { q } : {}, { replace: true });
+  // in the URL, so "back" from a place returns to the same search. Not on
+  // every keystroke: a navigation mid-composition makes Safari commit the
+  // pinyin typed so far ("bbabaobao zbao zi")
+  const writeUrl = (q: string) => {
+    if (q !== urlQ) setParams(q ? { q } : {}, { replace: true, state: TYPED_NAV_STATE });
   };
+  useEffect(() => {
+    if (box.composing || query === urlQ) return;
+    const timer = setTimeout(() => {
+      setParams(query ? { q: query } : {}, { replace: true, state: TYPED_NAV_STATE });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [box.composing, query, urlQ, setParams]);
 
   const add = async (place: ApplePlace) => {
     if (!actions?.addApplePlace || adding || stale) return;
@@ -89,12 +117,13 @@ export function AddSearchPage() {
 
   const submit = (e: SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
+    writeUrl(query);
     now();
   };
 
   const places = state.status === 'ready' || state.status === 'loading' ? state.places : [];
-  const manualTo = text.trim()
-    ? `/add/manual?name=${encodeURIComponent(text.trim())}`
+  const manualTo = query.trim()
+    ? `/add/manual?name=${encodeURIComponent(query.trim())}`
     : '/add/manual';
 
   return (
@@ -118,10 +147,7 @@ export function AddSearchPage() {
             // the one thing to do on this page
             autoFocus
             maxLength={100}
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-            }}
+            {...box.inputProps}
           />
         </InkBox>
       </form>
@@ -133,7 +159,7 @@ export function AddSearchPage() {
       </div>
 
       <p role="status" className={styles.status}>
-        {statusLine(state, text, t)}
+        {statusLine(state, box.draft, t)}
       </p>
       {failed && (
         <p role="alert" className={styles.failed}>
