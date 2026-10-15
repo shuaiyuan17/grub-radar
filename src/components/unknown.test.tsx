@@ -33,15 +33,13 @@ describe('unknown price and cuisine', () => {
     localStorage.clear();
   });
 
-  it('a card says "cuisine? · price?", never "$$"', async () => {
+  it('a card says "food · price?": the kind stands in for cuisine, never "$$"', async () => {
     renderAt('/?q=serious', { repository: repo() });
     const card = await screen.findByRole('article', { name: 'Serious Pie' });
-    expect(card).toHaveTextContent('cuisine? · price?');
+    expect(card).toHaveTextContent('food · price?');
+    expect(card).not.toHaveTextContent('cuisine?');
     expect(card).not.toHaveTextContent('$');
-    expect(unknowns(card)).toEqual([
-      ['cuisine', 'cuisine?'],
-      ['price', 'price?'],
-    ]);
+    expect(unknowns(card)).toEqual([['price', 'price?']]);
   });
 
   it('the place page lists them as "cuisine?" and "price?"', async () => {
@@ -55,7 +53,16 @@ describe('unknown price and cuisine', () => {
   it('the radar card too', async () => {
     renderAt('/radar?sel=serious-pie', { repository: repo() });
     const card = await screen.findByRole('article', { name: 'Serious Pie' });
-    expect(card).toHaveTextContent(/^Serious Piecuisine\? · price\? · \d+ min walk/);
+    expect(card).toHaveTextContent(/^Serious Piefood · price\? · \d+ min walk/);
+  });
+
+  it('a card in Chinese: the kind (吃的) stands in, price is 价位？', async () => {
+    localStorage.setItem('grub-radar:lang', 'zh-Hans');
+    renderAt('/?q=serious', { repository: repo() });
+    const card = await screen.findByRole('article', { name: 'Serious Pie' });
+    expect(card).toHaveTextContent('吃的');
+    expect(card).not.toHaveTextContent('菜系？');
+    expect(within(card).getByText('价位？')).toHaveAttribute('data-unknown', 'price');
   });
 
   it('in Chinese: 菜系？ and 价位？', async () => {

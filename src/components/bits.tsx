@@ -143,14 +143,19 @@ export function Unknown({ what }: { what: 'price' | 'cuisine' }) {
   );
 }
 
-/** What a spot's cuisine and price read as: their words, or a hand-drawn "?". */
-export function CuisineText({ spot }: { spot: Pick<Spot, 'cuisine' | 'lang'> }) {
+/**
+ * A card's "what it is": the cuisine, or the kind (food / coffee / bakery)
+ * when nobody said. The "cuisine?" prompt is for the place page, not cards.
+ */
+export function CuisineOrKind({ spot }: { spot: Pick<Spot, 'cuisine' | 'kind' | 'lang'> }) {
+  const t = useT();
   return spot.cuisine ? (
     <span lang={dataLang(spot)}>{spot.cuisine}</span>
   ) : (
-    <Unknown what="cuisine" />
+    <>{t.kinds[spot.kind]}</>
   );
 }
+/** A price, or a hand-drawn "price?" when we don't know it. */
 export function PriceText({ price }: { price: Spot['price'] }) {
   return price ? <span>{price}</span> : <Unknown what="price" />;
 }

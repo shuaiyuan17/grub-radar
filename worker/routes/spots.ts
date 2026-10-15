@@ -4,6 +4,7 @@
  * reach another user's rows.
  */
 import { Hono, type Context } from 'hono';
+import type { z } from 'zod/mini';
 import {
   AddApplePlaceSchema,
   AddByQuerySchema,
@@ -18,6 +19,7 @@ import {
   MarkBeenSchema,
   SpotOpError,
   SpotPatchSchema,
+  withLegacyRating,
 } from '../../src/domain/edits';
 import { parseSpots } from '../../src/domain/spot';
 import type { AppEnv } from '../app';
@@ -133,8 +135,9 @@ spots.get('/:id', read, async (c) => {
  * search brake.
  */
 spots.post('/', ...write, async (c) => {
-  const body = await readBody(c);
-  if (!body.ok) return body.res;
+  const raw = await readBody(c);
+  if (!raw.ok) return raw.res;
+  const body = { ...raw, data: withLegacyRating(raw.data) };
   const form = addSpotForm(body.data);
   let req: AddRequest;
   if (form === 'manual') {
@@ -193,7 +196,7 @@ spots.post('/', ...write, async (c) => {
 });
 
 spots.patch('/:id', ...write, async (c) => {
-  const body = await readJson(c, SpotPatchSchema);
+  const body = await readWrite(c, SpotPatchSchema);
   if (!body.ok) return body.res;
   try {
     return c.json(await repoFor(c).update(c.req.param('id'), body.data));
@@ -202,9 +205,15 @@ spots.patch('/:id', ...write, async (c) => {
   }
 });
 
+/** A write body, with a legacy 1-10 `rating` read as a verdict (see withLegacyRating). */
+async function readWrite<T extends z.core.$ZodType>(c: Ctx, schema: T) {
+  const body = await readBody(c);
+  return body.ok ? parseBody(c, schema, withLegacyRating(body.data)) : body;
+}
+
 /** `mark_been` */
 spots.post('/:id/been', ...write, async (c) => {
-  const body = await readJson(c, MarkBeenSchema);
+  const body = await readWrite(c, MarkBeenSchema);
   if (!body.ok) return body.res;
   try {
     return c.json(await repoFor(c).markBeen(c.req.param('id'), body.data));

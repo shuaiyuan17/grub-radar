@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router';
 import type { SpotView } from '../domain/spotView';
 import { dataLang } from '../domain/spot';
 import { useT } from '../i18n/context';
-import { CuisineText, GoLink, PriceText, StatusBadge } from './bits';
+import { CuisineOrKind, GoLink, PriceText, StatusBadge } from './bits';
 import { FoodTile } from './Icon';
 import styles from './SpotCard.module.css';
 
@@ -49,7 +49,7 @@ export function SpotCard({
           </Link>
         </h3>
         <div className={styles.meta}>
-          <CuisineText spot={spot} /> · <PriceText price={spot.price} />
+          <CuisineOrKind spot={spot} /> · <PriceText price={spot.price} />
         </div>
       </div>
       <div className={styles.time}>

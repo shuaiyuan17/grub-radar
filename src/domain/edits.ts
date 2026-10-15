@@ -76,6 +76,27 @@ export const verdictNeedsBeen = () =>
     { message: 'only give a verdict on places you have been to', path: ['verdict'] },
   );
 
+/** The old 1-10 score as a verdict: 8-10 good, 5-7 meh, 1-4 bad (as migration 0003 did). */
+export function verdictFromRating(rating: number): Verdict {
+  return rating >= 8 ? 'good' : rating >= 5 ? 'meh' : 'bad';
+}
+
+/**
+ * Back-compat for clients from before verdicts (an app tab left open across
+ * the deploy): a write body's legacy `rating` (an integer 1-10, or null to
+ * clear) becomes `verdict`. A `verdict` sent alongside wins. Anything else in
+ * `rating` is left alone, so the strict schemas still refuse it.
+ */
+export function withLegacyRating(body: unknown): unknown {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || !('rating' in body)) return body;
+  const { rating, ...rest } = body as Record<string, unknown>;
+  if ('verdict' in rest) return rest;
+  if (rating === null) return { ...rest, verdict: null };
+  if (typeof rating === 'number' && Number.isInteger(rating) && rating >= 1 && rating <= 10)
+    return { ...rest, verdict: verdictFromRating(rating) };
+  return body;
+}
+
 /** POST /api/spots and the `add_spot` tool, by hand: name, kind and where. */
 export const AddSpotSchema = z
   .strictObject({

@@ -11,6 +11,18 @@ import type { ApplePlaceAdder } from '../lib/spots';
  * same zod schema the domain uses, so a bad server response is an error in
  * the UI, not a broken card. A 401 anywhere means the session is gone.
  */
+const SPOT_KEYS = new Set(Object.keys(SpotSchema.shape));
+/**
+ * A spot from the server, minus top-level fields this bundle doesn't know:
+ * an additive server change (a new field) must not break an open older tab.
+ * Everything this bundle does know is still checked strictly.
+ */
+function knownFields(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  return Object.fromEntries(Object.entries(raw).filter(([k]) => SPOT_KEYS.has(k)));
+}
+const parseSpot = (raw: unknown): Spot => SpotSchema.parse(knownFields(raw));
+
 /** A primed list older than this isn't handed out; list() fetches afresh. */
 const PRIMED_FOR_MS = 30_000;
 
@@ -32,7 +44,7 @@ export class HttpSpotRepository implements WritableSpotRepository, ApplePlaceAdd
   }
 
   async #spot(path: string, method: string, body: unknown): Promise<Spot> {
-    return SpotSchema.parse(await (await this.#call(path, { method, body })).json());
+    return parseSpot(await (await this.#call(path, { method, body })).json());
   }
 
   /**
@@ -57,12 +69,12 @@ export class HttpSpotRepository implements WritableSpotRepository, ApplePlaceAdd
   async #fetchList(): Promise<Spot[]> {
     const raw: unknown = await (await this.#call('/api/spots')).json();
     // SpotListSchema: the wire shape; parseSpots: also checks ids are unique
-    return parseSpots(SpotListSchema.parse(raw));
+    return parseSpots(SpotListSchema.parse(Array.isArray(raw) ? raw.map(knownFields) : raw));
   }
 
   async get(id: string): Promise<Spot | null> {
     try {
-      return SpotSchema.parse(await (await this.#call(spotPath(id))).json());
+      return parseSpot(await (await this.#call(spotPath(id))).json());
     } catch (e) {
       if (e instanceof ApiRequestError && e.status === 404) return null;
       throw e;

@@ -126,7 +126,7 @@ and draw rings.
 
 In the app: **+ add a spot** (desktop header, phone header, or the empty list). Type a name or
 a craving ("pho", "serious pie"), tap a result: it's on your list with Apple's Place ID, name,
-location and address; set been / verdict / price / notes / kind on the place page. Apple Maps has no price or cuisine, so those start unknown and show as a hand-drawn "price?" / "cuisine?" until you say. Can't find it?
+location and address; set been / verdict / price / notes / kind on the place page. Apple Maps has no price or cuisine, so those start unknown: a hand-drawn "price?" (cards and the place page) and "cuisine?" (the place page; cards show the kind) until you say. Can't find it?
 "add it by hand". Every account starts with an empty list; spots live in D1 and are yours
 alone.
 

@@ -25,6 +25,19 @@ describe('HttpSpotRepository', () => {
     await expect(new HttpSpotRepository().list()).rejects.toThrow();
   });
 
+  it('a field this bundle does not know yet is ignored, not an error (additive server changes)', async () => {
+    const future = SEED_SPOTS.map((s) => ({ ...s, photos: ['p1.jpg'], visitCount: 3 }));
+    vi.stubGlobal('fetch', respond(200, future));
+    const spots = await new HttpSpotRepository().list();
+    expect(spots).toHaveLength(SEED_SPOTS.length);
+    expect(spots[0]).not.toHaveProperty('photos');
+    vi.stubGlobal('fetch', respond(200, future[0]));
+    expect((await new HttpSpotRepository().get('lucky-thread'))?.id).toBe('lucky-thread');
+    // what it does know is still checked
+    vi.stubGlobal('fetch', respond(200, [{ ...SEED_SPOTS[0], price: '$$$$$', photos: [] }]));
+    await expect(new HttpSpotRepository().list()).rejects.toThrow();
+  });
+
   it('a 401 means the session is gone: tell the app, then fail', async () => {
     vi.stubGlobal(
       'fetch',

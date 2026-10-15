@@ -83,9 +83,7 @@ test('type a craving, tap an Apple Maps result, it is on your radar', async ({ p
   await page.goto('/');
   await expect(page.getByRole('article')).toHaveCount(1);
   await expect(page.getByRole('article', { name: 'Night Owl Pho' })).toBeVisible();
-  await expect(page.getByRole('article', { name: 'Night Owl Pho' })).toContainText(
-    'cuisine? · price?',
-  );
+  await expect(page.getByRole('article', { name: 'Night Owl Pho' })).toContainText('food · price?');
 
   // searching again: it's "on your list", and opens your entry instead of adding twice
   await page.goto('/add?q=pho');

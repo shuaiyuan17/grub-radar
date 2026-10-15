@@ -66,9 +66,10 @@ describe('writing your list over HTTP', () => {
     [{ ...NEW_SPOT, kind: 'bar' }, /^kind/],
     [{ ...NEW_SPOT, location: { lat: 91, lng: 0 } }, /^location\.lat/],
     [{ ...NEW_SPOT, verdict: 'good' }, /only give a verdict on places you have been to/],
-    // the 1-10 score is gone: a number is not a verdict, and `rating` is not a field
+    // a verdict is a word, not a number; a legacy `rating` outside 1-10 is still refused
     [{ ...NEW_SPOT, status: 'been', verdict: 8 }, /^verdict/],
-    [{ ...NEW_SPOT, status: 'been', rating: 8 }, /Invalid input/],
+    [{ ...NEW_SPOT, status: 'been', rating: 11 }, /Invalid input/],
+    [{ ...NEW_SPOT, status: 'been', rating: 7.5 }, /Invalid input/],
     [{ ...NEW_SPOT, note: 'x'.repeat(61) }, /^note/],
     [{ ...NEW_SPOT, tags: Array.from({ length: 11 }, (_, i) => `t${i}`) }, /^tags/],
     [{ ...NEW_SPOT, id: 'lucky-thread' }, /id/],
@@ -112,12 +113,53 @@ describe('writing your list over HTTP', () => {
     });
     const again = await spotOf(await send('PATCH', `/api/spots/${id}`, cookie, { verdict: 'meh' }));
     expect(again.verdict).toBe('meh');
-    // numbers (the old 1-10 score) and the old field are refused, everywhere
-    for (const body of [{ verdict: 9 }, { verdict: 'great' }, { rating: 9 }]) {
+    // a number is not a verdict; a legacy `rating` must be a 1-10 integer
+    for (const body of [{ verdict: 9 }, { verdict: 'great' }, { rating: 0 }, { rating: '9' }]) {
       const bad = await send('POST', `/api/spots/${id}/been`, cookie, body);
       expect(bad.status).toBe(400);
       expect((await send('PATCH', `/api/spots/${id}`, cookie, body)).status).toBe(400);
     }
+  });
+
+  it('a tab from before verdicts still works: a 1-10 `rating` is read as a verdict', async () => {
+    const legacy = await spotOf(
+      await send('POST', '/api/spots', cookie, {
+        ...NEW_SPOT,
+        name: 'Old Tab',
+        status: 'been',
+        rating: 8,
+      }),
+    );
+    expect(legacy).toMatchObject({ status: 'been', verdict: 'good' });
+    expect(legacy).not.toHaveProperty('rating');
+    const path = `/api/spots/${legacy.id}`;
+    // 8-10 good, 5-7 meh, 1-4 bad: the same mapping as migration 0003
+    for (const [rating, verdict] of [
+      [10, 'good'],
+      [8, 'good'],
+      [7, 'meh'],
+      [5, 'meh'],
+      [4, 'bad'],
+      [1, 'bad'],
+    ] as const) {
+      expect((await spotOf(await send('PATCH', path, cookie, { rating }))).verdict).toBe(verdict);
+    }
+    expect((await spotOf(await send('POST', `${path}/been`, cookie, { rating: 6 }))).verdict).toBe(
+      'meh',
+    );
+    // both sent: verdict wins
+    expect(
+      (await spotOf(await send('PATCH', path, cookie, { rating: 2, verdict: 'good' }))).verdict,
+    ).toBe('good');
+    // the old "no rating" button clears it
+    expect(await spotOf(await send('PATCH', path, cookie, { rating: null }))).not.toHaveProperty(
+      'verdict',
+    );
+    // and the old rule still holds: no verdict on a want
+    const want = await send('POST', '/api/spots', cookie, { ...NEW_SPOT, rating: 9 });
+    expect(want.status).toBe(400);
+    expect(await want.text()).toMatch(/only give a verdict on places you have been to/);
+    expect((await send('DELETE', path, cookie, {})).status).toBe(204);
   });
 
   it('notes append, dated', async () => {
