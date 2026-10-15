@@ -434,6 +434,17 @@ describe('POST /api/spots with words (add_spot query)', () => {
     ).toBe(0);
   });
 
+  it('"bar" whose top result is "Barista Cafe" is ambiguous, not a silent wrong add', async () => {
+    const cookie = await userSession('u_query_bar');
+    const res = await send('POST', '/api/spots', cookie, { query: 'bar', near: NEAR });
+    expect(res.status).toBe(409);
+    const body = AmbiguousResponseSchema.parse(await res.json());
+    expect(body.candidates.map((p) => p.name)).toEqual(['Barista Cafe', 'The Bar']);
+    expect(
+      await count('SELECT COUNT(*) AS n FROM user_places WHERE user_id = ?', 'u_query_bar'),
+    ).toBe(0);
+  });
+
   it('needs somewhere to search around: no near and no home is 400 need_location', async () => {
     const cookie = await userSession('u_query_nowhere');
     const res = await send('POST', '/api/spots', cookie, { query: 'serious pie' });
@@ -533,6 +544,24 @@ describe('D1 round trips (Server-Timing)', () => {
       near: { lat: 47.61, lng: -122.33 },
     });
     expect(d1RoundTrips(point)).toBe(1);
+  });
+
+  it('add by words with no near: around your home, still no extra round trip for it', async () => {
+    const cookie = await userSession('u_rt_query');
+    await send('PUT', '/api/me/home', cookie, A_HOME);
+    const res = await send('POST', '/api/spots', cookie, { query: 'the bar' });
+    expect(res.status).toBe(201);
+    // session (+ home), place look-up, write + read back
+    expect(d1RoundTrips(res)).toBe(3);
+    const search = apple.requests.find((u) => u.pathname === '/v1/search');
+    expect(search?.searchParams.get('searchLocation')).toBe('47.62,-122.32');
+    // and a manual add is unchanged: session, write
+    const manual = await send('POST', '/api/spots', cookie, {
+      name: 'Corner Stall',
+      kind: 'food',
+      location: { lat: 47.6, lng: -122.3 },
+    });
+    expect(d1RoundTrips(manual)).toBe(2);
   });
 
   it('add from Apple: 3 for a new place (session, look-up, write + read back); 2 if already yours', async () => {

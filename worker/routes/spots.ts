@@ -30,6 +30,7 @@ import {
   type Prefetch,
 } from '../auth/principal';
 import { D1SpotRepository, listStatement, spotsFromRows } from '../db/spots';
+import { homeFromResult } from '../db/users';
 import { isDevelopment, type Env } from '../env';
 import { apiError, parseBody, readBody, readJson } from '../lib/http';
 import { AppleMapsError } from '../services/appleMaps';
@@ -42,7 +43,7 @@ import {
   rollSpot,
   type AddRequest,
 } from '../services/spots';
-import { appleMapsFor, mapsError, overSearchLimit } from './places';
+import { appleMapsFor, HOME_FOR_SEARCH, mapsError, overSearchLimit } from './places';
 
 type Ctx = Context<AppEnv>;
 
@@ -151,7 +152,13 @@ spots.post('/', ...write, async (c) => {
       const input = parseBody(c, AddByQuerySchema, body.data);
       if (!input.ok) return input.res;
       const { userId } = actingUser(c.var.principal);
-      const centre = await resolveSearchCentre(c.env.DB, userId, input.data.near);
+      const pre = prefetched(c, HOME_FOR_SEARCH);
+      const centre = await resolveSearchCentre(
+        c.env.DB,
+        userId,
+        input.data.near,
+        pre ? homeFromResult(pre[0]) : undefined,
+      );
       if (!centre.ok) return noHome(c);
       if (!centre.near)
         return apiError(

@@ -63,6 +63,23 @@ export const FAKE_PLACES: FakePlace[] = [
     words: ['croissant', 'bakery'],
   },
   {
+    // "bar" matches this one first, though it isn't a bar
+    id: 'IF0000000000000E1',
+    name: 'Barista Cafe',
+    lat: 47.6111,
+    lng: -122.3344,
+    lines: ['5 Crema St', 'Seattle, WA 98101', 'United States'],
+    category: 'Cafe',
+  },
+  {
+    id: 'IF0000000000000E2',
+    name: 'The Bar',
+    lat: 47.6144,
+    lng: -122.3299,
+    lines: ['7 Tap Rd', 'Seattle, WA 98101', 'United States'],
+    category: 'Restaurant',
+  },
+  {
     // Apple filters by category itself; a stray one must still be dropped
     id: 'IF0000000000000D1',
     name: 'Pho Phill Gas',

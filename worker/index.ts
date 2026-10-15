@@ -72,7 +72,9 @@ app.use(
   '/api/*',
   principalResolver((c) => {
     // an Apple search may need your home: read it with the session (GET or the app's POST)
+    // the body (an add by `query`?) isn't read yet, so every add gets it: one row, same batch
     if (c.req.path === '/api/places/search') return placesSearchPrefetch(c.env);
+    if (c.req.path === '/api/spots' && c.req.method === 'POST') return placesSearchPrefetch(c.env);
     if (c.req.method !== 'GET') return null;
     if (c.req.path === '/api/me') return mePrefetch(c.env);
     if (c.req.path === '/api/spots') return spotsPrefetch(c.env);

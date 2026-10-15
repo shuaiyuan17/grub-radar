@@ -95,18 +95,36 @@ export class AmbiguousMatch extends Error {
 /** How many candidates an ambiguous answer lists. */
 export const AMBIGUOUS_CANDIDATES = 5;
 
+// scripts written without spaces between words: match the query as a run of text
+const NO_SPACES =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Thai}]/u;
+
+/**
+ * Does a place's name say what the words say? Accents, case and punctuation
+ * aside, every query word must be a whole word of the name ("the bar" ->
+ * "The Bar", but "bar" is not "Barista Cafe"). For CJK and other scripts
+ * written without spaces, the whole query must appear in the name
+ * ("拉面" -> "一乐拉面馆").
+ */
+export function nameMatches(query: string, name: string): boolean {
+  const q = normalizeSearch(query);
+  if (!q) return false;
+  const n = normalizeSearch(name);
+  if (NO_SPACES.test(q)) return n.replaceAll(' ', '').includes(q.replaceAll(' ', ''));
+  const words = new Set(n.split(' '));
+  return q.split(' ').every((w) => words.has(w));
+}
+
 /**
  * The place a free-text `add_spot` should add, or null if it isn't clear:
- * Apple's top result when its name contains the words (accents, case and
- * punctuation aside: "serious pie" -> "Serious Pie"), or when it's the only
- * result. "noodles" matching ten restaurants is not a choice to make for
- * someone.
+ * Apple's top result when its name matches the words (see nameMatches), or
+ * the only result. "noodles" matching ten restaurants, or "bar" matching
+ * "Barista Cafe" first, is not a choice to make for someone.
  */
 export function confidentMatch(query: string, results: readonly ApplePlace[]): ApplePlace | null {
   const [top] = results;
   if (!top) return null;
-  const words = normalizeSearch(query);
-  if (words && normalizeSearch(top.name).includes(words)) return top;
+  if (nameMatches(query, top.name)) return top;
   return results.length === 1 ? top : null;
 }
 

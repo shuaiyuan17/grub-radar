@@ -66,14 +66,16 @@ const limitSearch: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next();
 };
 
-const SEARCH = 'search /api/places/search';
+/** Prefetch key: your home, for anything that searches Apple around it. */
+export const HOME_FOR_SEARCH = 'home for an Apple search';
 
 /**
  * Your home, read in the session lookup's batch (see index.ts), so a search
- * around "home" (or with no centre) costs no extra D1 round trip.
+ * (or an add_spot by `query`) around "home", or with no centre, costs no
+ * extra D1 round trip.
  */
 export const placesSearchPrefetch = (env: Env): Prefetch => ({
-  key: SEARCH,
+  key: HOME_FOR_SEARCH,
   statements: (scope) => [homeStatement(env.DB, scope)],
 });
 
@@ -85,7 +87,7 @@ places.use(requireScope('spots:read'), limitSearch);
 async function search(c: Ctx, q: PlaceSearchQuery | { error: string }): Promise<Response> {
   if ('error' in q) return apiError(c, 400, 'bad_request', q.error);
   const { userId } = actingUser(c.var.principal);
-  const pre = prefetched(c, SEARCH);
+  const pre = prefetched(c, HOME_FOR_SEARCH);
   const centre = await resolveSearchCentre(
     c.env.DB,
     userId,
