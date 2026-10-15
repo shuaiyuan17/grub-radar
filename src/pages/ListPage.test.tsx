@@ -1,5 +1,6 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { getPageHeadline, resetPageHeadline } from '../lib/pageHeadline';
+import { composeStep, ENDS, ORDERS, PINYIN } from '../test/ime';
 import { fakeGeolocation, renderAt } from '../test/render';
 
 const cardNames = () =>
@@ -258,5 +259,69 @@ describe('mini radar highlight', () => {
       (document.activeElement as HTMLElement).blur();
     });
     expect(highlighted()).toEqual(['ondo-soup']);
+  });
+});
+
+describe('the list search with a pinyin IME', () => {
+  const q = (search: string) => new URLSearchParams(search).get('q');
+
+  it.each(
+    ORDERS.flatMap((browser) => [
+      [browser, 'phone'],
+      [browser, 'desktop'],
+    ]),
+  )('%s, %s box: ?q= changes only once 包子 is picked', async (browser, which) => {
+    const { user, router } = renderAt('/');
+    if (which === 'phone') {
+      await user.click(await screen.findByRole('button', { name: 'Search my spots' }));
+    }
+    const box = await waitFor(() => {
+      const el = document.getElementById(`search-${which}`);
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    const navigate = vi.spyOn(router, 'navigate');
+    fireEvent.compositionStart(box, { data: '' });
+    for (const s of PINYIN) {
+      composeStep(box, s);
+      expect(box).toHaveValue(s);
+    }
+    await new Promise((r) => setTimeout(r, 400));
+    expect(navigate).not.toHaveBeenCalled();
+    expect(q(router.state.location.search)).toBeNull();
+    // the list isn't filtered by "bao zi" either
+    expect(screen.getAllByRole('article').length).toBeGreaterThan(0);
+
+    ENDS[browser](box, '包子');
+    await waitFor(() => {
+      expect(q(router.state.location.search)).toBe('包子');
+    });
+    expect(box).toHaveValue('包子');
+  });
+
+  it('a late ?q= write for an earlier letter never overwrites what you typed since', async () => {
+    const { user, router } = renderAt('/');
+    const box = await waitFor(() => {
+      const el = document.getElementById('search-desktop');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    const navigate = router.navigate.bind(router);
+    let late: (() => Promise<void>) | undefined;
+    vi.spyOn(router, 'navigate').mockImplementationOnce((...args) => {
+      late = () => navigate(...args);
+      return Promise.resolve();
+    });
+    await user.type(box, 'n');
+    await user.type(box, 'oodle');
+    await waitFor(() => {
+      expect(q(router.state.location.search)).toBe('noodle');
+    });
+    // the held write for "n" lands last (React Router really cancels it; worst case here)
+    await act(() => late?.());
+    expect(box).toHaveValue('noodle');
+    // a mode switch clears ?q=, and the box with it
+    await user.click(screen.getByRole('button', { name: 'weekend' }));
+    expect(box).toHaveValue('');
   });
 });

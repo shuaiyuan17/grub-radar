@@ -1,8 +1,9 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { ApplePlace } from '../contracts/places';
 import { MemorySpotRepository } from '../data/memoryRepository';
 import { ApiRequestError } from '../lib/api';
-import { forgetPlaceAnswers } from '../lib/placeSearch';
+import { forgetPlaceAnswers, SEARCH_DEBOUNCE_MS } from '../lib/placeSearch';
+import { composeStep, ENDS, ORDERS, PINYIN } from '../test/ime';
 import { fakePlaceSearch, renderAt } from '../test/render';
 
 // fictional places around the demo home (downtown)
@@ -243,5 +244,132 @@ describe('editing a spot from Apple Maps', () => {
     await user.click(screen.getByRole('button', { name: 'save' }));
     await screen.findByRole('heading', { level: 1, name: /Pho Real/ });
     expect(await repository.get('p-mem-1')).toMatchObject({ cuisine: 'pho', name: 'Pho Real' });
+  });
+});
+
+describe('typing Chinese with a pinyin IME', () => {
+  const BAOZI: ApplePlace = {
+    applePlaceId: 'IF0000000000000C1',
+    name: '包子铺',
+    address: '3 Steam Alley, Seattle, WA 98104',
+    location: { lat: 47.6098, lng: -122.3268 },
+    category: 'Restaurant',
+    kind: 'food',
+  };
+  const pause = (ms = SEARCH_DEBOUNCE_MS + 150) => new Promise((r) => setTimeout(r, ms));
+  const q = (search: string) => new URLSearchParams(search).get('q');
+
+  it.each(ORDERS)(
+    '%s: the pinyin shows as you type, no search and no URL change until you pick 包子',
+    async (browser) => {
+      const search = fakePlaceSearch([...PLACES, BAOZI]);
+      const { router } = renderAt('/add', { repository: repo(), placeSearch: search });
+      const box = await searchBox();
+      const navigate = vi.spyOn(router, 'navigate');
+      fireEvent.compositionStart(box, { data: '' });
+      for (const s of PINYIN) {
+        composeStep(box, s);
+        expect(box).toHaveValue(s);
+      }
+      // you stop to look at the candidates: nothing happens behind your back
+      await pause();
+      expect(box).toHaveValue('bao zi');
+      expect(search.search).not.toHaveBeenCalled();
+      expect(navigate).not.toHaveBeenCalled();
+      expect(router.state.location.search).toBe('');
+
+      ENDS[browser](box, '包子');
+      expect(box).toHaveValue('包子');
+      const list = await screen.findByRole('list', { name: 'Places on Apple Maps' });
+      expect(within(list).getByRole('listitem')).toHaveTextContent('包子铺');
+      expect(search.search).toHaveBeenCalledTimes(1);
+      expect(search.search.mock.calls[0]?.[0]).toMatchObject({ q: '包子' });
+      await waitFor(() => {
+        expect(q(router.state.location.search)).toBe('包子');
+      });
+      expect(box).toHaveValue('包子');
+    },
+  );
+
+  it('the URL follows the search after a pause, not on every keystroke', async () => {
+    const { user, router } = renderAt('/add', {
+      repository: repo(),
+      placeSearch: fakePlaceSearch(PLACES),
+    });
+    const box = await searchBox();
+    const navigate = vi.spyOn(router, 'navigate');
+    await user.type(box, 'pho');
+    expect(navigate).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(q(router.state.location.search)).toBe('pho');
+    });
+    expect(navigate).toHaveBeenCalledTimes(1);
+  });
+
+  it('Enter writes the URL at once', async () => {
+    const { user, router } = renderAt('/add', {
+      repository: repo(),
+      placeSearch: fakePlaceSearch(PLACES),
+    });
+    await user.type(await searchBox(), 'pho{Enter}');
+    expect(q(router.state.location.search)).toBe('pho');
+  });
+
+  it('a bare /add (the header link) clears the box and the search', async () => {
+    const { user, router } = renderAt('/add', {
+      repository: repo(),
+      placeSearch: fakePlaceSearch(PLACES),
+    });
+    const box = await searchBox();
+    await user.type(box, 'pho');
+    await waitFor(() => {
+      expect(q(router.state.location.search)).toBe('pho');
+    });
+    await act(() => router.navigate('/add'));
+    expect(box).toHaveValue('');
+    await pause();
+    expect(router.state.location.search).toBe('');
+  });
+
+  it('a late URL write for an earlier word never overwrites what you typed since', async () => {
+    const search = fakePlaceSearch(PLACES);
+    const { user, router } = renderAt('/add', { repository: repo(), placeSearch: search });
+    const box = await searchBox();
+    // hold the first ?q= write back, as a slow router might
+    const navigate = router.navigate.bind(router);
+    let late: (() => Promise<void>) | undefined;
+    vi.spyOn(router, 'navigate').mockImplementationOnce((...args) => {
+      late = () => navigate(...args);
+      return Promise.resolve();
+    });
+    await user.type(box, 'pho');
+    await waitFor(() => {
+      expect(late).toBeDefined();
+    });
+    // you type on before the write for "pho" lands
+    await user.type(box, ' real');
+    await act(() => late?.());
+    expect(q(router.state.location.search)).toBe('pho');
+    expect(box).toHaveValue('pho real');
+    // the search and the URL catch up with what's in the box
+    await screen.findByText('1 on Apple Maps · tap one to add it');
+    await waitFor(() => {
+      expect(q(router.state.location.search)).toBe('pho real');
+    });
+    expect(box).toHaveValue('pho real');
+  });
+
+  it('back/forward to another search is followed', async () => {
+    const { router } = renderAt('/add?q=pho', {
+      repository: repo(),
+      placeSearch: fakePlaceSearch(PLACES),
+    });
+    const box = await searchBox();
+    expect(box).toHaveValue('pho');
+    await act(() => router.navigate('/add?q=kite'));
+    expect(box).toHaveValue('kite');
+    await act(() => router.navigate(-1));
+    expect(box).toHaveValue('pho');
+    await screen.findByText('2 on Apple Maps · tap one to add it');
   });
 });

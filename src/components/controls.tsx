@@ -5,6 +5,7 @@ import { ALL, MODES, type Mode } from '../domain/modes';
 import { dataLang } from '../domain/spot';
 import { useI18n, useT } from '../i18n/context';
 import { LOCALES, type Locale } from '../i18n/locales';
+import { useExternalNavKey, useImeSafeInput } from '../lib/ime';
 import { useOrigin } from '../lib/origin';
 import type { SpotView } from '../domain/spotView';
 import { GoLink } from './bits';
@@ -141,6 +142,12 @@ export function SearchBox({
   className?: string;
 }) {
   const t = useT();
+  // `value` lives in the URL (?q=): the box keeps what's typed, and only
+  // settled text (never pinyin mid-composition) goes to `onChange`, which
+  // writes it with TYPED_NAV_STATE. The box follows the URL only when
+  // something else moved it (back/forward, a mode switch clearing ?q=)
+  const resetKey = useExternalNavKey();
+  const box = useImeSafeInput({ value, resetKey, onCommit: onChange });
   return (
     <label className={`sk flat ${styles.search} ${className}`} htmlFor={id}>
       <Ink />
@@ -153,10 +160,7 @@ export function SearchBox({
         placeholder={t.searchPlaceholder}
         autoComplete="off"
         autoFocus={autoFocus}
-        value={value}
-        onChange={(e) => {
-          onChange(e.target.value);
-        }}
+        {...box.inputProps}
       />
     </label>
   );

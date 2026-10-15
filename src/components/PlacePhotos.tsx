@@ -12,6 +12,7 @@ import { Icon } from './Icon';
 import { FOOD_ICONS } from './icons';
 import { Ink } from './Ink';
 import styles from './PlacePhotos.module.css';
+import { preventImeEnter } from '../lib/ime';
 
 /** A photo on its way up: a local preview (blob: URL) and how far along it is. */
 interface Pending {
@@ -371,6 +372,7 @@ export function PhotoViewer({
     ) : (
       <form
         className={styles.captionForm}
+        onKeyDown={preventImeEnter}
         onSubmit={(e) => {
           e.preventDefault();
           void run(async () => {
