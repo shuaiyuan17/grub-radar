@@ -10,8 +10,3 @@ export function appleMapsUrl(name: string, to: LatLng, mode: TravelMode): string
   const dirflg = mode === 'walk' ? 'w' : 'd';
   return `https://maps.apple.com/?daddr=${to.lat},${to.lng}&q=${encodeURIComponent(name)}&dirflg=${dirflg}`;
 }
-
-export function mapsLabel(spot: { name: string }, travel: { mode: TravelMode }): string {
-  const how = travel.mode === 'walk' ? 'walking' : 'driving';
-  return `Take me to ${spot.name}: ${how} directions in Apple Maps`;
-}

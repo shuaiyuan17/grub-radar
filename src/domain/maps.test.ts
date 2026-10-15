@@ -1,4 +1,4 @@
-import { appleMapsUrl, mapsLabel } from './maps';
+import { appleMapsUrl } from './maps';
 
 describe('appleMapsUrl', () => {
   const to = { lat: 47.6135, lng: -122.3302 };
@@ -13,11 +13,5 @@ describe('appleMapsUrl', () => {
     const url = appleMapsUrl("Mama Ko's & Sons", to, 'drive');
     expect(url).toContain('dirflg=d');
     expect(new URL(url).searchParams.get('q')).toBe("Mama Ko's & Sons");
-  });
-
-  it('describes the link for screen readers', () => {
-    expect(mapsLabel({ name: 'Ondo' }, { mode: 'drive' })).toBe(
-      'Take me to Ondo: driving directions in Apple Maps',
-    );
   });
 });
