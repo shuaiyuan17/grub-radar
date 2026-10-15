@@ -42,6 +42,21 @@ describe('the login wall', () => {
     expect(router.state.location.search).toBe('');
   });
 
+  it('never says "already signed in" on the wall', () => {
+    renderAt('/?signin=already', { auth: { status: 'signed-out' } });
+    expect(screen.getByRole('status')).toBeEmptyDOMElement();
+  });
+
+  it('signed in, ?signin=already is a gentle, dismissible note over the app', async () => {
+    const { user, router } = renderAt('/?signin=already');
+    const note = screen.getByText('you’re already signed in.').closest('[role="status"]');
+    expect(note).not.toBeNull();
+    expect(screen.getAllByRole('article').length).toBeGreaterThan(0);
+    await user.click(within(note as HTMLElement).getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText('you’re already signed in.')).toBeNull();
+    expect(router.state.location.search).toBe('');
+  });
+
   it('ignores unknown ?signin values', () => {
     renderAt('/?signin=<script>', { auth: { status: 'signed-out' } });
     expect(screen.getByRole('status')).toBeEmptyDOMElement();

@@ -276,14 +276,21 @@ handing Apple's page to another one, or cross-site cookies blocked); then a vali
 state alone is accepted (path `signed-state-only`). **Accepted trade-off:** on that path
 nothing binds the callback to the browser that started, so login CSRF is possible: an
 attacker who gets their own fresh, unused code + state POSTed from a victim's browser within
-10 minutes signs the victim in to the attacker's account. The impact here is low (the
-victim sees the attacker's list; nothing of the victim's is exposed or changed), a browser
-that does send the cookie keeps the binding (a mismatch is refused), and the timing log's
-`siwa_state` field shows how often each path happens. Either way a state is single use: the
-callback records its `jti` in D1 (`auth_states_used`, migration 0006; expired rows swept in
-the same batch), so a replay is refused, and the id_token's nonce must match the sealed
-hash. The callback checks the state (before looking at Apple's `error`), spends it (its
-one D1 round trip), and answers at once with a tiny
+10 minutes could sign the victim in to the attacker's account. It's narrowed: such a sign-in
+never replaces a live session. `/auth/finish` is a same-origin POST, so it sees the Lax
+session cookie, and if that session is live it exchanges nothing, keeps the session and
+sends the browser home with "you're already signed in" (`?signin=already`). What's left is
+a signed-out victim being signed in to the attacker's account: low impact (they see the
+attacker's list; nothing of theirs is exposed or changed). A browser that does send the
+cookie keeps the binding (a mismatch is refused), and the timing log's `siwa_state` field
+shows how often each path happens. A state that comes back with a code is single use: the
+callback records its `jti` in D1 (`auth_states_used`, migration 0006), so a replay is
+refused, and the id_token's nonce must match the sealed hash. Apple's `error` (cancel) is
+checked against the state too, but writes nothing, so unauthenticated posts can't grow the
+table and a leaked state can't be burned by a fake error. Expired rows are swept with each
+spend and by the hourly cron. The callback is braked per client IP (`CALLBACK_LIMITER`,
+30/min). It checks the state (before looking at Apple's `error`), spends it when there's a
+code (one D1 round trip), and answers at once with a tiny
 "signing you in…" page (en/中文). Its one-line inline script (allowed by CSP hash, like its
 CSS) submits a same-origin POST form to `/auth/finish` with the hand-off value `t` in the
 body, never in a URL; a "continue" button is the no-JS fallback. What crosses over (code, nonce hash, returnTo, previous

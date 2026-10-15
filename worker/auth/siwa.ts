@@ -63,9 +63,11 @@ export function safeReturnTo(raw: string | undefined | null): string {
 // sign-in in their own browser, signs in to Apple as themselves and makes a
 // victim's browser POST their unused code + state here within 10 minutes can
 // sign the victim in to the ATTACKER's account. Impact here is low (the
-// victim sees the attacker's list; nothing of the victim's is exposed), and a
-// browser that does send the cookie still gets the binding: a mismatch is
-// refused. Every state is single use either way (its jti in D1, see
+// victim sees the attacker's list; nothing of the victim's is exposed), and
+// it's narrowed: such a sign-in never replaces a live session (/auth/finish
+// sends an already-signed-in browser home untouched). A browser that does
+// send the cookie still gets the binding: a mismatch is refused. A state that
+// comes back with a code is single use either way (its jti in D1, see
 // db/authStates.ts), and the id_token's nonce must still match nonceHash.
 
 const STATE_SEAL_INFO = 'grub-radar siwa state v1';

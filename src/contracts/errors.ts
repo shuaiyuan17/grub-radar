@@ -67,8 +67,11 @@ export type ApiError = z.infer<typeof ApiErrorSchema>;
  * Why the sign-in round trip came back without a session, as `/?signin=…`.
  * cancelled: the person backed out on Apple's page. closed: sign-up is
  * invite-only and this Apple ID has no account. failed: anything else.
+ * already: this browser was already signed in, and a sign-in that can't be tied
+ * to it (its state came back without the state cookie) may not replace that
+ * session (login CSRF); shown on the app, not the wall.
  */
-export const SIGNIN_RESULTS = ['cancelled', 'closed', 'failed'] as const;
+export const SIGNIN_RESULTS = ['cancelled', 'closed', 'failed', 'already'] as const;
 export type SigninResult = (typeof SIGNIN_RESULTS)[number];
 
 /** Header every cookie-authenticated write must carry (CSRF defence, see worker/auth/csrf.ts). */

@@ -58,6 +58,13 @@
       "namespace_id": "1004",
       "simple": { "limit": 20, "period": 60 },
     },
+    // Apple's form_post (POST /auth/callback), per client IP: anyone can make a browser POST
+    // there, and a valid-looking one costs a decrypt and, with a code, a D1 write.
+    {
+      "name": "CALLBACK_LIMITER",
+      "namespace_id": "1005",
+      "simple": { "limit": 30, "period": 60 },
+    },
   ],
   // Photo bytes. Private bucket: no public access, no r2.dev URL, no custom domain. The Worker
   // serves every photo at /api/photos/:id after checking who's asking (worker/routes/photos.ts).

@@ -1,7 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { SigninResult } from '../../src/contracts/errors';
-import type { AppEnv } from '../app';
+import { defer, type AppEnv } from '../app';
 import { appleKeys, verifyWithAppleKeys } from '../auth/appleKeys';
 import { csrf, csrfForCookie } from '../auth/csrf';
 import { openPending, PENDING_COOKIE, PENDING_MAX_AGE_S, sealPending } from '../auth/pending';
@@ -9,6 +9,7 @@ import { resolvePrincipal } from '../auth/principal';
 import {
   clearSessionCookie,
   createSession,
+  loadSession,
   newSession,
   readSessionCookie,
   revokeSessionToken,
@@ -61,19 +62,38 @@ const backTo = (c: Context<AppEnv>, result: SigninResult) => c.redirect(`/?signi
 auth.get('/callback', (c) => c.redirect('/', 303));
 
 /**
- * Apple's form_post. Checks the state, spends it, then answers at once with
- * the "signing you in…" page; the slow part runs on /auth/finish.
+ * Per-IP brake on Apple's form_post (CALLBACK_LIMITER: 30/min). Cloudflare
+ * always sets CF-Connecting-IP in production; only a development Worker (local
+ * dev, tests) may go without it, and then isn't braked.
+ */
+async function callbackAllowed(c: Context<AppEnv>): Promise<boolean> {
+  const ip = c.req.header('cf-connecting-ip');
+  if (!ip && isDevelopment(c.env)) return true;
+  const { success } = await c.env.CALLBACK_LIMITER.limit({ key: `callback:${ip ?? 'unknown'}` });
+  return success;
+}
+
+/**
+ * Apple's form_post. Checks the state, and for a code spends it, then answers
+ * at once with the "signing you in…" page; the slow part runs on /auth/finish.
  *
  * The state is sealed and self-authenticating (auth/siwa.ts). If the browser
  * sent the state cookie, it must be exactly the posted state (path "cookie").
  * Some browsers don't send it on Apple's cross-site POST; then the sealed
  * state alone is enough (path "signed-state-only"). That path loses the
  * binding to the browser that started, so login CSRF (signing someone in to
- * the attacker's own account) is possible there: an accepted, low-impact
- * trade-off, see README "Sign in with Apple". Either way the state is single
- * use (its jti in D1) and the id_token's nonce must match.
+ * the attacker's own account) is possible there. It's narrowed: /auth/finish
+ * never lets such a sign-in replace a live session. An accepted, low-impact
+ * trade-off, see README "Sign in with Apple". A state with a code is single
+ * use (its jti in D1), and the id_token's nonce must match. Apple's `error`
+ * (cancel) is checked against the state but writes nothing: no D1 write for
+ * unauthenticated posts, and a leaked state can't be burned with a fake error.
  */
 auth.post('/callback', async (c) => {
+  if (!(await callbackAllowed(c))) {
+    console.warn('sign in with apple failed', 'callback rate limited');
+    return backTo(c, 'failed');
+  }
   const form = await c.req.parseBody();
   const field = (name: string) => (typeof form[name] === 'string' ? form[name] : undefined);
 
@@ -88,24 +108,31 @@ auth.post('/callback', async (c) => {
   }
   // which proof we accepted: the path's name only, never a value
   c.var.timing.note('siwa_state', checked.path);
-  // single use, whichever path, whatever happens next
-  if (!(await spendState(c.env.DB, checked.payload))) {
-    console.warn('sign in with apple failed', 'state already used');
-    return backTo(c, 'failed');
-  }
   const state = checked.payload;
-  if (cookie !== undefined)
-    deleteCookie(c, STATE_COOKIE, { path: '/', secure: true, sameSite: 'None' });
+  const clearStateCookie = () => {
+    if (cookie !== undefined)
+      deleteCookie(c, STATE_COOKIE, { path: '/', secure: true, sameSite: 'None' });
+  };
 
   const error = field('error');
-  if (error) return backTo(c, error === 'user_cancelled_authorize' ? 'cancelled' : 'failed');
+  if (error) {
+    // a valid state, but nothing to exchange: no D1 write (see above)
+    clearStateCookie();
+    return backTo(c, error === 'user_cancelled_authorize' ? 'cancelled' : 'failed');
+  }
   const code = field('code');
   if (!code) {
     console.warn('sign in with apple failed', 'no authorization code');
     return backTo(c, 'failed');
   }
+  // single use, whichever path, whatever happens next
+  if (!(await spendState(c.env.DB, state))) {
+    console.warn('sign in with apple failed', 'state already used');
+    return backTo(c, 'failed');
+  }
+  clearStateCookie();
 
-  const pending = await sealPending(c.env, state, { code, user: field('user') });
+  const pending = await sealPending(c.env, state, checked.path, { code, user: field('user') });
   setCookie(c, PENDING_COOKIE, pending.cookie, {
     path: '/',
     secure: true,
@@ -150,6 +177,22 @@ auth.post('/finish', async (c) => {
     return backTo(c, 'failed');
   }
   deleteCookie(c, PENDING_COOKIE, { path: '/', secure: true, sameSite: 'Lax' });
+
+  // Narrowing the login CSRF the cookie-less path allows: a sign-in whose state
+  // came without the state cookie isn't bound to this browser, so it may not
+  // replace a live session here (this is a same-origin POST: the Lax session
+  // cookie is present). Nothing is exchanged, created or ended; home, with a note.
+  if (pending.via === 'signed-state-only') {
+    const live = await loadSession(c.env.DB, readSessionCookie(c), Date.now(), {
+      defer: (work) => {
+        defer(c, work);
+      },
+    });
+    if (live.kind === 'ok') {
+      timing.note('signin_outcome', 'already_signed_in');
+      return backTo(c, 'already');
+    }
+  }
 
   try {
     const [tokens, keys] = await Promise.all([

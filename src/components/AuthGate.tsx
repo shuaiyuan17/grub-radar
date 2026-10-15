@@ -1,10 +1,12 @@
-import { Outlet } from 'react-router';
+import { Outlet, useSearchParams } from 'react-router';
 import { useT } from '../i18n/context';
 import { I18nProvider } from '../i18n/I18nProvider';
 import { useAuth } from '../lib/auth';
 import { SignInPage } from '../pages/SignInPage';
 import styles from './AuthGate.module.css';
 import { Logo } from './bits';
+import { Icon } from './Icon';
+import { Ink } from './Ink';
 
 /**
  * The route root. Signed in: the app. Signed out: the login wall, on every
@@ -33,5 +35,40 @@ function Gate() {
     );
   }
   if (state.status === 'signed-out') return <SignInPage />;
-  return <Outlet />;
+  return (
+    <>
+      <AlreadySignedIn />
+      <Outlet />
+    </>
+  );
+}
+
+/**
+ * `?signin=already`: a sign-in that couldn't be tied to this browser was
+ * refused because this browser already has a session (worker/routes/auth.ts).
+ * A gentle note over the app, dismissible; nothing changed.
+ */
+function AlreadySignedIn() {
+  const t = useT();
+  const [params, setParams] = useSearchParams();
+  if (params.get('signin') !== 'already') return null;
+  const dismiss = () => {
+    const next = new URLSearchParams(params);
+    next.delete('signin');
+    setParams(next, { replace: true });
+  };
+  return (
+    <div role="status" className={`sk ${styles.notice}`}>
+      <Ink />
+      <p>{t.signinResult.already}</p>
+      <button
+        type="button"
+        className={`tap ${styles.closeBtn}`}
+        aria-label={t.dismiss}
+        onClick={dismiss}
+      >
+        <Icon name="close" size={18} strokeWidth={2.4} />
+      </button>
+    </div>
+  );
 }

@@ -19,7 +19,7 @@ import { z } from 'zod/mini';
 import type { Env } from '../env';
 import { openValue, randomToken, sealValue } from '../lib/crypto';
 import { MINUTE, SECOND } from '../lib/time';
-import type { StatePayload } from './siwa';
+import type { StatePath, StatePayload } from './siwa';
 
 export const PENDING_COOKIE = '__Host-grub_signin';
 export const PENDING_MAX_AGE_S = 120;
@@ -34,6 +34,12 @@ const PendingPayload = z.strictObject({
   returnTo: z.string(),
   prevSession: z.optional(z.string()),
   iat: z.number(),
+  /**
+   * How the callback's state was proven. "signed-state-only" (no state
+   * cookie) isn't bound to this browser, so /auth/finish won't let it replace
+   * a live session (login CSRF).
+   */
+  via: z.enum(['cookie', 'signed-state-only']),
   /** Must come back as ?t= on /auth/finish. */
   finish: z.string(),
 });
@@ -42,6 +48,7 @@ export type PendingSignIn = z.infer<typeof PendingPayload>;
 export async function sealPending(
   env: Env,
   state: StatePayload,
+  via: StatePath,
   form: { code: string; user: string | undefined },
   now = Date.now(),
 ): Promise<{ cookie: string; finish: string }> {
@@ -53,6 +60,7 @@ export async function sealPending(
     returnTo: state.returnTo,
     ...(state.prevSession ? { prevSession: state.prevSession } : {}),
     iat: now,
+    via,
     finish,
   };
   return {

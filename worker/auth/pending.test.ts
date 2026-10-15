@@ -19,6 +19,7 @@ describe('pending sign-in hand-off', () => {
     const { cookie, finish } = await sealPending(
       env,
       state,
+      'signed-state-only',
       { code: 'c1', user: '{"name":{}}' },
       T0,
     );
@@ -29,6 +30,7 @@ describe('pending sign-in hand-off', () => {
       returnTo: '/radar',
       prevSession: 'prev',
       iat: T0,
+      via: 'signed-state-only',
       finish,
     });
     expect(await openPending(env, cookie, `${finish}x`, T0)).toBeNull();
@@ -37,14 +39,26 @@ describe('pending sign-in hand-off', () => {
   });
 
   it('lasts two minutes', async () => {
-    const { cookie, finish } = await sealPending(env, state, { code: 'c', user: undefined }, T0);
+    const { cookie, finish } = await sealPending(
+      env,
+      state,
+      'cookie',
+      { code: 'c', user: undefined },
+      T0,
+    );
     expect(await openPending(env, cookie, finish, T0 + PENDING_MAX_AGE_S * SECOND)).not.toBeNull();
     expect(await openPending(env, cookie, finish, T0 + PENDING_MAX_AGE_S * SECOND + 1)).toBeNull();
     expect(await openPending(env, cookie, finish, T0 - 2 * MINUTE)).toBeNull();
   });
 
   it('is sealed with the server key: another key, or any edit, opens nothing', async () => {
-    const { cookie, finish } = await sealPending(env, state, { code: 'c', user: undefined }, T0);
+    const { cookie, finish } = await sealPending(
+      env,
+      state,
+      'cookie',
+      { code: 'c', user: undefined },
+      T0,
+    );
     const other: Env = { ...env, SESSION_HMAC_KEY: 'another-key-another-key-another-k' };
     expect(await openPending(other, cookie, finish, T0)).toBeNull();
     const [iv = '', ct = ''] = cookie.split('.');
@@ -57,6 +71,7 @@ describe('pending sign-in hand-off', () => {
     const { cookie, finish } = await sealPending(
       env,
       state,
+      'cookie',
       { code: 'c', user: 'x'.repeat(5000) },
       T0,
     );
