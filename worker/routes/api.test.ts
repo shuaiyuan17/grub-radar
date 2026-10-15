@@ -110,6 +110,9 @@ describe('PATCH /api/me', () => {
     [{ displayName: 'x'.repeat(41) }, 'name is too long'],
     [{ avatarEmoji: 'ab' }, 'avatar must be a single emoji'],
     [{ avatarEmoji: '🍜🍜' }, 'avatar must be a single emoji'],
+    [{ displayName: `a${'\u0301'.repeat(5000)}` }, 'name is too long'],
+    [{ displayName: '\u200B\u3164\u2060' }, 'name is empty'],
+    [{ displayName: '👨‍👩‍👧'.repeat(40) }, 'name is too long'],
     [{ home: { lat: 1, lng: 2 } }, undefined],
   ])('rejects %j', async (body, message) => {
     const res = await patch(body);

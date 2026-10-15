@@ -27,6 +27,11 @@ export interface Env {
    * this Apple ID can create an account (replaces the first-account rule).
    */
   OWNER_APPLE_SUB?: string;
+  /**
+   * Secret. Comma-separated Apple `sub`s whose accounts may open /admin. Unset
+   * or empty: nobody can. Everyone else gets the same 404 as any unknown path.
+   */
+  ADMIN_APPLE_SUBS?: string;
 
   /** Secret. ES256 .p8 key as PEM (literal "\n" escapes are accepted). */
   APPLE_PRIVATE_KEY: string;

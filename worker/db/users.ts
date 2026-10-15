@@ -3,8 +3,9 @@ import { newUserId } from '../lib/ids';
 import { iso } from '../lib/time';
 import type { AppleIdentity } from '../auth/siwa';
 import { insertSession, type NewSession } from '../auth/session';
+import { DEFAULT_DISPLAY_NAME } from '../../src/contracts/me';
 
-export const DEFAULT_DISPLAY_NAME = 'you';
+export { DEFAULT_DISPLAY_NAME };
 
 export interface User {
   id: string;
@@ -260,13 +261,22 @@ export async function ensureDevUser(
   const at = iso(now);
   const id = label ? `${DEV_USER.id}-${label}` : DEV_USER.id;
   const name = label ? `${DEV_USER.displayName} ${label}` : DEV_USER.displayName;
-  await db
-    .prepare(
-      `INSERT INTO users (id, display_name, created_at, last_login_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET last_login_at = excluded.last_login_at`,
-    )
-    .bind(id, name, at, at)
-    .run();
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO users (id, display_name, created_at, last_login_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET last_login_at = excluded.last_login_at`,
+      )
+      .bind(id, name, at, at),
+    // a stand-in Apple identity ('dev-login', 'dev-login-<label>'), so the local
+    // ADMIN_APPLE_SUBS can name a dev user and e2e can reach the admin page
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO auth_identities (provider, provider_sub, user_id, created_at)
+         VALUES ('apple', ?, ?, ?)`,
+      )
+      .bind(label ? `${DEV_USER.sub}-${label}` : DEV_USER.sub, id, at),
+  ]);
   return id;
 }
 

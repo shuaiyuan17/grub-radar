@@ -1,0 +1,268 @@
+/* /friends, /friends/:id and /invite#<token> */
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 0;
+}
+.title {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.titleCoin {
+  display: inline-block;
+  transform: rotate(-6deg);
+}
+.intro {
+  max-width: 560px;
+  color: var(--pencil);
+  font-size: 15px;
+}
+.layout {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.panel {
+  --fill: var(--card);
+  border-radius: var(--r-panel);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.invite {
+  --fill: var(--tint-yellow);
+}
+.label {
+  font-weight: 700;
+  font-size: 15px;
+}
+.muted {
+  color: var(--pencil);
+  font-size: 14px;
+}
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+.linkBox {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.linkInput {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 14px;
+  text-overflow: ellipsis;
+}
+.result {
+  font-size: 22px;
+}
+.subTitle {
+  font-size: 20px;
+  font-weight: 800;
+}
+.count {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--pencil);
+}
+.pending {
+  list-style: none;
+  padding: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+.pending li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0 12px;
+  border-bottom: 1.5px dashed var(--rule);
+}
+.empty {
+  font-size: 22px;
+}
+.friends {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.friend {
+  --fill: var(--card);
+  --bw: 2px;
+  border-radius: var(--r-card);
+  padding: 12px 14px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.coin {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2.5px solid var(--ink);
+  border-radius: var(--r-round);
+  background: var(--paper);
+  font-size: 26px;
+  line-height: 1;
+}
+.friend:nth-child(2n) .coin {
+  transform: rotate(4deg);
+}
+.friend:nth-child(2n + 1) .coin {
+  transform: rotate(-3deg);
+}
+.friendBody {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.friendName {
+  font-size: 18px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.seeLink {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: underline wavy var(--tomato);
+  text-underline-offset: 4px;
+}
+.confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0 2px;
+}
+.backLink {
+  align-self: flex-start;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink);
+  font-weight: 700;
+}
+.spots {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+.spot {
+  --fill: var(--card);
+  border-radius: var(--r-card);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.spotName {
+  font-size: 19px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.spotName a {
+  color: inherit;
+}
+.address {
+  overflow-wrap: anywhere;
+}
+.spotFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.mineToo {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--r-tag);
+  background: var(--hl);
+}
+.spotNote {
+  font-size: 21px;
+  line-height: 1.1;
+}
+.inviteCard {
+  --fill: var(--card);
+  align-items: center;
+  text-align: center;
+  max-width: 480px;
+  align-self: center;
+  width: 100%;
+  padding: 24px 20px;
+  gap: 12px;
+}
+.bigCoin {
+  width: 84px;
+  height: 84px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid var(--ink);
+  border-radius: var(--r-round);
+  background: var(--hl);
+  font-size: 44px;
+  line-height: 1;
+  transform: rotate(-5deg);
+}
+.pop {
+  animation: pop var(--enter-duration) var(--ease-pop);
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: rotate(-5deg) scale(0.7);
+  }
+}
+.lead {
+  font-size: 19px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 960px) {
+  .title {
+    font-size: 44px;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    align-items: start;
+    gap: 28px;
+  }
+  .spots {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

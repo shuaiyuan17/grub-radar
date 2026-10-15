@@ -46,6 +46,8 @@ export default defineConfig({
                 SESSION_HMAC_KEY: 'test-hmac-key-test-hmac-key-0123',
                 DEV_LOGIN_SECRET: 'test-dev-login-secret',
                 SIGNUP_OPEN: 'false',
+                // the admin page's gate: tests sign in with this Apple sub to be the admin
+                ADMIN_APPLE_SUBS: 'test-admin-sub, test-other-admin',
                 APPLE_ENDPOINT_BASE: '',
                 APPLE_MAPS_BASE: '',
                 APPLE_PRIVATE_KEY: generateKeyPairSync('ec', { namedCurve: 'P-256' })

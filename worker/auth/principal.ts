@@ -13,7 +13,12 @@ import {
   type SessionScope,
 } from './session';
 
-export type Scope = 'spots:read' | 'spots:write';
+/**
+ * Agent scopes. `friends:read` is reserved (your friends' shared spots, for an
+ * agent of yours) but not wired: no route accepts it yet, and every friends
+ * endpoint is session-only.
+ */
+export type Scope = 'spots:read' | 'spots:write' | 'friends:read';
 
 export type Principal =
   | { kind: 'anonymous' }

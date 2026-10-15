@@ -1,0 +1,49 @@
+/* friends' faces on a card: overlapping emoji coins, a hand-drawn ring each */
+.stack {
+  display: inline-flex;
+  align-items: center;
+  padding-left: 6px;
+}
+.avatar {
+  --d: 28px;
+  position: relative;
+  width: var(--d);
+  height: var(--d);
+  margin-left: -7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--ink);
+  border-radius: var(--r-round);
+  background: var(--card);
+  font-size: calc(var(--d) * 0.56);
+  line-height: 1;
+  /* subtle: each face pops in, a beat after the one before (transform + opacity only) */
+  animation: pop var(--enter-duration) var(--ease-pop) backwards;
+  animation-delay: calc(var(--i, 0) * var(--enter-stagger));
+}
+.avatar:nth-child(2n) {
+  transform: rotate(-4deg);
+}
+.avatar:nth-child(2n + 1) {
+  transform: rotate(3deg);
+}
+.more {
+  background: var(--hl);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.big .avatar {
+  --d: 40px;
+  margin-left: -9px;
+}
+.big .more {
+  font-size: 15px;
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}

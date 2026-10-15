@@ -25,6 +25,12 @@ export interface AppEnv {
      * lookup (see `resolvePrincipal`). Only ever set for a valid session.
      */
     prefetched: Prefetched | undefined;
+    /**
+     * The D1 binding without the per-request timing wrapper. Only for checks
+     * whose cost must not show in Server-Timing (the admin gate: a non-admin's
+     * 404 must look exactly like any unknown endpoint's).
+     */
+    untimedDB: D1Database;
   };
 }
 

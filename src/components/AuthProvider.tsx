@@ -66,9 +66,13 @@ export function AuthProvider({
     setState((s) => (s.status === 'signed-in' ? { ...s, me: { ...s.me, home } } : s));
   }, []);
 
+  const setMeUser = useCallback((user: MeResponse['user']) => {
+    setState((s) => (s.status === 'signed-in' ? { ...s, me: { ...s.me, user } } : s));
+  }, []);
+
   const value = useMemo<AuthValue>(
-    () => ({ state, signIn, signOut, markSignedOut, setMeHome }),
-    [state, signIn, signOut, markSignedOut, setMeHome],
+    () => ({ state, signIn, signOut, markSignedOut, setMeHome, setMeUser }),
+    [state, signIn, signOut, markSignedOut, setMeHome, setMeUser],
   );
   return <AuthContext value={value}>{children}</AuthContext>;
 }

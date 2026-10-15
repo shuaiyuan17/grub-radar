@@ -53,13 +53,14 @@ interface Row {
   why_text: string | null;
   why_found_on: string | null;
   lang: string | null;
+  visibility: string;
   version: number;
 }
 
 // explicit columns, always joined through user_places for this user
 const SELECT = `SELECT p.id, p.name, p.lat, p.lng, p.created_by, p.apple_place_id, p.address,
   up.kind, up.cuisine, up.price, up.icon, up.hours_json, up.status, up.verdict, up.note, up.my_note,
-  up.order_json, up.tags_json, up.why_text, up.why_found_on, up.lang, up.version
+  up.order_json, up.tags_json, up.why_text, up.why_found_on, up.lang, up.visibility, up.version
   FROM user_places up JOIN places p ON p.id = up.place_id
   WHERE up.user_id = ?`;
 
@@ -120,6 +121,8 @@ function toSpot(r: Row): Spot {
         location: { lat: r.lat, lng: r.lng },
         applePlaceId: r.apple_place_id ?? undefined,
         address: r.address ?? undefined,
+        // absent = the default ('friends'); anything else in the column is a CHECK violation
+        visibility: r.visibility === 'private' ? 'private' : undefined,
         version: r.version,
       }),
     );
@@ -543,7 +546,7 @@ function placeValues(s: Spot) {
 }
 
 const LIST_COLUMNS =
-  'kind, cuisine, price, icon, hours_json, status, verdict, note, my_note, order_json, tags_json, why_text, why_found_on, lang';
+  'kind, cuisine, price, icon, hours_json, status, verdict, note, my_note, order_json, tags_json, why_text, why_found_on, lang, visibility';
 const LIST_MARKS = LIST_COLUMNS.split(', ')
   .map(() => '?')
   .join(', ');
@@ -565,5 +568,6 @@ function listValues(s: Spot) {
     s.why?.text ?? null,
     s.why?.foundOn ?? null,
     s.lang ?? null,
+    s.visibility ?? 'friends',
   ] as const;
 }
