@@ -10,6 +10,10 @@ export function isLocale(value: unknown): value is Locale {
 /**
  * First browser language we support wins. Any Chinese variant gets
  * Simplified (the only Chinese we have); everything else falls back to en.
+ *
+ * Self-contained on purpose (no outer references): its source is also
+ * inlined into index.html by the boot script (see boot.ts), so it must run
+ * as plain JavaScript on its own.
  */
 export function detectLocale(languages: readonly string[]): Locale {
   for (const raw of languages) {
@@ -17,5 +21,5 @@ export function detectLocale(languages: readonly string[]): Locale {
     if (lang === 'zh' || lang.startsWith('zh-')) return 'zh-Hans';
     if (lang === 'en' || lang.startsWith('en-')) return 'en';
   }
-  return DEFAULT_LOCALE;
+  return 'en'; // DEFAULT_LOCALE, inlined (see above)
 }

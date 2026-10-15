@@ -82,3 +82,13 @@ test('english visitors never download the zh fonts', async ({ page }) => {
   await expect(page.getByRole('slider')).toBeVisible();
   expect(fontUrls).toEqual([]);
 });
+
+test('<html lang> is right before any app JavaScript runs', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('grub-radar:lang', 'zh-Hans');
+  });
+  // block the app bundle: only index.html's inline boot script can set lang
+  await page.route('**/assets/*.js', (route) => route.abort());
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'zh-Hans');
+});
