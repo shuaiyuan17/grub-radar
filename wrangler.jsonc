@@ -27,8 +27,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "grub-radar",
-      "database_id": "d1e372b4-1215-48ba-bc07-5d908b8c9ea4",
+      "database_name": "grub-radar-db2",
+      "database_id": "ba2155c4-be8d-4531-af15-20451f96c79e",
       "migrations_dir": "migrations",
     },
   ],
