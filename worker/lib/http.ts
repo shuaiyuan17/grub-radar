@@ -13,7 +13,7 @@ export function apiError(
   return c.json({ error: { code, message } }, status);
 }
 
-/** "rating: only rate places you have been to" — the first problem, with its path. */
+/** "verdict: only give a verdict on places you have been to" — the first problem, with its path. */
 export function describeIssue(error: z.core.$ZodError): string {
   const issue = error.issues[0];
   if (!issue) return 'invalid body';

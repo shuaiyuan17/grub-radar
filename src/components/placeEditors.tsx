@@ -1,11 +1,11 @@
 import { useId, useState, type SyntheticEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { LIMITS, dataLang, type Spot } from '../domain/spot';
+import { LIMITS, dataLang, type Spot, type Verdict } from '../domain/spot';
 import { parseNoteEntries, type SpotPatch } from '../domain/edits';
 import { useT } from '../i18n/context';
 import { saveErrorMessage } from '../lib/errors';
 import { localDate, useSpots, type SpotActions } from '../lib/spots';
-import { InkBox, InkButton, RatingPicker } from './fields';
+import { InkBox, InkButton, VerdictPicker } from './fields';
 import { formErrorClass, inputClass, linkButtonClass } from './fieldClasses';
 import { Icon } from './Icon';
 import { Ink } from './Ink';
@@ -50,15 +50,15 @@ function SaveError({ error }: { error: string | null }) {
 }
 
 /**
- * Been / want to try, and the rating. Want: "mark as been" opens a small
- * panel (rating + an optional dated note). Been: change the rating, or move
+ * Been / want to try, and the verdict. Want: "mark as been" opens a small
+ * panel (verdict stamps + an optional dated note). Been: change the verdict, or move
  * it back to want to try.
  */
 export function StatusEditor({ spot }: { spot: Spot }) {
   const t = useT();
   const { busy, error, run, canWrite } = useSave();
   const [open, setOpen] = useState(false);
-  const [rating, setRating] = useState<number | null>(spot.rating ?? null);
+  const [verdict, setVerdict] = useState<Verdict | null>(spot.verdict ?? null);
   const [note, setNote] = useState('');
   const noteId = useId();
   if (!canWrite) return null;
@@ -73,7 +73,7 @@ export function StatusEditor({ spot }: { spot: Spot }) {
     const ok = await run((a) =>
       a.markBeen(spot.id, {
         on: localDate(),
-        ...(rating !== null ? { rating } : {}),
+        ...(verdict !== null ? { verdict } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
       }),
     );
@@ -97,7 +97,7 @@ export function StatusEditor({ spot }: { spot: Spot }) {
           <form className={`sk ${styles.panel}`} onSubmit={(e) => void markBeen(e)}>
             <Ink />
             <h2 className={styles.panelTitle}>{t.howWasIt}</h2>
-            <RatingPicker value={rating} onChange={setRating} />
+            <VerdictPicker value={verdict} onChange={setVerdict} />
             <label htmlFor={noteId} className={styles.label}>
               {t.anythingToRemember}
             </label>
@@ -129,15 +129,15 @@ export function StatusEditor({ spot }: { spot: Spot }) {
   }
 
   return (
-    <section className={styles.block} aria-label={t.changeRating}>
+    <section className={styles.block} aria-label={t.changeVerdict}>
       {open ? (
         <div className={`sk ${styles.panel}`}>
           <Ink />
-          <RatingPicker
-            value={rating}
+          <VerdictPicker
+            value={verdict}
             onChange={(r) => {
-              setRating(r);
-              void run((a) => a.update(spot.id, { rating: r, version: spot.version })).then(
+              setVerdict(r);
+              void run((a) => a.update(spot.id, { verdict: r, version: spot.version })).then(
                 (ok) => {
                   if (ok) setOpen(false);
                 },
@@ -146,21 +146,21 @@ export function StatusEditor({ spot }: { spot: Spot }) {
           />
           <SaveError error={error} />
           <div className={styles.row}>
-            {spot.rating !== undefined && (
+            {spot.verdict !== undefined && (
               <button
                 type="button"
                 className={linkButtonClass}
                 disabled={busy}
                 onClick={() => {
-                  setRating(null);
-                  void run((a) => a.update(spot.id, { rating: null, version: spot.version })).then(
+                  setVerdict(null);
+                  void run((a) => a.update(spot.id, { verdict: null, version: spot.version })).then(
                     (ok) => {
                       if (ok) setOpen(false);
                     },
                   );
                 }}
               >
-                {t.clearRating}
+                {t.clearVerdict}
               </button>
             )}
             <button
@@ -180,11 +180,11 @@ export function StatusEditor({ spot }: { spot: Spot }) {
             type="button"
             className={linkButtonClass}
             onClick={() => {
-              setRating(spot.rating ?? null);
+              setVerdict(spot.verdict ?? null);
               setOpen(true);
             }}
           >
-            {t.changeRating}
+            {t.changeVerdict}
           </button>
           <button
             type="button"

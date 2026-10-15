@@ -16,8 +16,8 @@ export const ERROR_CODES = [
   'conflict',
   /** Your notes for one spot are full (LIMITS.myNote). */
   'note_too_long',
-  /** A rating on a spot you haven't been to. */
-  'rating_needs_been',
+  /** A verdict (good/meh/bad) on a spot you haven't been to. */
+  'verdict_needs_been',
   /** The place itself (name, location, …) isn't yours to edit. */
   'not_editable',
   /** origin=home, but no home is saved. */

@@ -7,7 +7,7 @@ import {
   LIMITS,
   DishSchema,
   PRICES,
-  RatingSchema,
+  VerdictSchema,
   SpotSchema,
   STATUSES,
   TagsSchema,
@@ -18,6 +18,7 @@ import {
   type Kind,
   type Spot,
   type Status,
+  type Verdict,
 } from './spot';
 
 /**
@@ -51,10 +52,11 @@ const entryText = z.string().check(
  */
 export const ADD_EXTRAS = {
   cuisine: optText(LIMITS.cuisine),
+  /** Leave it out when you don't know: it stays unknown (never guessed). */
   price: z.optional(z.enum(PRICES)),
   tags: z.optional(TagsSchema),
   status: z.optional(z.enum(STATUSES)),
-  rating: z.optional(RatingSchema),
+  verdict: z.optional(VerdictSchema),
   note: optText(LIMITS.note),
   /** Dishes to order, none tried yet. */
   order: z.optional(z.array(text(LIMITS.dish)).check(z.maxLength(LIMITS.dishes))),
@@ -67,12 +69,36 @@ export const ADD_EXTRAS = {
 /** The optional part of every add (see ADD_EXTRAS), parsed. */
 export type AddExtras = Omit<AddSpot, 'name' | 'kind' | 'location'>;
 
-/** The rule every add shares: a rating only on a place you've been to. */
-export const ratingNeedsBeen = () =>
-  z.refine<{ rating?: number; status?: Status }>(
-    (s) => s.rating === undefined || s.status === 'been',
-    { message: 'only rate places you have been to', path: ['rating'] },
+/** The rule every add shares: a verdict only on a place you've been to. */
+export const verdictNeedsBeen = () =>
+  z.refine<{ verdict?: Verdict; status?: Status }>(
+    (s) => s.verdict === undefined || s.status === 'been',
+    { message: 'only give a verdict on places you have been to', path: ['verdict'] },
   );
+
+/** The old 1-10 score as a verdict: 8-10 good, 5-7 meh, 1-4 bad (as migration 0003 did). */
+export function verdictFromRating(rating: number): Verdict {
+  return rating >= 8 ? 'good' : rating >= 5 ? 'meh' : 'bad';
+}
+
+/**
+ * Back-compat for clients from before verdicts (an app tab left open across
+ * the deploy): a write body's legacy `rating` (an integer 1-10, or null to
+ * clear) becomes `verdict`. A `verdict` sent alongside wins. Anything else in
+ * `rating` is left alone, so the strict schemas still refuse it.
+ */
+export function withLegacyRating(body: unknown): unknown {
+  if (!body || typeof body !== 'object' || Array.isArray(body) || !('rating' in body)) return body;
+  const { rating, ...rest } = body as Record<string, unknown>;
+  const valid =
+    rating === null ||
+    (typeof rating === 'number' && Number.isInteger(rating) && rating >= 1 && rating <= 10);
+  // An invalid rating stays in the body so the strict schema refuses it, even
+  // when a verdict is sent too.
+  if (!valid) return body;
+  if ('verdict' in rest) return rest;
+  return { ...rest, verdict: rating === null ? null : verdictFromRating(rating) };
+}
 
 /** POST /api/spots and the `add_spot` tool, by hand: name, kind and where. */
 export const AddSpotSchema = z
@@ -82,7 +108,7 @@ export const AddSpotSchema = z
     location: LatLngSchema,
     ...ADD_EXTRAS,
   })
-  .check(ratingNeedsBeen());
+  .check(verdictNeedsBeen());
 export type AddSpotInput = z.input<typeof AddSpotSchema>;
 export type AddSpot = z.output<typeof AddSpotSchema>;
 
@@ -93,12 +119,13 @@ export const SpotPatchSchema = z
     kind: z.optional(z.enum(KINDS)),
     location: z.optional(LatLngSchema),
     cuisine: z.optional(z.nullable(z.string().check(z.trim(), z.maxLength(LIMITS.cuisine)))),
-    price: z.optional(z.enum(PRICES)),
+    /** `null`: "not sure" (unknown). */
+    price: z.optional(z.nullable(z.enum(PRICES))),
     icon: z.optional(z.enum(ICONS)),
     hours: z.optional(z.nullable(HoursSchema)),
     tags: z.optional(TagsSchema),
     status: z.optional(z.enum(STATUSES)),
-    rating: z.optional(z.nullable(RatingSchema)),
+    verdict: z.optional(z.nullable(VerdictSchema)),
     note: z.optional(z.nullable(z.string().check(z.trim(), z.maxLength(LIMITS.note)))),
     myNote: z.optional(z.nullable(z.string().check(z.trim(), z.maxLength(LIMITS.myNote)))),
     /** The whole list; dishes keep their `id`, new ones may omit it. */
@@ -115,10 +142,10 @@ export const SpotPatchSchema = z
     z.refine((p) => Object.keys(p).some((k) => k !== 'version'), {
       message: 'nothing to change',
     }),
-    // a patch that rates must not also move the spot back to "want"
-    z.refine((p) => p.rating == null || p.status !== 'want', {
-      message: 'only rate places you have been to',
-      path: ['rating'],
+    // a patch that gives a verdict must not also move the spot back to "want"
+    z.refine((p) => p.verdict == null || p.status !== 'want', {
+      message: 'only give a verdict on places you have been to',
+      path: ['verdict'],
     }),
   );
 export type SpotPatchInput = z.input<typeof SpotPatchSchema>;
@@ -126,7 +153,8 @@ export type SpotPatch = z.output<typeof SpotPatchSchema>;
 
 /** POST /api/spots/:id/been and `mark_been`. */
 export const MarkBeenSchema = z.strictObject({
-  rating: z.optional(RatingSchema),
+  /** good / meh / bad; left out, any earlier verdict stays. */
+  verdict: z.optional(VerdictSchema),
   /** The day you went (your local date). Defaults to today. */
   on: z.optional(isoDate),
   /** Appended to your notes, dated `on`. */
@@ -146,7 +174,7 @@ export type AddNote = z.output<typeof AddNoteSchema>;
 export type SpotOpErrorCode =
   | 'not_found'
   | 'note_too_long'
-  | 'rating_needs_been'
+  | 'verdict_needs_been'
   | 'not_editable'
   | 'conflict'
   | 'future_date'
@@ -258,10 +286,11 @@ export function spotFromInput(
     name: input.name,
     kind: input.kind,
     cuisine: orNone(input.cuisine),
-    price: input.price ?? '$$',
+    // unknown unless someone said: Apple Maps has no price, and "$$" would be a guess
+    price: input.price,
     tags: dedupe(input.tags ?? []),
     status,
-    rating: status === 'been' ? input.rating : undefined,
+    verdict: status === 'been' ? input.verdict : undefined,
     note: orNone(input.note),
     order: dedupe(input.order ?? []).map((dish) => ({ dish, tried: false })),
     why: input.why ? { text: input.why, foundOn: today } : undefined,
@@ -277,14 +306,14 @@ function dedupe(items: readonly string[]): string[] {
   return [...new Set(items)];
 }
 
-/** Applies an edit. Moving back to "want" drops the rating. */
+/** Applies an edit. Moving back to "want" drops the verdict. */
 export function applyPatch(spot: Spot, patch: SpotPatch, today: string): Spot {
   if (patch.version !== undefined && spot.version !== undefined && patch.version !== spot.version)
     throw new SpotOpError('conflict', 'this spot changed since you loaded it');
   const status = patch.status ?? spot.status;
-  const rating = patch.rating === undefined ? spot.rating : (patch.rating ?? undefined);
-  if (patch.rating != null && status !== 'been')
-    throw new SpotOpError('rating_needs_been', 'only rate places you have been to');
+  const verdict = patch.verdict === undefined ? spot.verdict : (patch.verdict ?? undefined);
+  if (patch.verdict != null && status !== 'been')
+    throw new SpotOpError('verdict_needs_been', 'only give a verdict on places you have been to');
   const pick = <K extends keyof Spot>(k: K, v: Spot[K] | null | undefined): Spot[K] =>
     v === undefined ? spot[k] : ((v ?? undefined) as Spot[K]);
   let why = spot.why;
@@ -299,12 +328,12 @@ export function applyPatch(spot: Spot, patch: SpotPatch, today: string): Spot {
     kind: patch.kind ?? spot.kind,
     location: patch.location ?? spot.location,
     cuisine: patch.cuisine === undefined ? spot.cuisine : orNone(patch.cuisine),
-    price: patch.price ?? spot.price,
+    price: pick('price', patch.price),
     icon: patch.icon ?? spot.icon,
     hours: pick('hours', patch.hours),
     tags: patch.tags ? dedupe(patch.tags) : spot.tags,
     status,
-    rating: status === 'been' ? rating : undefined,
+    verdict: status === 'been' ? verdict : undefined,
     note: patch.note === undefined ? spot.note : orNone(patch.note),
     myNote: patch.myNote === undefined ? spot.myNote : orNone(patch.myNote),
     order: patch.order ?? spot.order,
@@ -323,14 +352,14 @@ export function checkNotFuture(on: string, today: string): void {
     throw new SpotOpError('future_date', "that date hasn't happened yet");
 }
 
-/** "been": status, an optional new rating (else the old one stays), an optional dated note. */
+/** "been": status, an optional new verdict (else the old one stays), an optional dated note. */
 export function applyMarkBeen(spot: Spot, input: MarkBeen, today: string): Spot {
   const on = input.on ?? today;
   checkNotFuture(on, today);
   return finish({
     ...spot,
     status: 'been',
-    rating: input.rating ?? spot.rating,
+    verdict: input.verdict ?? spot.verdict,
     myNote: input.note ? appendNote(spot.myNote, on, input.note) : spot.myNote,
   });
 }

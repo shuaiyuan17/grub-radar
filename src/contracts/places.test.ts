@@ -65,10 +65,20 @@ describe('the Apple forms of add_spot', () => {
     expect(
       AddApplePlaceSchema.safeParse({ applePlaceId: 'I1', location: { lat: 0, lng: 0 } }).success,
     ).toBe(false);
-    expect(AddApplePlaceSchema.safeParse({ applePlaceId: 'I1', rating: 9 }).success).toBe(false);
+    expect(AddApplePlaceSchema.safeParse({ applePlaceId: 'I1', verdict: 'good' }).success).toBe(
+      false,
+    );
+    expect(
+      AddApplePlaceSchema.safeParse({ applePlaceId: 'I1', status: 'been', verdict: 'good' })
+        .success,
+    ).toBe(true);
+    // the old 1-10 score is gone: a number is refused, and so is the old field
+    expect(
+      AddApplePlaceSchema.safeParse({ applePlaceId: 'I1', status: 'been', verdict: 9 }).success,
+    ).toBe(false);
     expect(
       AddApplePlaceSchema.safeParse({ applePlaceId: 'I1', status: 'been', rating: 9 }).success,
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('a query may say where to look', () => {

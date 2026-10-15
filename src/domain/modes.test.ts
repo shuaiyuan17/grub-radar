@@ -91,6 +91,13 @@ describe('listSpots', () => {
 });
 
 describe('matchesQuery', () => {
+  it('an unknown cuisine or price is never searchable text', () => {
+    const lucky = spots.find((s) => s.id === 'lucky-thread')!;
+    const unknown = { ...lucky, cuisine: undefined, price: undefined };
+    for (const q of ['undefined', 'null']) expect(matchesQuery(unknown, q)).toBe(false);
+    expect(matchesQuery(unknown, 'lucky')).toBe(true);
+  });
+
   const lucky = spots.find((s) => s.id === 'lucky-thread')!;
   it.each(['noodle', 'CUMIN', 'cucumber', 'spicy noodles', 'chili oil', '  '])(
     'matches %j',

@@ -26,7 +26,7 @@ async function noSeriousA11yIssues(page: Page) {
   ).toEqual([]);
 }
 
-test('a new account: empty list, add a spot, been + rating, a note, edit, delete', async ({
+test('a new account: empty list, add a spot, been + verdict, a note, edit, delete', async ({
   page,
 }, info) => {
   const phone = info.project.name === 'phone';
@@ -59,12 +59,12 @@ test('a new account: empty list, add a spot, been + rating, a note, edit, delete
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Night Owl Pho');
   await expect(page.getByText('want to try').first()).toBeVisible();
 
-  // been, 9/10, with a note
+  // been, "loved it", with a note
   await page.getByRole('button', { name: 'mark as been' }).click();
-  await page.getByText('9', { exact: true }).click();
+  await page.getByText('loved it', { exact: true }).click();
   await page.getByLabel('anything to remember?').fill('rare beef, extra basil');
   await page.getByRole('button', { name: 'save', exact: true }).click();
-  await expect(page.getByText(/been here · 9\/10/)).toBeVisible();
+  await expect(page.getByText('· loved it')).toBeVisible();
   const mine = page.getByRole('region', { name: 'my note' });
   await expect(mine.getByText('rare beef, extra basil')).toBeVisible();
 
@@ -87,7 +87,7 @@ test('a new account: empty list, add a spot, been + rating, a note, edit, delete
 
   // it's really saved: survives a reload
   await page.reload();
-  await expect(page.getByText(/been here · 9\/10/)).toBeVisible();
+  await expect(page.getByText('· loved it')).toBeVisible();
   await expect(page.getByRole('region', { name: 'my note' }).getByRole('listitem')).toHaveCount(2);
 
   // edit

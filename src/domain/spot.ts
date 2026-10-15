@@ -51,9 +51,14 @@ export const LIMITS = {
 
 export const PRICES = ['$', '$$', '$$$', '$$$$'] as const;
 export const STATUSES = ['been', 'want'] as const;
+/**
+ * How it was, once you've been: three stamps, not a score. Best first, so
+ * the index is the sort rank (see compareVerdicts).
+ */
+export const VERDICTS = ['good', 'meh', 'bad'] as const;
 
 export const LatLngSchema = z.strictObject({ lat: between(-90, 90), lng: between(-180, 180) });
-export const RatingSchema = z.int().check(z.gte(1), z.lte(10));
+export const VerdictSchema = z.enum(VERDICTS);
 export const TagSchema = z
   .string()
   .check(z.trim(), z.toLowerCase(), z.minLength(1), z.maxLength(LIMITS.tag));
@@ -127,12 +132,13 @@ export const SpotSchema = z
     kind: z.enum(KINDS),
     /** Short, lowercase: "hand-pulled noodles". Optional: a coffee shop may just be coffee. */
     cuisine: z.optional(text(LIMITS.cuisine)),
-    price: z.enum(PRICES),
+    /** Absent: we don't know (Apple Maps doesn't say, and we never guess). */
+    price: z.optional(z.enum(PRICES)),
     /** Lowercase craving tags; they become the filter chips. */
     tags: TagsSchema,
     status: z.enum(STATUSES),
-    /** Out of 10. Only for places you've been. */
-    rating: z.optional(RatingSchema),
+    /** good / meh / bad. Only for places you've been. */
+    verdict: z.optional(VerdictSchema),
     /** The one-liner in your handwriting voice. */
     note: z.optional(text(LIMITS.note)),
     order: OrderSchema,
@@ -163,9 +169,9 @@ export const SpotSchema = z
     version: z.optional(z.int().check(z.gte(1))),
   })
   .check(
-    z.refine((s) => s.rating === undefined || s.status === 'been', {
-      message: 'only rate places you have been to',
-      path: ['rating'],
+    z.refine((s) => s.verdict === undefined || s.status === 'been', {
+      message: 'only give a verdict on places you have been to',
+      path: ['verdict'],
     }),
   );
 
@@ -175,7 +181,8 @@ export type Kind = Spot['kind'];
 export type IconName = Spot['icon'];
 export type Hours = NonNullable<Spot['hours']>;
 export type Day = (typeof DAYS)[number];
-export type Price = Spot['price'];
+export type Price = (typeof PRICES)[number];
+export type Verdict = (typeof VERDICTS)[number];
 export type Status = Spot['status'];
 export type Dish = Spot['order'][number];
 export type DataLang = (typeof DATA_LANGS)[number];
@@ -183,6 +190,25 @@ export type DataLang = (typeof DATA_LANGS)[number];
 /** The language a spot's own text is in (seed data is English unless marked). */
 export function dataLang(spot: Pick<Spot, 'lang'>): DataLang {
   return spot.lang ?? 'en';
+}
+
+/**
+ * Best first: good > meh > bad > no verdict. For anything that orders spots
+ * by how they were (nothing does yet; agents and future views should use this).
+ */
+export function compareVerdicts(a: Verdict | undefined, b: Verdict | undefined): number {
+  const rank = (v: Verdict | undefined) =>
+    v === undefined ? VERDICTS.length : VERDICTS.indexOf(v);
+  return rank(a) - rank(b);
+}
+
+/**
+ * Cheapest first; an unknown price goes last (it isn't "cheap", we just
+ * don't know).
+ */
+export function comparePrices(a: Price | undefined, b: Price | undefined): number {
+  const rank = (p: Price | undefined) => (p === undefined ? PRICES.length : PRICES.indexOf(p));
+  return rank(a) - rank(b);
 }
 
 /** Validates every spot and that ids are unique. Throws a readable error. */

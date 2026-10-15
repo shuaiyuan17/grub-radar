@@ -1,5 +1,13 @@
 import { SEED_SPOTS } from '../data/seed';
-import { dataLang, parseSpots, type SpotInput } from './spot';
+import {
+  compareVerdicts,
+  comparePrices,
+  dataLang,
+  parseSpots,
+  type Price,
+  type SpotInput,
+  type Verdict,
+} from './spot';
 
 const valid: SpotInput = {
   id: 'test-spot',
@@ -25,7 +33,10 @@ describe('spot schema', () => {
     ['unknown kind', { kind: 'bar' }],
     ['latitude out of range', { location: { lat: 91, lng: 0 } }],
     ['bad date', { why: { text: 'x', foundOn: 'yesterday' } }],
-    ['rating on a want-to-try', { rating: 8 }],
+    ['verdict on a want-to-try', { verdict: 'good' }],
+    ['a 1-10 score instead of a verdict', { status: 'been', verdict: 8 }],
+    ['the old rating field', { status: 'been', rating: 8 }],
+    ['an unknown verdict', { status: 'been', verdict: 'great' }],
     ['unknown field', { secret: 'nope' }],
     ['overlong note', { note: 'x'.repeat(61) }],
     ['free-text hours', { hours: { closes: '10pm' } }],
@@ -68,5 +79,22 @@ describe('seed data', () => {
       expect(Math.abs(s.location.lat - 47.6)).toBeLessThan(1);
       expect(Math.abs(s.location.lng + 122.3)).toBeLessThan(1.5);
     }
+  });
+});
+
+describe('unknown price, verdicts', () => {
+  it('price is optional: absent means unknown; no price is invented on the way through', () => {
+    const [parsed] = parseSpots([{ ...valid, price: undefined }]);
+    expect(parsed?.price).toBeUndefined();
+  });
+
+  it('verdicts sort best first, and no verdict last', () => {
+    const vs: (Verdict | undefined)[] = [undefined, 'bad', 'good', undefined, 'meh'];
+    expect(vs.sort(compareVerdicts)).toEqual(['good', 'meh', 'bad', undefined, undefined]);
+  });
+
+  it('prices sort cheapest first, and an unknown price last (not as cheap)', () => {
+    const ps: (Price | undefined)[] = ['$$$', undefined, '$', '$$$$', '$$'];
+    expect(ps.sort(comparePrices)).toEqual(['$', '$$', '$$$', '$$$$', undefined]);
   });
 });

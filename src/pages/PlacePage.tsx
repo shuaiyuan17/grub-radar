@@ -5,7 +5,7 @@ import { appleMapsUrl } from '../domain/maps';
 import { parseHeadline } from '../domain/headlines';
 import { dataLang } from '../domain/spot';
 import { useT } from '../i18n/context';
-import { Headline, SpotLabel } from '../components/bits';
+import { Headline, SpotLabel, Unknown } from '../components/bits';
 import { useOrigin } from '../lib/origin';
 import { useSpotViews } from '../lib/useSpotViews';
 import { FOOD_ICONS } from '../components/icons';
@@ -59,9 +59,10 @@ export function PlacePage() {
   const nearness = ring === 0 ? t.nearness[from] : ring === 3 ? t.roadTrip : null;
   // spot text is data in its own language; translated labels use the UI's
   const lang = dataLang(spot);
-  const tags: { text: string; lang?: string }[] = [
-    spot.cuisine ? { text: spot.cuisine, lang } : { text: t.kinds[spot.kind] },
-    { text: spot.price },
+  // cuisine and price we don't know read as a hand-drawn "cuisine?" / "price?", never a guess
+  const tags: { text: string; lang?: string; unknown?: 'cuisine' | 'price' }[] = [
+    spot.cuisine ? { text: spot.cuisine, lang } : { text: t.unknown.cuisine, unknown: 'cuisine' },
+    spot.price ? { text: spot.price } : { text: t.unknown.price, unknown: 'price' },
     ...spot.tags
       .filter((tag) => tag !== spot.cuisine)
       .map((tag) => (t.tags[tag] ? { text: t.tags[tag] } : { text: tag, lang })),
@@ -89,7 +90,9 @@ export function PlacePage() {
               <Ink />
               <Icon name="check" size={15} strokeWidth={3} />
               {t.beenHere}
-              {spot.rating !== undefined ? ` · ${spot.rating}/10` : ''}
+              {spot.verdict && (
+                <span className={styles.verdict}> · {t.verdicts[spot.verdict]}</span>
+              )}
             </span>
           ) : (
             <span className={`sk flat ${styles.status} ${styles.statusWant}`}>
@@ -164,7 +167,7 @@ export function PlacePage() {
             <ul className={styles.tags} aria-label={t.aboutSpot}>
               {tags.map((tag) => (
                 <li key={tag.text} lang={tag.lang}>
-                  {tag.text}
+                  {tag.unknown ? <Unknown what={tag.unknown} /> : tag.text}
                 </li>
               ))}
             </ul>

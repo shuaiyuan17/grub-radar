@@ -1,7 +1,7 @@
 import { useState, type SyntheticEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Headline } from '../components/bits';
-import { Choice, Field, InkBox, InkButton, RatingPicker } from '../components/fields';
+import { Choice, Field, InkBox, InkButton, VerdictPicker } from '../components/fields';
 import { formErrorClass, inputClass, rowClass } from '../components/fieldClasses';
 import { Icon } from '../components/Icon';
 import { FOOD_ICONS } from '../components/icons';
@@ -19,6 +19,7 @@ import {
   type Price,
   type Spot,
   type Status,
+  type Verdict,
 } from '../domain/spot';
 import { useT } from '../i18n/context';
 import { saveErrorMessage } from '../lib/errors';
@@ -26,6 +27,9 @@ import { parseTags } from '../lib/tags';
 import { locate } from '../lib/geolocate';
 import { useSpots } from '../lib/spots';
 import styles from './SpotFormPage.module.css';
+
+/** The price Choice's "?" option: not sure. */
+const UNKNOWN_PRICE = 'unknown';
 
 const fmt = (n: number) => String(Math.round(n * 1e6) / 1e6);
 const formatLatLng = (p: LatLng) => `${fmt(p.lat)}, ${fmt(p.lng)}`;
@@ -35,10 +39,11 @@ interface Values {
   kind: Kind;
   where: string;
   cuisine: string;
-  price: Price;
+  /** null: not sure (unknown). */
+  price: Price | null;
   tags: string;
   status: Status;
-  rating: number | null;
+  verdict: Verdict | null;
   note: string;
   /** null: follow the kind's default doodle. */
   icon: IconName | null;
@@ -50,10 +55,11 @@ function initialValues(spot: Spot | undefined, name = ''): Values {
     kind: spot?.kind ?? 'food',
     where: spot ? formatLatLng(spot.location) : '',
     cuisine: spot?.cuisine ?? '',
-    price: spot?.price ?? '$$',
+    // a new spot's price starts unknown: no guessing "$$"
+    price: spot?.price ?? null,
     tags: spot?.tags.join(', ') ?? '',
     status: spot?.status ?? 'want',
-    rating: spot?.rating ?? null,
+    verdict: spot?.verdict ?? null,
     note: spot?.note ?? '',
     icon: spot?.icon ?? null,
   };
@@ -69,7 +75,7 @@ const FIELDS = [
   'price',
   'tags',
   'status',
-  'rating',
+  'verdict',
   'note',
   'icon',
 ] as const satisfies readonly (keyof Values)[];
@@ -163,12 +169,12 @@ function SpotForm({ spot, name }: { spot?: Spot; name?: string }) {
           kind: v.kind,
           location: point,
           cuisine: v.cuisine.trim(),
-          price: v.price,
+          ...(v.price !== null ? { price: v.price } : {}),
           icon,
           tags,
           status: v.status,
           note: v.note.trim(),
-          ...(v.status === 'been' && v.rating !== null ? { rating: v.rating } : {}),
+          ...(v.status === 'been' && v.verdict !== null ? { verdict: v.verdict } : {}),
         };
         saved = await actions.add(input);
       }
@@ -282,10 +288,13 @@ function SpotForm({ spot, name }: { spot?: Spot; name?: string }) {
         </Field>
         <Choice
           legend={t.form.price}
-          options={PRICES.map((p) => ({ value: p, label: p }))}
-          value={v.price}
+          options={[
+            { value: UNKNOWN_PRICE, label: '?', aria: t.form.priceUnknown },
+            ...PRICES.map((p) => ({ value: p, label: p })),
+          ]}
+          value={v.price ?? UNKNOWN_PRICE}
           onChange={(p) => {
-            set('price', p);
+            set('price', p === UNKNOWN_PRICE ? null : p);
           }}
         />
       </div>
@@ -322,10 +331,10 @@ function SpotForm({ spot, name }: { spot?: Spot; name?: string }) {
             }}
           />
           {v.status === 'been' && (
-            <RatingPicker
-              value={v.rating}
+            <VerdictPicker
+              value={v.verdict}
               onChange={(r) => {
-                set('rating', r);
+                set('verdict', r);
               }}
             />
           )}

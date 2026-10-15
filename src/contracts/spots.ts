@@ -1,6 +1,6 @@
 import { z } from 'zod/mini';
 import { parseLatLng, type LatLng } from '../domain/geo';
-import { KINDS, LatLngSchema, RatingSchema, SpotSchema, type Kind } from '../domain/spot';
+import { KINDS, LatLngSchema, SpotSchema, VerdictSchema, type Kind } from '../domain/spot';
 
 /**
  * Wire shapes for /api/spots*, /api/roll and /api/me/home. Request bodies for
@@ -74,7 +74,7 @@ export const NearbySpotSchema = z.strictObject({
   kind: z.enum(KINDS),
   cuisine: z.optional(z.string()),
   status: z.enum(['been', 'want']),
-  rating: z.optional(RatingSchema),
+  verdict: z.optional(VerdictSchema),
   note: z.optional(z.string()),
   tags: z.array(z.string()),
   minutes: z.number(),

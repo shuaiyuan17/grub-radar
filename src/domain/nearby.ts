@@ -1,5 +1,5 @@
 import type { LatLng } from './geo';
-import { KINDS, type Kind, type Spot } from './spot';
+import { KINDS, type Kind, type Spot, type Verdict } from './spot';
 import { byDistance, toSpotViews, type SpotView } from './spotView';
 
 export interface FindNearbyQuery {
@@ -35,7 +35,7 @@ export interface NearbySpot {
   kind: Kind;
   cuisine?: string;
   status: Spot['status'];
-  rating?: number;
+  verdict?: Verdict;
   note?: string;
   tags: string[];
   minutes: number;
@@ -64,7 +64,7 @@ export function toNearbySpot(view: SpotView, withLocation: boolean): NearbySpot 
     ring,
   };
   if (spot.cuisine !== undefined) out.cuisine = spot.cuisine;
-  if (spot.rating !== undefined) out.rating = spot.rating;
+  if (spot.verdict !== undefined) out.verdict = spot.verdict;
   if (spot.note !== undefined) out.note = spot.note;
   if (withLocation) out.location = spot.location;
   return out;
