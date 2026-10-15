@@ -20,7 +20,11 @@ export interface OriginValue {
   homeEditorOpen: boolean;
   openHomeEditor: () => void;
   closeHomeEditor: () => void;
-  /** Validated + saved to this device. Returns false if it couldn't be. */
+  /**
+   * Validates and uses `home`, saving it to this device. Returns false if it
+   * was invalid or couldn't be stored (then it's used for this visit only).
+   * Cancels any pending setHomeFromHere().
+   */
   setHome: (home: LatLng) => boolean;
   /** Asks the browser where you are and saves that as home. */
   setHomeFromHere: () => void;

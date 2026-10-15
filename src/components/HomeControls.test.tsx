@@ -63,3 +63,63 @@ describe('home on this device', () => {
     );
   });
 });
+
+describe('home: races and storage failures', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('a late "use where i am now" answer does not overwrite a typed home', async () => {
+    const geo = fakeGeolocation();
+    const { user } = renderAt('/');
+    await user.click((await screen.findAllByRole('button', { name: /set (your )?home/i }))[0]!);
+    await user.click(screen.getByRole('button', { name: 'use where i am now' }));
+    expect(geo.getCurrentPosition).toHaveBeenCalledOnce();
+
+    // while that's pending, type a different home (outside Two Fires) and save
+    await user.click((await screen.findAllByRole('button', { name: /set (your )?home/i }))[0]!);
+    const panel = screen.getByRole('region', { name: "where's home?" });
+    await user.type(within(panel).getByLabelText('or type it as lat, lng'), '47.6159, -122.3106');
+    await user.click(within(panel).getByRole('button', { name: 'save' }));
+
+    // now the stale geolocation answer arrives (outside Mama Ko's)
+    act(() => {
+      geo.succeed(47.6062, -122.3245);
+    });
+    expect(JSON.parse(localStorage.getItem(HOME_KEY)!)).toEqual({ lat: 47.6159, lng: -122.3106 });
+    expect(screen.getAllByRole('article')[0]).toHaveTextContent('Two Fires Taqueria');
+  });
+
+  it('a late answer after "forget my home" does not bring it back', async () => {
+    localStorage.setItem(HOME_KEY, JSON.stringify({ lat: 47.6159, lng: -122.3106 }));
+    const geo = fakeGeolocation();
+    const { user } = renderAt('/');
+    await user.click(
+      (await screen.findAllByRole('button', { name: 'Change your home location' }))[0]!,
+    );
+    await user.click(screen.getByRole('button', { name: 'use where i am now' }));
+    await user.click(screen.getByRole('button', { name: /forget my home/ }));
+    act(() => {
+      geo.succeed(47.6062, -122.3245);
+    });
+    expect(localStorage.getItem(HOME_KEY)).toBeNull();
+  });
+
+  it('says "for this visit only" when the browser will not store it', async () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota', 'QuotaExceededError');
+    });
+    const { user } = renderAt('/');
+    await user.click((await screen.findAllByRole('button', { name: /set (your )?home/i }))[0]!);
+    const panel = screen.getByRole('region', { name: "where's home?" });
+    await user.type(within(panel).getByLabelText('or type it as lat, lng'), '47.6159, -122.3106');
+    await user.click(within(panel).getByRole('button', { name: 'save' }));
+    expect(screen.getByRole('status')).toHaveTextContent('saved for this visit only');
+    expect(screen.getByRole('status')).not.toHaveTextContent('saved on this device');
+    // still used for this visit
+    expect(screen.getAllByRole('article')[0]).toHaveTextContent('Two Fires Taqueria');
+  });
+});

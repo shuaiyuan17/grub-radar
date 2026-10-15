@@ -12,6 +12,7 @@ const messages = {
   homeDenied: "location is blocked, so we couldn't set home from it. try typing it in.",
   homeUnavailable: "couldn't find you just now. try again, or type it in.",
   homeSaved: 'home saved on this device.',
+  homeVisitOnly: "this browser won't store it, so home is saved for this visit only.",
 } as const;
 
 function locate(
@@ -41,6 +42,17 @@ export function OriginProvider({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [homeEditorOpen, setHomeEditorOpen] = useState(false);
   const request = useRef(0);
+  // separate counter for "set home from where i am": anything that sets or
+  // forgets home bumps it, so a late geolocation answer can't overwrite it
+  const homeRequest = useRef(0);
+  const homeLocating = useRef(false);
+  const cancelHomeLocate = useCallback(() => {
+    homeRequest.current += 1;
+    if (homeLocating.current) {
+      homeLocating.current = false;
+      setStatus('idle');
+    }
+  }, []);
 
   const chooseHome = useCallback(() => {
     request.current += 1; // ignore any in-flight lookup
@@ -69,34 +81,50 @@ export function OriginProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const setHome = useCallback((home: LatLng) => {
+  /** Applies a home. Returns false if it couldn't be stored (still used for this visit). */
+  const applyHome = useCallback((home: LatLng) => {
     if (!isLatLng(home)) return false;
-    saveHome(home); // best effort: still use it for this visit if storage is off
+    const stored = saveHome(home);
     setSaved(home);
-    setNotice(messages.homeSaved);
+    setNotice(stored ? messages.homeSaved : messages.homeVisitOnly);
     setHomeEditorOpen(false);
-    return true;
+    return stored;
   }, []);
 
+  const setHome = useCallback(
+    (home: LatLng) => {
+      cancelHomeLocate(); // a typed home wins over a pending "use where i am now"
+      return applyHome(home);
+    },
+    [applyHome, cancelHomeLocate],
+  );
+
   const setHomeFromHere = useCallback(() => {
+    const id = (homeRequest.current += 1);
+    homeLocating.current = true;
     setStatus('locating');
     locate(
       (p) => {
+        if (id !== homeRequest.current) return; // superseded: typed home, forget, newer request
+        homeLocating.current = false;
         setStatus('idle');
-        setHome(p);
+        applyHome(p);
       },
       (reason) => {
+        if (id !== homeRequest.current) return;
+        homeLocating.current = false;
         setStatus('idle');
         setNotice(reason === 'denied' ? messages.homeDenied : messages.homeUnavailable);
       },
     );
-  }, [setHome]);
+  }, [applyHome]);
 
   const forgetHome = useCallback(() => {
+    cancelHomeLocate();
     clearHome();
     setSaved(null);
     setHomeEditorOpen(false);
-  }, []);
+  }, [cancelHomeLocate]);
 
   const value = useMemo<OriginValue>(() => {
     const home = saved ?? DEMO_HOME;
