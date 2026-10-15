@@ -68,9 +68,19 @@
   flex-direction: column;
   gap: 6px;
 }
+.form .row {
+  /* the coordinates field and its save button share one row at every width */
+  flex-wrap: nowrap;
+}
+.form .btn {
+  flex-shrink: 0;
+}
 .field {
   --bw: 2px;
-  flex: 1 1 200px;
+  /* basis 0 + min-width 0: never sized by the input's intrinsic width
+     (WebKit gives a bare <input> a huge min-content and pushed this off-screen) */
+  flex: 1 1 0;
+  min-width: 0;
   min-height: 44px;
   border-radius: var(--r-tile);
   display: flex;
@@ -80,7 +90,8 @@
   outline-offset: 3px;
 }
 .input {
-  flex: 1;
+  flex: 1 1 0;
+  width: 100%;
   min-width: 0;
   border: 0;
   background: transparent;
