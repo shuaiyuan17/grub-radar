@@ -29,7 +29,7 @@ const PLACE = {
 };
 
 describe('httpPlaceSearchClient', () => {
-  it('GETs /api/places/search with the query, a rounded centre and the language', async () => {
+  it('POSTs the search: where you are goes in the body (2 decimals), never in the URL', async () => {
     const fetch = respond(200, { places: [PLACE] });
     vi.stubGlobal('fetch', fetch);
     const ctrl = new AbortController();
@@ -39,15 +39,22 @@ describe('httpPlaceSearchClient', () => {
     );
     expect(places).toEqual([PLACE]);
     const [url, init] = fetch.mock.calls[0] ?? [];
-    expect(url).toBe('/api/places/search?q=night+owl&lang=zh-Hans&near=47.62%2C-122.32');
+    expect(url).toBe('/api/places/search');
+    expect(init?.method).toBe('POST');
+    expect(init?.headers).toMatchObject({ 'X-Grub-Request': '1' });
+    expect(JSON.parse(init?.body as string)).toEqual({
+      q: 'night owl',
+      lang: 'zh-Hans',
+      near: { lat: 47.62, lng: -122.32 },
+    });
     expect(init?.signal).toBe(ctrl.signal);
   });
 
-  it('near=home stays a word: the server knows where that is', async () => {
+  it('near "home" stays a word: the server knows where that is', async () => {
     const fetch = respond(200, { places: [] });
     vi.stubGlobal('fetch', fetch);
     await httpPlaceSearchClient.search({ q: 'pho', near: 'home', lang: 'en' });
-    expect(fetch.mock.calls[0]?.[0]).toContain('near=home');
+    expect(JSON.parse(fetch.mock.calls[0]?.[1]?.body as string)).toMatchObject({ near: 'home' });
   });
 
   it('rejects an answer that is not the contract', async () => {
@@ -83,7 +90,6 @@ describe('HttpSpotRepository.addApplePlace', () => {
     const saved = await new HttpSpotRepository().addApplePlace({
       applePlaceId: PLACE.applePlaceId,
       kind: 'food',
-      lang: 'en',
     });
     expect(saved).toMatchObject({ applePlaceId: PLACE.applePlaceId, address: '101 Lantern St' });
     const [url, init] = fetch.mock.calls[0] ?? [];
@@ -93,7 +99,6 @@ describe('HttpSpotRepository.addApplePlace', () => {
     expect(JSON.parse(init?.body as string)).toEqual({
       applePlaceId: PLACE.applePlaceId,
       kind: 'food',
-      lang: 'en',
     });
   });
 });
@@ -129,5 +134,39 @@ describe('usePlaceSearch remembers answers per place searched around', () => {
     expect(result.current.state.status).toBe('ready');
     await act(() => new Promise((r) => setTimeout(r, 400)));
     expect(client.search).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('usePlaceSearch: Enter retries', () => {
+  it('after an error, each Enter asks again (not just the first)', async () => {
+    forgetPlaceAnswers();
+    let fails = 2;
+    const client = {
+      search: vi.fn<PlaceSearchClient['search']>(() =>
+        fails-- > 0 ? Promise.reject(new Error('offline')) : Promise.resolve([]),
+      ),
+    } satisfies PlaceSearchClient;
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(PlaceSearchClientContext, { value: client }, children);
+    const here = { lat: 47.61, lng: -122.33 };
+    const { result } = renderHook(() => usePlaceSearch('pho', here, 'en', here), { wrapper });
+    await waitFor(() => {
+      expect(result.current.state.status).toBe('error');
+    });
+    act(() => {
+      result.current.now();
+    });
+    expect(result.current.state.status).toBe('loading');
+    await waitFor(() => {
+      expect(client.search).toHaveBeenCalledTimes(2);
+      expect(result.current.state.status).toBe('error');
+    });
+    act(() => {
+      result.current.now();
+    });
+    await waitFor(() => {
+      expect(result.current.state.status).toBe('ready');
+    });
+    expect(client.search).toHaveBeenCalledTimes(3);
   });
 });

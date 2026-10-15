@@ -310,13 +310,15 @@ export class D1SpotRepository implements WritableSpotRepository {
         ),
     ];
     if (draft.status === 'been')
-      // the first visit, only alongside a new entry (a racing twin finds one already there)
+      // the first visit, only alongside a new "been" entry: a racing twin that
+      // got in first (maybe as "want") wins, and this add records no visit
       stmts.push(
         db
           .prepare(
             `INSERT INTO visits (id, user_id, place_id, visited_on, rating, note, created_at)
              SELECT ?, ?, up.place_id, ?, ?, NULL, ? FROM user_places up
              WHERE up.user_id = ? AND up.place_id = ${placeId} AND up.version = 1
+               AND up.status = 'been'
                AND NOT EXISTS (SELECT 1 FROM visits v WHERE v.user_id = up.user_id AND v.place_id = up.place_id)`,
           )
           .bind(

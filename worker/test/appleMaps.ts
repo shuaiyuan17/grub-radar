@@ -19,6 +19,8 @@ export interface FakePlace {
   category?: string;
   /** Extra words a search matches on ("pho", "coffee"). */
   words?: string[];
+  /** The name Apple gives with lang=zh-CN, if different. */
+  nameZh?: string;
 }
 
 /** Fictional places around a fictional downtown. */
@@ -39,7 +41,8 @@ export const FAKE_PLACES: FakePlace[] = [
     lng: -122.3352,
     lines: ['22 Kettle Ave', 'Seattle, WA 98104', 'United States'],
     category: 'Restaurant',
-    words: ['pho'],
+    words: ['pho', 'noodles'],
+    nameZh: '真越南粉',
   },
   {
     id: 'IF0000000000000B1',
@@ -84,9 +87,9 @@ export interface FakeAppleMaps {
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 
-const wire = (p: FakePlace, withCategory: boolean) => ({
+const wire = (p: FakePlace, withCategory: boolean, lang: string | null) => ({
   id: p.id,
-  name: p.name,
+  name: lang === 'zh-CN' && p.nameZh ? p.nameZh : p.name,
   coordinate: { latitude: p.lat, longitude: p.lng },
   formattedAddressLines: p.lines,
   country: 'United States',
@@ -152,7 +155,7 @@ export async function fakeAppleMaps(places: FakePlace[] = FAKE_PLACES): Promise<
       const results = places
         .filter((pl) => [pl.name.toLowerCase(), ...(pl.words ?? [])].some((w) => w.includes(q)))
         .filter((pl) => !cats || pl.id === 'IF0000000000000D1' || cats.includes(pl.category ?? ''))
-        .map((pl) => wire(pl, true));
+        .map((pl) => wire(pl, true, p.get('lang')));
       return json({ displayMapRegion: {}, results });
     }
 
@@ -160,7 +163,9 @@ export async function fakeAppleMaps(places: FakePlace[] = FAKE_PLACES): Promise<
     if (placeId) {
       const pl = places.find((x) => x.id === decodeURIComponent(placeId));
       // like Apple: the place lookup carries no poiCategory
-      return pl ? json(wire(pl, false)) : json({ error: { message: 'Not Found' } }, 404);
+      return pl
+        ? json(wire(pl, false, url.searchParams.get('lang')))
+        : json({ error: { message: 'Not Found' } }, 404);
     }
     return json({ error: { message: 'no such endpoint' } }, 404);
   });

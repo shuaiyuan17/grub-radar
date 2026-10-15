@@ -3,17 +3,23 @@
  * search or a lookup; your list and radar never show Apple's places.
  *
  *   GET /api/places/search?q=&near=home|lat,lng&lang=   `search_places`
+ *   POST /api/places/search { q, near?, lang? }          the same, location in the body
  *   GET /api/places/:applePlaceId?lang=
  *
  * Signed in (or, from PR 5, an agent with spots:read), and braked per user
  * (SEARCH_LIMITER) because every miss here spends Apple's daily quota.
  */
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
-import { parsePlaceSearchQuery } from '../../src/contracts/places';
+import {
+  parsePlaceSearchBody,
+  parsePlaceSearchQuery,
+  type PlaceSearchQuery,
+} from '../../src/contracts/places';
 import { ApplePlaceIdSchema, DATA_LANGS, type DataLang } from '../../src/domain/spot';
 import type { AppEnv } from '../app';
+import { csrf } from '../auth/csrf';
 import { actingUser, requireScope } from '../auth/principal';
-import { apiError } from '../lib/http';
+import { apiError, readBody } from '../lib/http';
 import { AppleMaps, AppleMapsError } from '../services/appleMaps';
 import { resolveSearchCentre } from '../services/spots';
 
@@ -62,8 +68,7 @@ export const places = new Hono<AppEnv>();
 places.use(requireScope('spots:read'), limitSearch);
 
 /** `search_places`: restaurants, cafés and bakeries on Apple Maps, best match first. */
-places.get('/search', async (c) => {
-  const q = parsePlaceSearchQuery(new URL(c.req.url).searchParams);
+async function search(c: Ctx, q: PlaceSearchQuery | { error: string }): Promise<Response> {
   if ('error' in q) return apiError(c, 400, 'bad_request', q.error);
   const { userId } = actingUser(c.var.principal);
   const centre = await resolveSearchCentre(c.env.DB, userId, q.near);
@@ -80,6 +85,20 @@ places.get('/search', async (c) => {
   } catch (e) {
     return mapsError(c, e);
   }
+}
+
+/** For agents and curl: everything in the query string. */
+places.get('/search', (c) => search(c, parsePlaceSearchQuery(new URL(c.req.url).searchParams)));
+
+/**
+ * The app's form: `{ q, near?, lang? }` in a JSON body, so where you are
+ * (a home kept on this device, "where i am") never lands in a URL or an
+ * access log. A read, so no write brake; CSRF-checked like any POST.
+ */
+places.post('/search', csrf, async (c) => {
+  const body = await readBody(c);
+  if (!body.ok) return body.res;
+  return search(c, parsePlaceSearchBody(body.data));
 });
 
 places.get('/:applePlaceId', async (c) => {

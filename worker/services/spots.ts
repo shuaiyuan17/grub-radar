@@ -10,6 +10,7 @@ import { SpotOpError, type AddSpot } from '../../src/domain/edits';
 import type { LatLng } from '../../src/domain/geo';
 import { findNearby, toNearbySpot, type NearbySpot } from '../../src/domain/nearby';
 import type { SpotRepository } from '../../src/domain/repository';
+import { normalizeSearch } from '../../src/domain/modes';
 import { roll } from '../../src/domain/roll';
 import type { Spot } from '../../src/domain/spot';
 import type { D1SpotRepository } from '../db/spots';
@@ -69,23 +70,58 @@ export async function rollSpot(
 export type AddRequest =
   | { form: 'manual'; input: AddSpot }
   | { form: 'apple'; input: AddApplePlace }
-  /** `near`: already resolved (see resolveSearchCentre). */
-  | { form: 'query'; input: AddByQuery; near: LatLng | undefined };
+  /** `near`: already resolved (see resolveSearchCentre); a query add always has one. */
+  | { form: 'query'; input: AddByQuery; near: LatLng };
 
 export interface AddResult {
   spot: Spot;
   /** false when it was already on your list: nothing changed, that entry comes back. */
   created: boolean;
   resolvedFrom: 'manual' | 'apple';
-  /** add_spot with `query`: the next-best Apple matches, in case the top one was wrong. */
+  /** add_spot with `query`: the runners-up, in case the match was the wrong one. */
   alternatives?: ApplePlace[];
 }
+
+/** add_spot with `query` found no clear match. Nothing was added; these are the options. */
+export class AmbiguousMatch extends Error {
+  readonly candidates: ApplePlace[];
+  constructor(candidates: ApplePlace[]) {
+    super('several places could be that one: pick one and add it by applePlaceId');
+    this.name = 'AmbiguousMatch';
+    this.candidates = candidates;
+  }
+}
+
+/** How many candidates an ambiguous answer lists. */
+export const AMBIGUOUS_CANDIDATES = 5;
+
+/**
+ * The place a free-text `add_spot` should add, or null if it isn't clear:
+ * Apple's top result when its name contains the words (accents, case and
+ * punctuation aside: "serious pie" -> "Serious Pie"), or when it's the only
+ * result. "noodles" matching ten restaurants is not a choice to make for
+ * someone.
+ */
+export function confidentMatch(query: string, results: readonly ApplePlace[]): ApplePlace | null {
+  const [top] = results;
+  if (!top) return null;
+  const words = normalizeSearch(query);
+  if (words && normalizeSearch(top.name).includes(words)) return top;
+  return results.length === 1 ? top : null;
+}
+
+/**
+ * Shared `places` rows are always resolved in English, whoever adds the
+ * place first, so everyone who saves it sees the same name and address.
+ * (Per-language names would be their own table, later.)
+ */
+const PLACE_LANG = 'en';
 
 /**
  * `add_spot`. By hand: as given. With an Apple Place ID: name, location and
  * address come from Apple (or from the shared `places` row, if anyone saved
- * it before). With a `query`: Apple Maps is searched around `near` and the
- * best match is added, the next two come back as alternatives.
+ * it before). With a `query`: Apple Maps is searched around `near`, and the
+ * match is added only if confidentMatch says it's clear (else AmbiguousMatch).
  */
 export async function addSpot(
   repo: D1SpotRepository,
@@ -96,27 +132,29 @@ export async function addSpot(
     return { spot: await repo.add(req.input), created: true, resolvedFrom: 'manual' };
 
   if (req.form === 'apple') {
-    const { applePlaceId, lang, ...extras } = req.input;
+    const { applePlaceId, ...extras } = req.input;
     const added = await repo.addApplePlace(applePlaceId, extras, () =>
-      maps.place(applePlaceId, lang ?? 'en'),
+      maps.place(applePlaceId, PLACE_LANG),
     );
     return { ...added, resolvedFrom: 'apple' };
   }
 
   // `near` is already resolved into req.near; spotFromInput reads only the spot's own fields
-  const { query, lang, ...extras } = req.input;
-  const [top, ...rest] = await maps.search({
-    q: query,
-    lang: lang ?? 'en',
-    ...(req.near ? { near: req.near } : {}),
-  });
-  if (!top) throw new SpotOpError('no_match', 'nothing on Apple Maps matches that');
+  const { query, ...extras } = req.input;
+  const results = await maps.search({ q: query, lang: PLACE_LANG, near: req.near });
+  if (!results.length) throw new SpotOpError('no_match', 'nothing on Apple Maps matches that');
+  const match = confidentMatch(query, results);
+  if (!match) throw new AmbiguousMatch(results.slice(0, AMBIGUOUS_CANDIDATES));
   const added = await repo.addApplePlace(
-    top.applePlaceId,
-    { ...extras, kind: extras.kind ?? top.kind },
-    () => Promise.resolve(top),
+    match.applePlaceId,
+    { ...extras, kind: extras.kind ?? match.kind },
+    () => Promise.resolve(match),
   );
-  return { ...added, resolvedFrom: 'apple', alternatives: rest.slice(0, 2) };
+  return {
+    ...added,
+    resolvedFrom: 'apple',
+    alternatives: results.filter((p) => p !== match).slice(0, 2),
+  };
 }
 
 /**

@@ -76,7 +76,6 @@ export function AddSearchPage() {
       const spot = await actions.addApplePlace({
         applePlaceId: place.applePlaceId,
         ...(place.kind ? { kind: place.kind } : {}),
-        lang: locale,
       });
       void navigate(`/place/${spot.id}`, {
         viewTransition: true,

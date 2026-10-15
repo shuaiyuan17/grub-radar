@@ -31,9 +31,10 @@ const searchBox = (page: Page) =>
 
 test('type a craving, tap an Apple Maps result, it is on your radar', async ({ page }, info) => {
   await devLogin(page, { as: freshUser(`apple-${info.project.name}`), demo: false });
-  const searches: string[] = [];
+  const searches: { url: string; body: unknown }[] = [];
   page.on('request', (r) => {
-    if (r.url().includes('/api/places/search')) searches.push(r.url());
+    if (r.url().includes('/api/places/search'))
+      searches.push({ url: r.url(), body: r.postDataJSON() as unknown });
   });
   await page.goto('/');
   await page.getByRole('link', { name: 'add your first spot' }).click();
@@ -46,7 +47,9 @@ test('type a craving, tap an Apple Maps result, it is on your radar', async ({ p
   await expect(results.getByRole('listitem')).toHaveCount(3);
   // debounced: one request for the word, not one per letter
   expect(searches).toHaveLength(1);
-  expect(new URL(searches[0] ?? '').searchParams.get('q')).toBe('pho');
+  // where you are travels in the body, never in the URL
+  expect(new URL(searches[0]?.url ?? '').search).toBe('');
+  expect(searches[0]?.body).toMatchObject({ q: 'pho', lang: 'en' });
   const owl = results.getByRole('listitem').filter({ hasText: 'Night Owl Pho' });
   await expect(owl).toContainText('101 Lantern St, Seattle, WA 98101');
   await expect(owl).toContainText(/\d+(\.\d)? mi/);
@@ -104,6 +107,6 @@ test('zh: the search speaks Chinese', async ({ page }) => {
   await expect(box).toBeFocused();
   await box.fill('coffee');
   await expect(page.getByText('Apple 地图上找到 1 家 · 点一下就加上')).toBeVisible();
-  await expect(page.getByRole('button', { name: '把 Paper Kite Coffee 加到雷达上' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '加上 Paper Kite Coffee 到雷达' })).toBeVisible();
   await noHorizontalScroll(page);
 });

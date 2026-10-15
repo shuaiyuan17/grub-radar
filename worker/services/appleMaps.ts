@@ -38,6 +38,8 @@ const CACHE_HOST = 'https://apple-maps.cache.grub.internal';
 
 export const SEARCH_TTL_S = 15 * 60;
 export const PLACE_TTL_S = 24 * 60 * 60;
+/** After Apple says 429 (daily quota spent), don't ask again for this long. */
+export const QUOTA_PAUSE_S = 60;
 /** Stop using an access token this long before Apple says it expires. */
 export const TOKEN_MARGIN_S = 60;
 /** Lifetime of the signed JWT we trade for an access token (used once, right away). */
@@ -83,6 +85,7 @@ const SearchWire = z.object({ results: z.optional(z.array(z.unknown())) });
 const TokenWire = z.object({ accessToken: z.string(), expiresInSeconds: z.number() });
 const CachedToken = z.object({ accessToken: z.string(), expiresAt: z.number() });
 const CachedPlaces = z.array(z.unknown());
+const QuotaPause = z.object({ until: z.number() });
 
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 /** At most `max` code points (never half a surrogate pair). */
@@ -138,11 +141,14 @@ interface Deps {
 // access tokens, per isolate: { base|kid -> token }, plus the one being fetched
 const tokens = new Map<string, { accessToken: string; expiresAt: number }>();
 const minting = new Map<string, Promise<string>>();
+// base -> until when Apple said 429 (don't keep knocking)
+const quotaUntil = new Map<string, number>();
 
-/** Tests: forget this isolate's access tokens. */
+/** Tests: forget this isolate's access tokens and quota pause. */
 export function forgetAccessTokens() {
   tokens.clear();
   minting.clear();
+  quotaUntil.clear();
 }
 
 export class AppleMaps {
@@ -227,6 +233,7 @@ export class AppleMaps {
   }
 
   async #fetch(url: string, bearer: string): Promise<Response> {
+    await this.#refuseIfOverQuota();
     try {
       return await fetch(url, {
         headers: { authorization: `Bearer ${bearer}`, accept: 'application/json' },
@@ -241,7 +248,10 @@ export class AppleMaps {
   }
 
   async #json(res: Response, what: string): Promise<unknown> {
-    if (res.status === 429) throw new AppleMapsError('quota', 'Apple Maps daily quota reached');
+    if (res.status === 429) {
+      this.#noteOverQuota();
+      throw new AppleMapsError('quota', 'Apple Maps daily quota reached');
+    }
     if (!res.ok) {
       // status only: Apple's error bodies are generic, and URLs carry the search
       console.error('apple maps', what, res.status);
@@ -251,6 +261,40 @@ export class AppleMaps {
       return await res.json();
     } catch {
       throw new AppleMapsError('unavailable', 'Apple Maps sent something that is not JSON');
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // quota: after a 429, Apple isn't asked again for QUOTA_PAUSE_S (per
+  // isolate, and through the Cache API for the data centre)
+
+  #quotaKey() {
+    return this.#cacheKey('quota', {});
+  }
+
+  /** Ends a quota pause early (tests; or by hand once Apple raised the quota). */
+  async clearQuotaPause() {
+    quotaUntil.delete(this.#base);
+    await this.#cache.delete(this.#quotaKey());
+  }
+
+  #noteOverQuota() {
+    const until = this.#now() + QUOTA_PAUSE_S * 1000;
+    quotaUntil.set(this.#base, until);
+    this.#put(this.#quotaKey(), { until }, QUOTA_PAUSE_S);
+  }
+
+  async #refuseIfOverQuota() {
+    const refuse = () => {
+      throw new AppleMapsError('quota', 'Apple Maps daily quota reached (paused)');
+    };
+    if ((quotaUntil.get(this.#base) ?? 0) > this.#now()) refuse();
+    const hit = await this.#cache.match(this.#quotaKey());
+    if (!hit) return;
+    const until = QuotaPause.safeParse(await hit.json().catch(() => null));
+    if (until.success && until.data.until > this.#now()) {
+      quotaUntil.set(this.#base, until.data.until);
+      refuse();
     }
   }
 
@@ -269,7 +313,7 @@ export class AppleMaps {
    * A Cache API key. Always carries the Apple base URL, so answers from a
    * stub (development) and from Apple never mix.
    */
-  #cacheKey(kind: 'search' | 'place' | 'token', parts: Record<string, string>) {
+  #cacheKey(kind: 'search' | 'place' | 'token' | 'quota', parts: Record<string, string>) {
     return `${CACHE_HOST}/${kind}?${new URLSearchParams({ base: this.#base, ...parts }).toString()}`;
   }
 

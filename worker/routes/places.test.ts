@@ -1,8 +1,13 @@
 import { env } from 'cloudflare:workers';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PlaceSearchResponseSchema } from '../../src/contracts/places';
+import {
+  AddByQueryResponseSchema,
+  AmbiguousResponseSchema,
+  PlaceSearchResponseSchema,
+} from '../../src/contracts/places';
 import { SpotSchema } from '../../src/domain/spot';
-import { forgetAccessTokens } from '../services/appleMaps';
+import { D1SpotRepository } from '../db/spots';
+import { AppleMaps, forgetAccessTokens } from '../services/appleMaps';
 import { fakeAppleMaps, type FakeAppleMaps } from '../test/appleMaps';
 import { call, send, userSession } from '../test/helpers';
 
@@ -102,16 +107,74 @@ describe('GET /api/places/search', () => {
     expect(apple.requests).toHaveLength(0);
   });
 
-  it('Apple out of quota or down: 503 maps_unavailable with Retry-After', async () => {
+  it('Apple down or out of quota: 503 maps_unavailable with Retry-After', async () => {
+    apple.failWith('/v1/search', 502, 1);
+    let res = await call('/api/places/search?q=down', { cookie });
+    expect(res.status).toBe(503);
+    expect(res.headers.get('retry-after')).toBe('30');
     apple.failWith('/v1/search', 429, 1);
-    let res = await call('/api/places/search?q=quota', { cookie });
+    res = await call('/api/places/search?q=quota', { cookie });
     expect(res.status).toBe(503);
     expect((await errorOf(res)).code).toBe('maps_unavailable');
     expect(res.headers.get('retry-after')).toBe('3600');
-    apple.failWith('/v1/search', 502, 1);
-    res = await call('/api/places/search?q=down', { cookie });
+    // and for a minute Apple isn't asked at all
+    const asked = apple.requests.length;
+    res = await call('/api/places/search?q=again', { cookie });
     expect(res.status).toBe(503);
-    expect(res.headers.get('retry-after')).toBe('30');
+    expect(apple.requests.length).toBe(asked);
+    await new AppleMaps(env).clearQuotaPause();
+  });
+});
+
+describe('POST /api/places/search (the app: location in the body)', () => {
+  it('searches around the point in the body; nothing about it in the URL', async () => {
+    const cookie = await userSession('u_post_search');
+    const res = await send('POST', '/api/places/search', cookie, {
+      q: 'pho',
+      near: { lat: 47.618421, lng: -122.321937 },
+      lang: 'en',
+    });
+    expect(res.status).toBe(200);
+    expect(PlaceSearchResponseSchema.parse(await res.json()).places).toHaveLength(2);
+    const search = apple.requests.find((u) => u.pathname === '/v1/search');
+    expect(search?.searchParams.get('searchLocation')).toBe('47.62,-122.32');
+  });
+
+  it('is a CSRF-checked POST, with a checked body', async () => {
+    const cookie = await userSession('u_post_search_bad');
+    const noHeader = await call('/api/places/search', {
+      method: 'POST',
+      cookie,
+      headers: { 'content-type': 'application/json', 'sec-fetch-site': 'same-origin' },
+      body: JSON.stringify({ q: 'pho' }),
+    });
+    expect(noHeader.status).toBe(403);
+    for (const body of [{ q: 'p' }, { q: 'pho', near: 'work' }, { q: 'pho', extra: 1 }, []]) {
+      expect((await send('POST', '/api/places/search', cookie, body)).status).toBe(400);
+    }
+    expect(apple.requests).toHaveLength(0);
+  });
+});
+
+describe('shared places are stored in English', () => {
+  it('a zh adder and then an en adder both get the English name', async () => {
+    const zh = await userSession('u_lang_zh');
+    const en = await userSession('u_lang_en');
+    // in a zh search, Apple names it in Chinese
+    const found = PlaceSearchResponseSchema.parse(
+      await (
+        await send('POST', '/api/places/search', zh, { q: 'pho real', lang: 'zh-Hans' })
+      ).json(),
+    );
+    expect(found.places[0]?.name).toBe('真越南粉');
+    const PHO_REAL = 'IF0000000000000A2';
+    await env.DB.prepare('DELETE FROM places WHERE apple_place_id = ?').bind(PHO_REAL).run();
+    const first = await spotOf(await send('POST', '/api/spots', zh, { applePlaceId: PHO_REAL }));
+    expect(first.name).toBe('Pho Real');
+    const lookup = apple.requests.find((u) => u.pathname.startsWith('/v1/place/'));
+    expect(lookup?.searchParams.get('lang')).toBe('en-US');
+    const second = await spotOf(await send('POST', '/api/spots', en, { applePlaceId: PHO_REAL }));
+    expect(second).toMatchObject({ id: first.id, name: 'Pho Real' });
   });
 });
 
@@ -321,15 +384,20 @@ describe('POST /api/spots with an Apple Maps place', () => {
 });
 
 describe('POST /api/spots with words (add_spot query)', () => {
-  it('adds the best Apple match near you, kind from its category', async () => {
+  const NEAR = { lat: 47.6062, lng: -122.3321 };
+  const queryResult = async (res: Response) => AddByQueryResponseSchema.parse(await res.json());
+
+  it('a single match is clear: added, with how it was resolved (kind from its category)', async () => {
     const cookie = await userSession('u_query');
     const res = await send('POST', '/api/spots', cookie, {
       query: 'espresso',
-      near: { lat: 47.6062, lng: -122.3321 },
+      near: NEAR,
       note: 'window seat',
     });
     expect(res.status).toBe(201);
-    expect(await spotOf(res)).toMatchObject({
+    const body = await queryResult(res);
+    expect(body).toMatchObject({ created: true, resolvedFrom: 'apple', alternatives: [] });
+    expect(body.spot).toMatchObject({
       name: 'Paper Kite Coffee',
       kind: 'coffee',
       icon: 'cup',
@@ -340,9 +408,59 @@ describe('POST /api/spots with words (add_spot query)', () => {
     expect(apple.count('/v1/place')).toBe(0);
   });
 
+  it('a name match is clear even among several: added, the rest are alternatives', async () => {
+    const cookie = await userSession('u_query_name');
+    const res = await send('POST', '/api/spots', cookie, { query: 'Night Owl', near: NEAR });
+    expect(res.status).toBe(201);
+    const body = await queryResult(res);
+    expect(body.spot.name).toBe('Night Owl Pho');
+    // "pho real" also matched "pho"? no: only names/words containing "night owl"
+    expect(body.alternatives).toEqual([]);
+    const pho = await queryResult(
+      await send('POST', '/api/spots', cookie, { query: 'pho real', near: NEAR }),
+    );
+    expect(pho.spot.name).toBe('Pho Real');
+  });
+
+  it('several plausible places and no name match: 409 ambiguous, candidates, nothing added', async () => {
+    const cookie = await userSession('u_query_amb');
+    const res = await send('POST', '/api/spots', cookie, { query: 'noodles', near: NEAR });
+    expect(res.status).toBe(409);
+    const body = AmbiguousResponseSchema.parse(await res.json());
+    expect(body.error.code).toBe('ambiguous');
+    expect(body.candidates.map((p) => p.name)).toEqual(['Night Owl Pho', 'Pho Real']);
+    expect(
+      await count('SELECT COUNT(*) AS n FROM user_places WHERE user_id = ?', 'u_query_amb'),
+    ).toBe(0);
+  });
+
+  it('needs somewhere to search around: no near and no home is 400 need_location', async () => {
+    const cookie = await userSession('u_query_nowhere');
+    const res = await send('POST', '/api/spots', cookie, { query: 'serious pie' });
+    expect(res.status).toBe(400);
+    expect((await errorOf(res)).code).toBe('need_location');
+    expect(apple.requests).toHaveLength(0);
+    // with a saved home, that's where
+    await send('PUT', '/api/me/home', cookie, A_HOME);
+    const ok = await send('POST', '/api/spots', cookie, { query: 'espresso' });
+    expect(ok.status).toBe(201);
+    const search = apple.requests.find((u) => u.pathname === '/v1/search');
+    expect(search?.searchParams.get('searchLocation')).toBe('47.62,-122.32');
+  });
+
+  it('a query needs at least 2 characters', async () => {
+    const cookie = await userSession('u_query_short');
+    const res = await send('POST', '/api/spots', cookie, { query: ' p ', near: NEAR });
+    expect(res.status).toBe(400);
+    expect((await errorOf(res)).message).toMatch(/^query: at least 2/);
+  });
+
   it('nothing matches: 404 no_match', async () => {
     const cookie = await userSession('u_nomatch');
-    const res = await send('POST', '/api/spots', cookie, { query: 'zzzz' });
+    const res = await send('POST', '/api/spots', cookie, {
+      query: 'zzzz',
+      near: { lat: 47.61, lng: -122.33 },
+    });
     expect(res.status).toBe(404);
     expect((await errorOf(res)).code).toBe('no_match');
   });
@@ -365,5 +483,35 @@ describe('POST /api/spots with words (add_spot query)', () => {
     const res = await send('POST', '/api/spots', cookie, body);
     expect(res.status).toBe(400);
     expect((await errorOf(res)).message).toMatch(message);
+  });
+});
+
+describe('a want and a been add of the same new place, racing', () => {
+  it('whichever lands first wins, and no stray visit is recorded for a "want" entry', async () => {
+    await userSession('u_visit_race');
+    const repo = new D1SpotRepository(env.DB, 'u_visit_race');
+    const place = {
+      applePlaceId: 'IF00000000000RACE',
+      name: 'Race Day Deli',
+      location: { lat: 47.6, lng: -122.3 },
+    };
+    // the "been" add passes its "is it saved yet?" check, then waits on Apple…
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const been = repo.addApplePlace(place.applePlaceId, { status: 'been', rating: 9 }, async () => {
+      await gate;
+      return place;
+    });
+    // …while a "want" add of the same place gets in first
+    const want = await repo.addApplePlace(place.applePlaceId, {}, () => Promise.resolve(place));
+    expect(want).toMatchObject({ created: true, spot: { status: 'want' } });
+    release();
+    const late = await been;
+    expect(late).toMatchObject({ created: false, spot: { status: 'want' } });
+    expect(await count('SELECT COUNT(*) AS n FROM visits WHERE user_id = ?', 'u_visit_race')).toBe(
+      0,
+    );
   });
 });

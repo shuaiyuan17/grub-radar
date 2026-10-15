@@ -20,10 +20,14 @@ export interface PlaceSearchClient {
 
 export const httpPlaceSearchClient: PlaceSearchClient = {
   async search(q, signal) {
-    const params = new URLSearchParams({ q: normalizeQuery(q.q), lang: q.lang });
-    const near = nearParam(q.near);
-    if (near) params.set('near', near);
-    const res = await api(`/api/places/search?${params.toString()}`, { signal });
+    // POST: where you are goes in the body (rounded to ~1 km), never in a URL
+    const near =
+      q.near === undefined ? undefined : q.near === 'home' ? 'home' : roundForSearch(q.near);
+    const res = await api('/api/places/search', {
+      method: 'POST',
+      body: { q: normalizeQuery(q.q), lang: q.lang, ...(near === undefined ? {} : { near }) },
+      signal,
+    });
     return PlaceSearchResponseSchema.parse(await res.json()).places;
   },
 };
@@ -98,7 +102,8 @@ export function usePlaceSearch(
     q.length >= SEARCH_MIN_CHARS ? `${lang}|${nearParam(near) ?? ''}@${around}|${q}` : null;
   const [settled, setSettled] = useState<Settled | null>(null);
   const [last, setLast] = useState<readonly ApplePlace[]>([]);
-  const [hurry, setHurry] = useState<string | null>(null);
+  // Enter: search now. A counter, so pressing it again (say, after an error) retries.
+  const [hurry, setHurry] = useState<{ key: string | null; n: number }>({ key: null, n: 0 });
 
   useEffect(() => {
     if (key === null || answers.has(key)) return;
@@ -117,7 +122,7 @@ export function usePlaceSearch(
           },
         );
       },
-      hurry === key ? 0 : SEARCH_DEBOUNCE_MS,
+      hurry.key === key ? 0 : SEARCH_DEBOUNCE_MS,
     );
     return () => {
       clearTimeout(timer);
@@ -137,7 +142,8 @@ export function usePlaceSearch(
   return {
     state,
     now: () => {
-      setHurry(key);
+      setSettled(null); // a failed answer for this key gives way to "looking…"
+      setHurry((h) => ({ key, n: h.n + 1 }));
     },
   };
 }

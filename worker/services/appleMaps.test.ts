@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:workers';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../env';
 import { fakeAppleMaps, type FakeAppleMaps } from '../test/appleMaps';
 import {
@@ -109,7 +109,8 @@ describe('search', () => {
       ENVIRONMENT: 'development',
       APPLE_MAPS_BASE: 'http://127.0.0.1:9',
     } as Env;
-    // nothing listens there: had the cache answered, this would resolve
+    // the "stub" answers 503: had the cache answered instead, this would resolve
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('', { status: 503 }));
     await expect(
       new AppleMaps(stubbed, { cache }).search({ q: 'pho', lang: 'en' }),
     ).rejects.toMatchObject({ kind: 'unavailable' });
@@ -224,6 +225,24 @@ describe('when Apple is unhappy', () => {
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AppleMapsError);
     expect(err).toMatchObject({ kind });
+  });
+
+  it('after a 429, Apple is left alone for a minute (this isolate and the data centre)', async () => {
+    apple.failWith('/v1/search', 429, 1);
+    await expect(maps().search({ q: 'pho', lang: 'en' })).rejects.toMatchObject({ kind: 'quota' });
+    await settle();
+    const asked = apple.requests.length;
+    await expect(maps().search({ q: 'coffee', lang: 'en' })).rejects.toMatchObject({
+      kind: 'quota',
+    });
+    await expect(maps().place('IF0000000000000B1', 'en')).rejects.toMatchObject({ kind: 'quota' });
+    forgetAccessTokens(); // a fresh isolate learns it from the Cache API
+    await expect(maps().search({ q: 'bakery', lang: 'en' })).rejects.toMatchObject({
+      kind: 'quota',
+    });
+    expect(apple.requests.length).toBe(asked);
+    clock += 61_000;
+    expect(await maps().search({ q: 'coffee', lang: 'en' })).toHaveLength(1);
   });
 
   it('a failed search is not cached', async () => {
