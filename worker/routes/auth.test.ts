@@ -3,7 +3,7 @@ import { decodeJwt, decodeProtectedHeader } from 'jose';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../env';
 import app from '../index';
-import { sha256Hex } from '../lib/crypto';
+import { sealValue, sha256Hex } from '../lib/crypto';
 import { resetAppleKeys } from '../auth/appleKeys';
 import {
   call,
@@ -215,10 +215,6 @@ describe('POST /auth/callback', () => {
 
   it.each([
     [
-      'no state cookie',
-      (s: { cookie: string; state: string }) => ({ cookie: undefined, state: s.state }),
-    ],
-    [
       'a forged state cookie',
       (s: { cookie: string; state: string }) => ({
         cookie: `__Host-grub_siwa=${btoa('{}')}.AAAA`,
@@ -310,7 +306,7 @@ describe('POST /auth/callback', () => {
     expect(res.headers.get('location')).toBe('/?signin=failed');
   });
 
-  it('a state cookie is good for one round trip: the browser drops it, a replay fails', async () => {
+  it('a state is good for one round trip: the browser drops the cookie, a replay fails', async () => {
     const { res, start } = await signIn();
     expect(res.headers.get('location')).toBe('/');
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -322,6 +318,184 @@ describe('POST /auth/callback', () => {
   it('never sends people off-site after sign-in', async () => {
     const { res } = await signIn({ returnTo: '//evil.example/' });
     expect(res.headers.get('location')).toBe('/');
+  });
+});
+
+/**
+ * Browsers that don't send the SameSite=None state cookie back on Apple's
+ * cross-site form_post (seen in production from an iPhone, 10/15): the sealed
+ * `state` alone signs in, still single use, still nonce-checked. The cookie,
+ * when it does come back, must still match.
+ */
+describe('POST /auth/callback without the state cookie (signed-state-only)', () => {
+  /** The structured `request timing` records the Worker logged. */
+  const timingLogs = (log: { mock: { calls: unknown[][] } }) =>
+    log.mock.calls
+      .map((args) => args[0])
+      .filter(
+        (r): r is Record<string, unknown> =>
+          typeof r === 'object' && r !== null && 'message' in r && r.message === 'request timing',
+      );
+
+  it('signs in with a valid sealed state and no cookie, and logs the path, not the state', async () => {
+    const log = vi.spyOn(console, 'log');
+    const mock = appleAnswers();
+    const start = await startSignIn('/radar');
+    mock.setNonce(start.nonce);
+    const handoff = await postCallback({ code: 'c.fictional', state: start.state });
+    expect(handoff.status).toBe(200);
+    // no cookie came, so none is cleared (it may belong to another sign-in)
+    expect(setCookieLine(handoff, '__Host-grub_siwa')).toBeUndefined();
+    const res = await followHandoff(handoff);
+    expect(res.headers.get('location')).toBe('/radar');
+    expect(cookieFrom(res, '__Host-grub_session')).not.toBeNull();
+    expect(mock.calls).toHaveLength(1);
+    const callback = timingLogs(log).find((r) => r.path === '/auth/callback');
+    expect(callback?.siwa_state).toBe('signed-state-only');
+    const logged = JSON.stringify(log.mock.calls);
+    expect(logged).not.toContain(start.state);
+    expect(logged).not.toContain(start.state.split('.')[1]);
+  });
+
+  it('the happy path with the cookie still works, and logs "cookie"', async () => {
+    const log = vi.spyOn(console, 'log');
+    const { res, handoff } = await signIn({ returnTo: '/radar' });
+    expect(res.headers.get('location')).toBe('/radar');
+    expect(cookieFrom(res, '__Host-grub_session')).not.toBeNull();
+    expect(setCookieLine(handoff, '__Host-grub_siwa')).toMatch(/Max-Age=0/);
+    const callback = timingLogs(log).find((r) => r.path === '/auth/callback');
+    expect(callback?.siwa_state).toBe('cookie');
+  });
+
+  it('still ends the session this browser had (carried, encrypted, in the state)', async () => {
+    const first = cookieFrom((await signIn()).res, '__Host-grub_session')!;
+    const mock = appleAnswers();
+    const start = await startSignIn('/', first);
+    mock.setNonce(start.nonce);
+    const again = await followHandoff(await postCallback({ code: 'c', state: start.state }));
+    expect(cookieFrom(again, '__Host-grub_session')).not.toBeNull();
+    expect(await countRows('sessions')).toBe(1);
+    expect((await call('/api/me', { cookie: first })).status).toBe(401);
+  });
+
+  it('refuses a tampered state, before talking to Apple', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const mock = appleAnswers();
+    const start = await startSignIn();
+    mock.setNonce(start.nonce);
+    const s = start.state;
+    const i = s.length - 5;
+    const flipped = s.slice(0, i) + (s[i] === 'A' ? 'B' : 'A') + s.slice(i + 1);
+    for (const state of [flipped, `${s}A`, s.slice(0, -1), s.split('.')[1] ?? '', 'forged']) {
+      const res = await postCallback({ code: 'c', state });
+      expect(res.headers.get('location'), state).toBe('/?signin=failed');
+      expect(setCookieLine(res, '__Host-grub_signin')).toBeUndefined();
+    }
+    expect(mock.calls).toHaveLength(0);
+    // the real state is untouched by those attempts
+    const real = await followHandoff(await postCallback({ code: 'c', state: s }));
+    expect(real.headers.get('location')).toBe('/');
+  });
+
+  it('refuses an expired state (sealed by us, issued 11 minutes ago)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const mock = appleAnswers();
+    const nonce = 'an-old-nonce';
+    mock.setNonce(nonce);
+    const old = await sealValue(
+      JSON.stringify({
+        j: 'jti-old-0123456789ab',
+        n: await sha256Hex(nonce),
+        r: '/',
+        t: Date.now() - 11 * 60_000,
+      }),
+      env.SESSION_HMAC_KEY,
+      'grub-radar siwa state v1',
+    );
+    for (const cookie of [undefined, `__Host-grub_siwa=${old}`]) {
+      const res = await postCallback({ code: 'c', state: old }, cookie);
+      expect(res.headers.get('location')).toBe('/?signin=failed');
+    }
+    expect(mock.calls).toHaveLength(0);
+    expect(
+      await env.DB.prepare('SELECT * FROM auth_states_used WHERE jti = ?')
+        .bind('jti-old-0123456789ab')
+        .first(),
+    ).toBeNull();
+  });
+
+  it.each([
+    ['without the cookie, twice', () => undefined, () => undefined],
+    ['with the cookie, then without', (s: string) => `__Host-grub_siwa=${s}`, () => undefined],
+    // a browser that kept the cookie (or an attacker holding both)
+    [
+      'with the cookie, twice',
+      (s: string) => `__Host-grub_siwa=${s}`,
+      (s: string) => `__Host-grub_siwa=${s}`,
+    ],
+  ])('refuses a replay of the same state: %s', async (_label, firstCookie, secondCookie) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const mock = appleAnswers();
+    const start = await startSignIn();
+    mock.setNonce(start.nonce);
+    const first = await followHandoff(
+      await postCallback({ code: 'c', state: start.state }, firstCookie(start.state)),
+    );
+    expect(first.headers.get('location')).toBe('/');
+    const replay = await postCallback(
+      { code: 'c.other', state: start.state },
+      secondCookie(start.state),
+    );
+    expect(replay.status).toBe(303);
+    expect(replay.headers.get('location')).toBe('/?signin=failed');
+    expect(setCookieLine(replay, '__Host-grub_signin')).toBeUndefined();
+    expect(mock.calls).toHaveLength(1);
+  });
+
+  it('a replayed "cancel" is refused too: errors spend the state like codes do', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const start = await startSignIn();
+    const cancel = { error: 'user_cancelled_authorize', state: start.state };
+    expect((await postCallback(cancel)).headers.get('location')).toBe('/?signin=cancelled');
+    expect((await postCallback(cancel)).headers.get('location')).toBe('/?signin=failed');
+  });
+
+  it('refuses a cookie that is present but does not match, even when both are valid states', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const mock = appleAnswers();
+    // this browser started sign-in (its cookie); the POST carries someone else's valid state
+    const mine = await startSignIn();
+    const theirs = await startSignIn();
+    mock.setNonce(theirs.nonce);
+    const res = await postCallback({ code: 'c', state: theirs.state }, mine.cookie);
+    expect(res.headers.get('location')).toBe('/?signin=failed');
+    expect(setCookieLine(res, '__Host-grub_siwa')).toBeUndefined();
+    expect(mock.calls).toHaveLength(0);
+    // and the mismatch spent neither state
+    mock.setNonce(mine.nonce);
+    const ok = await followHandoff(
+      await postCallback({ code: 'c', state: mine.state }, mine.cookie),
+    );
+    expect(ok.headers.get('location')).toBe('/');
+  });
+
+  it('still checks the id_token nonce against the one sealed in the state', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const mock = mockApple(apple, async () =>
+      tokenResponse(await apple.idToken({ nonce: 'stolen' })),
+    );
+    const start = await startSignIn();
+    const res = await followHandoff(await postCallback({ code: 'c', state: start.state }));
+    expect(mock.calls).toHaveLength(1);
+    expect(res.headers.get('location')).toBe('/?signin=failed');
+    expect(cookieFrom(res, '__Host-grub_session')).toBeNull();
+    expect(await countRows('users')).toBe(0);
+  });
+
+  it('checks the state before Apple’s `error`: a forged cancel without a cookie does nothing', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const res = await postCallback({ error: 'user_cancelled_authorize', state: 'forged' });
+    expect(res.headers.get('location')).toBe('/?signin=failed');
   });
 });
 

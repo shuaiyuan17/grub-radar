@@ -106,13 +106,14 @@ test.describe('Sign in with Apple (against the local Apple stub)', () => {
     );
     await appleStub(page, 'Continue', who);
 
-    // Apple's form_post gets the "signing you in…" page at once, with no D1 work...
+    // Apple's form_post gets the "signing you in…" page at once, after one D1 round
+    // trip (spending the state)...
     const page1 = await handoff;
     expect(page1.status()).toBe(200);
     // (its body is gone by now: the page posts itself on immediately)
     expect(page1.headers()['content-type']).toMatch(/^text\/html/);
     expect(page1.headers()['content-security-policy']).toMatch(/script-src 'sha256-[^']+'/);
-    expect(page1.headers()['server-timing']).toContain('d1;desc="0 round trips"');
+    expect(page1.headers()['server-timing']).toContain('d1;desc="1 round trips"');
     // ...whose hash-allowed script posts on to /auth/finish with `t` in the body, never
     // the URL: one D1 round trip, then a redirect
     const page2 = await finish;
@@ -157,6 +158,52 @@ test.describe('Sign in with Apple (against the local Apple stub)', () => {
     await expect(
       page.getByRole('button', { name: /^Signed in as Tess/ }).filter({ visible: true }),
     ).toBeVisible();
+  });
+
+  test('signs in when Apple’s POST comes back without the state cookie', async ({
+    page,
+    browser,
+  }, info) => {
+    // What a browser that drops the SameSite=None state cookie looks like to us (an in-app
+    // browser handing Apple's page to another one, cross-site cookies blocked): Apple's
+    // form_post lands in a cookie jar that never saw /auth/apple/start. The sealed state alone
+    // has to carry it, and the hand-off cookie, set on our answer to that POST and read on our
+    // own page's same-origin POST, has to survive in that jar.
+    const who = `nocookie${info.project.name}`;
+    await page.goto('/radar');
+    await wallButton(page).click();
+    await expect(page).toHaveURL(/localhost:4599\/auth\/authorize/);
+    const appleUrl = page.url();
+
+    const other = await browser.newContext();
+    try {
+      const elsewhere = await other.newPage();
+      const handoff = elsewhere.waitForResponse(
+        (r) => r.url().endsWith('/auth/callback') && r.request().method() === 'POST',
+      );
+      const finish = elsewhere.waitForResponse(
+        (r) => r.url().endsWith('/auth/finish') && r.request().method() === 'POST',
+      );
+      await elsewhere.goto(appleUrl);
+      await appleStub(elsewhere, 'Continue', who);
+      const page1 = await handoff;
+      expect(await page1.request().headerValue('cookie')).toBeNull();
+      expect(page1.status()).toBe(200);
+      const page2 = await finish;
+      expect(page2.status()).toBe(303);
+      await expect(elsewhere).toHaveURL(/localhost:4173\/radar$/);
+      await expect(elsewhere.getByRole('slider')).toBeVisible();
+      const jar = await other.cookies();
+      expect(jar.find((c) => c.name === '__Host-grub_session')).toBeDefined();
+      expect(jar.find((c) => c.name === '__Host-grub_signin')).toBeUndefined();
+
+      // the same Apple answer again (a replayed state) is refused
+      await elsewhere.goto(appleUrl);
+      await appleStub(elsewhere, 'Continue', who);
+      await expect(elsewhere).toHaveURL(/\?signin=failed$/);
+    } finally {
+      await other.close();
+    }
   });
 
   test('cancelling on Apple’s page comes back to the wall with a note', async ({ page }) => {

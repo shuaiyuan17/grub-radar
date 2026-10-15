@@ -7,7 +7,7 @@ import type { StatePayload } from './siwa';
 
 const T0 = Date.UTC(2026, 9, 15, 12, 0);
 const state: StatePayload = {
-  state: 's',
+  jti: 'jti-0123456789abcdef',
   nonceHash: 'nh',
   returnTo: '/radar',
   iat: T0,

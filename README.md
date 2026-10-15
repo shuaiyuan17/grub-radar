@@ -265,14 +265,32 @@ committed upload whose answer was lost keeps its photo, a rolled-back one is swe
 `purgeUserPhotos` also sweeps an account's bytes by prefix.
 
 **Sign in with Apple** (`worker/auth/siwa.ts`): web flow with `response_type=code` and
-`response_mode=form_post`. `state` and a hashed `nonce` ride in an HMAC-signed, 10-minute,
-single-use `__Host-grub_siwa` cookie (`SameSite=None`, because Apple's callback is a
-cross-site POST). The callback checks the state, spends it, and answers at once with a tiny
+`response_mode=form_post`. The `state` we send Apple is itself the payload (a random `jti`,
+the nonce's hash, returnTo, the previous session id, issued-at), AES-GCM-sealed with a key
+derived from `SESSION_HMAC_KEY`: self-authenticating, opaque (the previous session id never
+shows in a URL), ~300 characters, valid 10 minutes. Apple echoes it back verbatim. The same
+value is also set in a `__Host-grub_siwa` cookie (`SameSite=None`, because Apple's callback is
+a cross-site POST). When the browser sends that cookie back it must equal the posted state
+(path `cookie`). Some browsers don't send it (seen 10/15 from an iPhone: an in-app browser
+handing Apple's page to another one, or cross-site cookies blocked); then a valid sealed
+state alone is accepted (path `signed-state-only`). **Accepted trade-off:** on that path
+nothing binds the callback to the browser that started, so login CSRF is possible: an
+attacker who gets their own fresh, unused code + state POSTed from a victim's browser within
+10 minutes signs the victim in to the attacker's account. The impact here is low (the
+victim sees the attacker's list; nothing of the victim's is exposed or changed), a browser
+that does send the cookie keeps the binding (a mismatch is refused), and the timing log's
+`siwa_state` field shows how often each path happens. Either way a state is single use: the
+callback records its `jti` in D1 (`auth_states_used`, migration 0006; expired rows swept in
+the same batch), so a replay is refused, and the id_token's nonce must match the sealed
+hash. The callback checks the state (before looking at Apple's `error`), spends it (its
+one D1 round trip), and answers at once with a tiny
 "signing you in…" page (en/中文). Its one-line inline script (allowed by CSP hash, like its
 CSS) submits a same-origin POST form to `/auth/finish` with the hand-off value `t` in the
 body, never in a URL; a "continue" button is the no-JS fallback. What crosses over (code, nonce hash, returnTo, previous
 session, Apple's one-time `user` field) is AES-GCM-sealed in a two-minute `__Host-grub_signin`
-cookie (HttpOnly, Secure, Lax) bound to that random `t`; `/auth/finish`
+cookie (HttpOnly, Secure, Lax) bound to that random `t` (set on our answer to Apple's POST,
+a first-party response, and read on our own page's same-origin POST, so it survives the
+browsers that drop the state cookie; `e2e/auth.spec.ts` checks that); `/auth/finish`
 refuses (and leaves alone) anything without the matching `t`, or not `Sec-Fetch-Site:
 same-origin` (without that header: an `Origin` equal to `PUBLIC_ORIGIN`; neither is a no), a GET there just goes home, and the cookie is cleared on first use (`worker/auth/pending.ts`). It then exchanges the code with a
 fresh 5-minute ES256 client secret **while** loading Apple's JWKS, verifies the id_token
@@ -393,7 +411,8 @@ answer carries a `Server-Timing` header (`session`, `apple_token`, `jwks`, `id_t
 `total`) and logs one `request timing` record to Workers Logs with the same phases plus
 `d1_round_trips`, `d1_statements`, `d1_sql_ms` (time inside D1), `d1_wall_ms`, rows read and
 written, `d1_served_by` (D1's region/colo) and, for sign-in, `jwks_source`
-(`memory`/`cache`/`network`) and `signin_outcome`. Names and numbers only: no tokens, codes
+(`memory`/`cache`/`network`), `signin_outcome` and, on the callback, `siwa_state`
+(`cookie`/`signed-state-only`: which proof the state came with). Names and numbers only: no tokens, codes
 or user data. D1 round trips per request: callback 0, finish 1, `/api/me` 1, `/api/spots` 1,
 logout 1 (tests read them back from the header: `worker/routes/roundtrips.test.ts`).
 
@@ -413,7 +432,8 @@ new table, copy, drop, rename, recreate indexes), as in `0003`, which made `pric
 Worker test that applies the earlier files, writes old-shape rows, then the rest
 (`worker/db/migrations.test.ts`). `0004` (friends, invite links) only adds two tables; its
 test (`worker/db/migration0004.test.ts`) checks a production-shaped database comes through
-unchanged. `users.friend_code` from `0001` is unused (friends are by invite link only) and
+unchanged. `0006` (single-use sign-in states) adds one table, `auth_states_used`
+(`worker/db/migration0006.test.ts`). `users.friend_code` from `0001` is unused (friends are by invite link only) and
 stays: SQLite can't drop a `UNIQUE` column in place.
 
 **Deploying**: always `npm run deploy` (or `deploy:built` after a build, e.g. in Workers

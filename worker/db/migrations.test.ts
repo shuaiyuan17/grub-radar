@@ -25,6 +25,7 @@ const LATER = '2026-10-03T08:00:00.000Z';
 beforeAll(async () => {
   // children first: foreign keys are on
   for (const t of [
+    'auth_states_used',
     'photo_deletions',
     'photos',
     'invites',

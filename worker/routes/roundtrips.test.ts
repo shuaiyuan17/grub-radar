@@ -57,9 +57,9 @@ async function appleSignIn(sessionCookie?: string) {
 }
 
 describe('D1 round trips per request', () => {
-  it('sign-in: 0 on the callback, 1 on the finish (new user, returning user, replacing a session)', async () => {
+  it('sign-in: 1 on the callback (spend the state), 1 on the finish (new user, returning user, replacing a session)', async () => {
     const first = await appleSignIn();
-    expect(d1RoundTrips(first.handoff)).toBe(0);
+    expect(d1RoundTrips(first.handoff)).toBe(1);
     expect(d1RoundTrips(first.finish)).toBe(1);
     expect(first.finish.headers.get('location')).toBe('/');
 

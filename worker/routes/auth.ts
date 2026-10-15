@@ -18,7 +18,7 @@ import {
   exchangeCode,
   nameFromUserField,
   publicOrigin,
-  readStateCookie,
+  readState,
   redirectUri,
   SiwaError,
   startAuthorize,
@@ -26,6 +26,7 @@ import {
   STATE_MAX_AGE_S,
 } from '../auth/siwa';
 import { localeFromAcceptLanguage, signingInCsp, signingInPage } from '../auth/signingInPage';
+import { spendState } from '../db/authStates';
 import { ensureDevUser, signInWithApple } from '../db/users';
 import { isDevelopment } from '../env';
 import { sha256Hex } from '../lib/crypto';
@@ -39,7 +40,8 @@ auth.get('/apple/start', async (c) => {
   const prevSession = token && token.length <= 100 ? await sha256Hex(token) : undefined;
   const start = await startAuthorize(c.env, c.req.url, c.req.query('returnTo') ?? '/', prevSession);
   // SameSite=None: Apple's callback is a cross-site POST, which never carries Lax cookies.
-  setCookie(c, STATE_COOKIE, start.cookie, {
+  // The value is the sealed state itself; the callback copes when a browser drops it.
+  setCookie(c, STATE_COOKIE, start.state, {
     path: '/',
     secure: true,
     httpOnly: true,
@@ -59,23 +61,41 @@ const backTo = (c: Context<AppEnv>, result: SigninResult) => c.redirect(`/?signi
 auth.get('/callback', (c) => c.redirect('/', 303));
 
 /**
- * Apple's form_post. Checks the state (exactly as before), then answers at
- * once with the "signing you in…" page; the slow part runs on /auth/finish.
+ * Apple's form_post. Checks the state, spends it, then answers at once with
+ * the "signing you in…" page; the slow part runs on /auth/finish.
+ *
+ * The state is sealed and self-authenticating (auth/siwa.ts). If the browser
+ * sent the state cookie, it must be exactly the posted state (path "cookie").
+ * Some browsers don't send it on Apple's cross-site POST; then the sealed
+ * state alone is enough (path "signed-state-only"). That path loses the
+ * binding to the browser that started, so login CSRF (signing someone in to
+ * the attacker's own account) is possible there: an accepted, low-impact
+ * trade-off, see README "Sign in with Apple". Either way the state is single
+ * use (its jti in D1) and the id_token's nonce must match.
  */
 auth.post('/callback', async (c) => {
   const form = await c.req.parseBody();
   const field = (name: string) => (typeof form[name] === 'string' ? form[name] : undefined);
 
   // State first, for every POST, errors included: anyone can make a browser
-  // POST here, and only a matching state may touch the pending sign-in.
-  const state = await readStateCookie(c.env, getCookie(c, STATE_COOKIE), field('state'));
-  if (!state) {
+  // POST here, and only a valid state may touch the pending sign-in.
+  const cookie = getCookie(c, STATE_COOKIE);
+  const checked = await readState(c.env, cookie, field('state'));
+  if (!checked) {
     // leave the cookie alone: a forged POST must not cancel a real sign-in
     console.warn('sign in with apple failed', 'missing, forged, expired or mismatched state');
     return backTo(c, 'failed');
   }
-  // single use from here on, whatever happens next
-  deleteCookie(c, STATE_COOKIE, { path: '/', secure: true, sameSite: 'None' });
+  // which proof we accepted: the path's name only, never a value
+  c.var.timing.note('siwa_state', checked.path);
+  // single use, whichever path, whatever happens next
+  if (!(await spendState(c.env.DB, checked.payload))) {
+    console.warn('sign in with apple failed', 'state already used');
+    return backTo(c, 'failed');
+  }
+  const state = checked.payload;
+  if (cookie !== undefined)
+    deleteCookie(c, STATE_COOKIE, { path: '/', secure: true, sameSite: 'None' });
 
   const error = field('error');
   if (error) return backTo(c, error === 'user_cancelled_authorize' ? 'cancelled' : 'failed');

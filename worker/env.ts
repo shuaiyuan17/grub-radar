@@ -39,7 +39,7 @@ export interface Env {
 
   /** Secret. ES256 .p8 key as PEM (literal "\n" escapes are accepted). */
   APPLE_PRIVATE_KEY: string;
-  /** Secret. HMAC key for the SIWA state cookie. */
+  /** Secret. Root key for the sealed SIWA state, the sign-in hand-off and other HMACs. */
   SESSION_HMAC_KEY: string;
 
   /** Dev only: enables POST /auth/dev-login. Never set in production. */

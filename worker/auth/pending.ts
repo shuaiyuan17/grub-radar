@@ -1,8 +1,8 @@
 /**
  * The hand-off between Apple's form_post and the slow part of signing in.
  *
- * POST /auth/callback checks the state exactly as before (signed cookie,
- * matching `state`, 10 minutes, single use), then answers at once with a tiny
+ * POST /auth/callback checks the state (sealed, 10 minutes, matching the
+ * state cookie when the browser sent one, single use via D1), then answers at once with a tiny
  * "signing you in…" page instead of making the person stare at a blank screen
  * while we talk to Apple and D1. That page moves itself on (meta refresh, no
  * JavaScript) to GET /auth/finish?t=…, which does the work and redirects.
