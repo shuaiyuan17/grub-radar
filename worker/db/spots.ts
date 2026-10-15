@@ -26,6 +26,7 @@ import {
 import type { WritableSpotRepository } from '../../src/domain/repository';
 import { LIMITS, SpotSchema, type Spot } from '../../src/domain/spot';
 import { newPlaceId, newVisitId } from '../lib/ids';
+import { userIdRef, type UserRef } from './users';
 import { iso, isoDate } from '../lib/time';
 
 interface Row {
@@ -58,6 +59,23 @@ const SELECT = `SELECT p.id, p.name, p.lat, p.lng, p.created_by, p.apple_place_i
   up.order_json, up.tags_json, up.why_text, up.why_found_on, up.lang, up.version
   FROM user_places up JOIN places p ON p.id = up.place_id
   WHERE up.user_id = ?`;
+
+/**
+ * The whole list for one user, oldest first. `user` is a bound id or a scalar
+ * subquery (a SessionScope, when it rides along with the session lookup).
+ */
+export function listStatement(db: D1Database, user: UserRef): D1PreparedStatement {
+  return db
+    .prepare(
+      `${SELECT.replace('WHERE up.user_id = ?', `WHERE up.user_id = ${user.sql}`)} ORDER BY up.created_at, p.id`,
+    )
+    .bind(...user.binds);
+}
+
+/** Rows of listStatement as Spots (CorruptSpotError if one doesn't validate). */
+export function spotsFromRows(result: D1Result | undefined): Spot[] {
+  return ((result?.results ?? []) as Row[]).map(toSpot);
+}
 
 const json = (s: string | null): unknown => (s === null ? undefined : JSON.parse(s));
 
@@ -134,11 +152,7 @@ export class D1SpotRepository implements WritableSpotRepository {
   }
 
   async list(): Promise<Spot[]> {
-    const { results } = await this.#db
-      .prepare(`${SELECT} ORDER BY up.created_at, p.id`)
-      .bind(this.#userId)
-      .all<Row>();
-    return results.map(toSpot);
+    return spotsFromRows(await listStatement(this.#db, userIdRef(this.#userId)).all());
   }
 
   async get(id: string): Promise<Spot | null> {

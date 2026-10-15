@@ -2,6 +2,7 @@ import type { Env } from '../env';
 import { newUserId } from '../lib/ids';
 import { iso } from '../lib/time';
 import type { AppleIdentity } from '../auth/siwa';
+import { insertSession, type NewSession } from '../auth/session';
 
 export const DEFAULT_DISPLAY_NAME = 'you';
 
@@ -33,16 +34,56 @@ export async function getUser(db: D1Database, id: string): Promise<User | null> 
   return row ? toUser(row) : null;
 }
 
+/** A user id for SQL: a bound value (`?`) or a scalar subquery such as a SessionScope. */
+export interface UserRef {
+  sql: string;
+  binds: unknown[];
+}
+
+export const userIdRef = (id: string): UserRef => ({ sql: '?', binds: [id] });
+
+type HomeRow = { home_lat: number | null; home_lng: number | null } | undefined;
+const toHome = (row: HomeRow) =>
+  row?.home_lat == null || row.home_lng == null ? null : { lat: row.home_lat, lng: row.home_lng };
+
 export async function getHome(
   db: D1Database,
   userId: string,
 ): Promise<{ lat: number; lng: number } | null> {
-  const row = await db
-    .prepare('SELECT home_lat, home_lng FROM user_private WHERE user_id = ?')
-    .bind(userId)
-    .first<{ home_lat: number | null; home_lng: number | null }>();
-  if (row?.home_lat == null || row.home_lng == null) return null;
-  return { lat: row.home_lat, lng: row.home_lng };
+  return toHome(
+    (await homeStatement(db, userIdRef(userId)).first<NonNullable<HomeRow>>()) ?? undefined,
+  );
+}
+
+function homeStatement(db: D1Database, user: UserRef): D1PreparedStatement {
+  return db
+    .prepare(`SELECT home_lat, home_lng FROM user_private WHERE user_id = ${user.sql}`)
+    .bind(...user.binds);
+}
+
+/** Sign-up openness only needs the database when it's "first account only". */
+const signupNeedsData = (env: Env) => env.SIGNUP_OPEN !== 'true' && !ownerSub(env);
+const ANY_USER_SQL = 'SELECT 1 AS one FROM users LIMIT 1';
+
+/**
+ * GET /api/me's reads beyond the profile (which comes with the session): home,
+ * and whether anyone has signed up yet when that decides `signupOpen`.
+ * Meant for one batch; decode with `readMe`.
+ */
+export function meStatements(env: Env, db: D1Database, user: UserRef): D1PreparedStatement[] {
+  const stmts = [homeStatement(db, user)];
+  if (signupNeedsData(env)) stmts.push(db.prepare(ANY_USER_SQL));
+  return stmts;
+}
+
+export function readMe(
+  env: Env,
+  results: readonly D1Result[],
+): { home: { lat: number; lng: number } | null; signupOpen: boolean } {
+  const home = toHome(results[0]?.results[0] as HomeRow);
+  const open =
+    env.SIGNUP_OPEN === 'true' || (signupNeedsData(env) && (results[1]?.results.length ?? 0) === 0);
+  return { home, signupOpen: open };
 }
 
 export async function updateUser(
@@ -84,10 +125,8 @@ export function admission(env: Env, sub: string): Admission {
 
 /** For GET /api/me: could a new Apple ID sign up right now? */
 export async function signupOpen(env: Env): Promise<boolean> {
-  if (env.SIGNUP_OPEN === 'true') return true;
-  if (ownerSub(env)) return false;
-  const row = await env.DB.prepare('SELECT 1 AS one FROM users LIMIT 1').first();
-  return row === null;
+  if (!signupNeedsData(env)) return env.SIGNUP_OPEN === 'true';
+  return (await env.DB.prepare(ANY_USER_SQL).first()) === null;
 }
 
 export type SignInOutcome =
@@ -96,25 +135,44 @@ export type SignInOutcome =
 interface SignInOpts {
   displayName: string | null;
   refreshToken: string | null;
+  /** Start this session for whoever signs in (same batch). */
+  session?: NewSession;
+  /** End this session (the browser's previous one) if the sign-in succeeds. */
+  replaces?: string;
 }
 
-async function findAppleUser(db: D1Database, sub: string): Promise<string | null> {
-  const row = await db
-    .prepare("SELECT user_id FROM auth_identities WHERE provider = 'apple' AND provider_sub = ?")
-    .bind(sub)
-    .first<{ user_id: string }>();
-  return row?.user_id ?? null;
-}
+const IDENTITY = "auth_identities WHERE provider = 'apple' AND provider_sub = ?";
 
-async function touchAppleUser(
-  db: D1Database,
-  userId: string,
+/**
+ * Signs in (or up) an Apple identity in ONE D1 batch (one round trip, one
+ * transaction), for returning and new users alike:
+ *
+ *   1-2. returning: bump last_login_at, keep the newest email + refresh token
+ *   3-4. new: insert the user only if there's no identity for this `sub` yet
+ *        AND admission allows it *inside the INSERT* (NOT EXISTS for the
+ *        first-account rule), then the identity only if that user row exists
+ *   5.   end the browser's previous session, if anyone got in
+ *   6.   start the new session for whoever owns the identity now
+ *   7.   read back who that is, and whether we just created them
+ *
+ * Identity is (provider, sub), never the email. Batches run one at a time, so
+ * two simultaneous first sign-ins can't both get in, and the same Apple ID
+ * twice at once ends with one account that both requests are signed in to.
+ */
+export async function signInWithApple(
+  env: Env,
   identity: AppleIdentity,
-  refreshToken: string | null,
-  at: string,
-) {
-  await db.batch([
-    db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').bind(at, userId),
+  opts: SignInOpts,
+  now = Date.now(),
+): Promise<SignInOutcome> {
+  const db = env.DB;
+  const at = iso(now);
+  const rule = admission(env, identity.sub);
+  const userId = newUserId();
+  const stmts: D1PreparedStatement[] = [
+    db
+      .prepare(`UPDATE users SET last_login_at = ? WHERE id = (SELECT user_id FROM ${IDENTITY})`)
+      .bind(at, identity.sub),
     // keep the newest refresh token (for revocation) and email; never drop a stored one
     db
       .prepare(
@@ -125,81 +183,63 @@ async function touchAppleUser(
         identity.email,
         identity.email,
         identity.emailIsRelay ? 1 : 0,
-        refreshToken,
+        opts.refreshToken,
         identity.sub,
       ),
-  ]);
-}
-
-/**
- * Finds the user for an Apple `sub`, or creates one if admission allows.
- * Identity is (provider, sub), never the email.
- *
- * Creation is one D1 batch (one transaction): the user row is inserted only
- * if the admission condition holds *inside the INSERT* (NOT EXISTS for the
- * first-account rule), and the identity row only if that user row now
- * exists. Two simultaneous first sign-ins can't both get in.
- */
-export async function signInWithApple(
-  env: Env,
-  identity: AppleIdentity,
-  opts: SignInOpts,
-  now = Date.now(),
-): Promise<SignInOutcome> {
-  const db = env.DB;
-  const at = iso(now);
-  const existing = await findAppleUser(db, identity.sub);
-  if (existing) {
-    await touchAppleUser(db, existing, identity, opts.refreshToken, at);
-    return { kind: 'existing', userId: existing };
-  }
-
-  const rule = admission(env, identity.sub);
-  if (!rule.always && !rule.ifNoUsers) return { kind: 'closed' };
-  const userId = newUserId();
-  let created: boolean;
-  try {
-    const [insertUser] = await db.batch([
+    db
+      .prepare(
+        `INSERT INTO users (id, display_name, created_at, last_login_at)
+         SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM ${IDENTITY})
+         AND (? = 1 OR (? = 1 AND NOT EXISTS (SELECT 1 FROM users)))`,
+      )
+      .bind(
+        userId,
+        opts.displayName ?? DEFAULT_DISPLAY_NAME,
+        at,
+        at,
+        identity.sub,
+        rule.always ? 1 : 0,
+        rule.ifNoUsers ? 1 : 0,
+      ),
+    db
+      .prepare(
+        `INSERT INTO auth_identities (provider, provider_sub, user_id, email, email_is_relay, refresh_token, created_at)
+         SELECT 'apple', ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ?)`,
+      )
+      .bind(
+        identity.sub,
+        userId,
+        identity.email,
+        identity.emailIsRelay ? 1 : 0,
+        opts.refreshToken,
+        at,
+        userId,
+      ),
+  ];
+  if (opts.replaces)
+    stmts.push(
       db
-        .prepare(
-          `INSERT INTO users (id, display_name, created_at, last_login_at)
-           SELECT ?, ?, ?, ? WHERE ? = 1 OR (? = 1 AND NOT EXISTS (SELECT 1 FROM users))`,
-        )
-        .bind(
-          userId,
-          opts.displayName ?? DEFAULT_DISPLAY_NAME,
-          at,
-          at,
-          rule.always ? 1 : 0,
-          rule.ifNoUsers ? 1 : 0,
-        ),
-      db
-        .prepare(
-          `INSERT INTO auth_identities (provider, provider_sub, user_id, email, email_is_relay, refresh_token, created_at)
-           SELECT 'apple', ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ?)`,
-        )
-        .bind(
-          identity.sub,
-          userId,
-          identity.email,
-          identity.emailIsRelay ? 1 : 0,
-          opts.refreshToken,
-          at,
-          userId,
-        ),
-    ]);
-    created = (insertUser?.meta.changes ?? 0) === 1;
-  } catch (e) {
-    // the same Apple ID signing in twice at once: the identity primary key
-    // rejects the second batch (rolled back as a whole); use the first
-    const raced = await findAppleUser(db, identity.sub);
-    if (raced) return { kind: 'existing', userId: raced };
-    throw e;
-  }
-  if (created) return { kind: 'created', userId };
-  // not admitted. If it was the same person racing themselves, they're in anyway.
-  const raced = await findAppleUser(db, identity.sub);
-  return raced ? { kind: 'existing', userId: raced } : { kind: 'closed' };
+        .prepare(`DELETE FROM sessions WHERE id = ? AND EXISTS (SELECT 1 FROM ${IDENTITY})`)
+        .bind(opts.replaces, identity.sub),
+    );
+  if (opts.session)
+    stmts.push(
+      insertSession(db, opts.session, {
+        sql: `SELECT user_id FROM ${IDENTITY}`,
+        binds: [identity.sub],
+      }),
+    );
+  stmts.push(
+    db
+      .prepare(`SELECT user_id, user_id = ? AS created FROM ${IDENTITY}`)
+      .bind(userId, identity.sub),
+  );
+  const results = await db.batch<{ user_id: string; created: number }>(stmts);
+  const who = results.at(-1)?.results[0];
+  if (!who) return { kind: 'closed' };
+  return who.created
+    ? { kind: 'created', userId: who.user_id }
+    : { kind: 'existing', userId: who.user_id };
 }
 
 export const DEV_USER = { id: 'u_dev', displayName: 'dev', sub: 'dev-login' } as const;

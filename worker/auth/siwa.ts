@@ -4,7 +4,7 @@
  * from Apple's REST docs ("Generate and validate tokens", "Incorporating Sign
  * in with Apple into other platforms").
  */
-import { createRemoteJWKSet, importPKCS8, jwtVerify, SignJWT, type JWTVerifyGetKey } from 'jose';
+import { importPKCS8, jwtVerify, SignJWT, type JWTVerifyGetKey } from 'jose';
 import { z } from 'zod/mini';
 import { clampName } from '../../src/contracts/me';
 import { isDevelopment, type Env } from '../env';
@@ -218,18 +218,6 @@ export async function exchangeCode(
 
 // ---------------------------------------------------------------------------
 // id_token verification
-
-const jwksCache = new Map<string, JWTVerifyGetKey>();
-/** Apple's JWKS, cached per isolate; jose refetches on an unknown `kid`. */
-export function appleJwks(env: Env): JWTVerifyGetKey {
-  const url = `${appleBase(env)}/auth/keys`;
-  let jwks = jwksCache.get(url);
-  if (!jwks) {
-    jwks = createRemoteJWKSet(new URL(url), { timeoutDuration: 5000 });
-    jwksCache.set(url, jwks);
-  }
-  return jwks;
-}
 
 const boolish = z.optional(
   z.union([

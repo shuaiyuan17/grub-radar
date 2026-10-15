@@ -47,3 +47,13 @@ export const csrf: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!verdict.ok) return apiError(c, 403, 'csrf', `cross-site request refused (${verdict.why})`);
   await next();
 };
+
+/**
+ * For cookie-authenticated writes that don't resolve a principal first
+ * (logout): the full same-origin check, as for a person's session.
+ */
+export const csrfForCookie: MiddlewareHandler<AppEnv> = async (c, next) => {
+  const verdict = checkCsrf(c.req.raw, 'user');
+  if (!verdict.ok) return apiError(c, 403, 'csrf', `cross-site request refused (${verdict.why})`);
+  await next();
+};

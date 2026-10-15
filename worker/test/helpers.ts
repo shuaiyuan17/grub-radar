@@ -54,12 +54,18 @@ export interface TokenCall {
 export function mockApple(
   apple: FakeApple,
   token: (call: TokenCall) => Promise<Response> | Response,
+  keys: () => Promise<Response> | Response = () =>
+    Response.json(apple.jwks, { headers: { 'cache-control': 'no-store' } }),
 ) {
   const realFetch = globalThis.fetch;
   const calls: TokenCall[] = [];
+  const keyFetches: number[] = [];
   const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const req = new Request(input, init);
-    if (req.url === `${APPLE_ISSUER}/auth/keys`) return Response.json(apple.jwks);
+    if (req.url === `${APPLE_ISSUER}/auth/keys`) {
+      keyFetches.push(Date.now());
+      return keys();
+    }
     if (req.url === `${APPLE_ISSUER}/auth/token` && req.method === 'POST') {
       const call = { form: new URLSearchParams(await req.text()) };
       calls.push(call);
@@ -67,7 +73,7 @@ export function mockApple(
     }
     return realFetch(input, init);
   });
-  return { calls, spy };
+  return { calls, keyFetches, spy };
 }
 
 /** A same-origin browser request to the Worker. */
@@ -128,6 +134,47 @@ export function postCallback(fields: Record<string, string>, cookie?: string) {
     },
     body: new URLSearchParams(fields).toString(),
   });
+}
+
+/** The `t` the "signing you in…" page moves on with (its meta refresh URL). */
+export async function handoffTarget(page: Response): Promise<string | null> {
+  const html = await page.clone().text();
+  return (
+    /http-equiv="refresh" content="0; url=([^"]+)"/.exec(html)?.[1]?.replaceAll('&amp;', '&') ??
+    null
+  );
+}
+
+/**
+ * What the browser does with the callback's answer: a redirect is final; the
+ * "signing you in…" page is followed (meta refresh) to /auth/finish with the
+ * hand-off cookie. `get` lets a test keep its env overrides for that request.
+ */
+export async function followHandoff(
+  handoff: Response,
+  get: (path: string, cookie: string | undefined) => Response | Promise<Response> = (
+    path,
+    cookie,
+  ) => call(path, { cookie }),
+): Promise<Response> {
+  if (handoff.status !== 200) return handoff;
+  const next = await handoffTarget(handoff);
+  if (!next) throw new Error('hand-off page without a refresh target');
+  return get(next, cookieFrom(handoff, '__Host-grub_signin') ?? undefined);
+}
+
+/** The `d1;desc="N round trips"` count from a Server-Timing header. */
+export function d1RoundTrips(res: Response): number | null {
+  const m = /\bd1;desc="(\d+) round trips"/.exec(res.headers.get('server-timing') ?? '');
+  return m?.[1] === undefined ? null : Number(m[1]);
+}
+
+/** Server-Timing metric names, in order. */
+export function timingNames(res: Response): string[] {
+  return (res.headers.get('server-timing') ?? '')
+    .split(',')
+    .map((p) => p.trim().split(';')[0] ?? '')
+    .filter(Boolean);
 }
 
 /** A session for the fixed dev user, via POST /auth/dev-login. */

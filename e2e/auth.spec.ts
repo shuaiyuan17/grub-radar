@@ -89,17 +89,23 @@ test.describe('signed out: the login wall', () => {
 test.describe('Sign in with Apple (against the local Apple stub)', () => {
   test('round trip: sign in, stay signed in, sign out', async ({ page, context }, info) => {
     const phone = info.project.name === 'phone';
+    // one Apple ID per project: Apple (and the stub) send the name only on an ID's very
+    // first sign-in, so two projects sharing one ID would race for it
+    const who = `tess${info.project.name}`;
     await page.goto('/radar');
     await wallButton(page).click();
-    await appleStub(page, 'Continue');
+    await appleStub(page, 'Continue', who);
 
     // back where we started, signed in, with the name Apple gave us
+    // via the "signing you in…" page and /auth/finish, back where we started
     await expect(page).toHaveURL(/localhost:4173\/radar$/);
     await expect(page.getByRole('slider')).toBeVisible();
     const cookie = (await context.cookies()).find((c) => c.name === '__Host-grub_session');
     expect(cookie).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Lax', path: '/' });
     expect(cookie?.domain).toBe('localhost');
     expect((await context.cookies()).find((c) => c.name === '__Host-grub_siwa')).toBeUndefined();
+    // the hand-off cookie is single use too
+    expect((await context.cookies()).find((c) => c.name === '__Host-grub_signin')).toBeUndefined();
 
     await page.goto('/');
     const account = page
@@ -123,7 +129,7 @@ test.describe('Sign in with Apple (against the local Apple stub)', () => {
 
     // the same Apple ID again is the same person (Apple sends no name the second time)
     await wallButton(page).click();
-    await appleStub(page, 'Continue');
+    await appleStub(page, 'Continue', who);
     await expect(
       page.getByRole('button', { name: /^Signed in as Tess/ }).filter({ visible: true }),
     ).toBeVisible();

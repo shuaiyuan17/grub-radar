@@ -63,3 +63,57 @@ export async function verifyValue(signed: string, secret: string): Promise<strin
     return null; // malformed base64
   }
 }
+
+const aesKeys = new Map<string, Promise<CryptoKey>>();
+/** An AES-256-GCM key derived from `secret` for one purpose (`info`), via HKDF. */
+function aesKey(secret: string, info: string): Promise<CryptoKey> {
+  const id = `${info}\u0000${secret}`;
+  let key = aesKeys.get(id);
+  if (!key) {
+    key = (async () => {
+      const ikm = await crypto.subtle.importKey('raw', encoder.encode(secret), 'HKDF', false, [
+        'deriveKey',
+      ]);
+      return crypto.subtle.deriveKey(
+        { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(32), info: encoder.encode(info) },
+        ikm,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt'],
+      );
+    })();
+    aesKeys.set(id, key);
+  }
+  return key;
+}
+
+/** `<iv b64url>.<AES-GCM ciphertext+tag b64url>`: confidential and tamper-evident. */
+export async function sealValue(payload: string, secret: string, info: string): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    await aesKey(secret, info),
+    encoder.encode(payload),
+  );
+  return `${base64url(iv)}.${base64url(new Uint8Array(ct))}`;
+}
+
+/** The payload if `sealed` was made by sealValue with the same secret and info, else null. */
+export async function openValue(
+  sealed: string,
+  secret: string,
+  info: string,
+): Promise<string | null> {
+  const [iv, ct, extra] = sealed.split('.');
+  if (!iv || !ct || extra !== undefined) return null;
+  try {
+    const pt = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: fromBase64url(iv) },
+      await aesKey(secret, info),
+      fromBase64url(ct),
+    );
+    return new TextDecoder().decode(pt);
+  } catch {
+    return null; // tampered, wrong key, or malformed base64
+  }
+}

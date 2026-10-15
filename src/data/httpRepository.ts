@@ -9,8 +9,12 @@ import { api, ApiRequestError, isUnauthorized } from '../lib/api';
  * same zod schema the domain uses, so a bad server response is an error in
  * the UI, not a broken card. A 401 anywhere means the session is gone.
  */
+/** A primed list older than this isn't handed out; list() fetches afresh. */
+const PRIMED_FOR_MS = 30_000;
+
 export class HttpSpotRepository implements WritableSpotRepository {
   readonly #onUnauthorized: () => void;
+  #primed: { at: number; list: Promise<Spot[]> } | null = null;
 
   constructor(onUnauthorized: () => void = () => undefined) {
     this.#onUnauthorized = onUnauthorized;
@@ -29,7 +33,26 @@ export class HttpSpotRepository implements WritableSpotRepository {
     return SpotSchema.parse(await (await this.#call(path, { method, body })).json());
   }
 
-  async list(): Promise<Spot[]> {
+  /**
+   * Starts GET /api/spots now, alongside GET /api/me, instead of after it: the
+   * first list() within 30 s gets this answer. Signed out, it's a quick 401
+   * (no database work on the server) and nothing else happens.
+   */
+  prime(now = Date.now()): void {
+    if (this.#primed) return;
+    const list = this.#fetchList();
+    list.catch(() => undefined); // nobody may ask; the error goes to whoever does
+    this.#primed = { at: now, list };
+  }
+
+  list(now = Date.now()): Promise<Spot[]> {
+    const primed = this.#primed;
+    this.#primed = null;
+    if (primed && now - primed.at <= PRIMED_FOR_MS) return primed.list;
+    return this.#fetchList();
+  }
+
+  async #fetchList(): Promise<Spot[]> {
     const raw: unknown = await (await this.#call('/api/spots')).json();
     // SpotListSchema: the wire shape; parseSpots: also checks ids are unique
     return parseSpots(SpotListSchema.parse(raw));
