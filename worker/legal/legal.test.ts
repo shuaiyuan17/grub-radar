@@ -124,7 +124,7 @@ describe('what the privacy policy says', () => {
     expect(html).toContain('an access token lasts 4 hours');
     expect(html).toContain('a refresh token expires after 30 days unused');
     expect(html).toContain(
-      'A registration that is never used expires after 30 days (up to 90 days for registrations created before 15 October 2026)',
+      'A registration that is never used expires after 30 days (up to 90 days for registrations created on or before 15 October 2026)',
     );
   });
 

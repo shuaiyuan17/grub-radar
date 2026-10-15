@@ -164,7 +164,7 @@ export function privacyPage(origin: string): string {
 <li>Which agent added a spot (“found by”), if one did.</li>
 </ul>
 <h3>Photos</h3>
-<p>Up to ${String(PHOTOS_PER_SPOT)} photos per spot, with an optional caption. Before upload, your browser redraws each photo and re-encodes it, which drops camera and location metadata: the GPS position, date and device details. Our server checks every upload again and <b>rejects any file that still carries camera or location metadata</b> (EXIF, including GPS, XMP, IPTC and embedded comments). An embedded colour profile may remain; it describes how to display colours and is not used to store location or camera details. Photos are stored privately: there is no public link to them.</p>
+<p>Up to ${String(PHOTOS_PER_SPOT)} photos per spot, with an optional caption. Before upload, your browser redraws each photo and re-encodes it, which drops camera and location metadata: the GPS position, date and device details. Our server checks every upload again and <b>rejects any file that still carries camera or location metadata</b> (EXIF, including GPS, XMP, IPTC and embedded comments). An embedded colour profile may remain. Photos are stored privately: there is no public link to them.</p>
 <h3>Home and location</h3>
 <ul>
 <li><b>Home</b>: if you set one, its coordinates are stored on your account, apart from your profile. Home is <b>never shown to friends or to agents</b>. For a connected agent, “home” is only ever the centre of the ~1 km grid square your home is in, so it can sort by distance without learning where you live. You can clear home at any time.</li>
@@ -179,7 +179,7 @@ export function privacyPage(origin: string): string {
 <p>When you sign in, your browser gets a session cookie. We store only a hash of it, with when the session started, when it was last used and a coarse device label such as “Safari on iPhone” (not your full browser string). Other cookies we set are short-lived and only used to complete sign-in. We use no advertising or analytics cookies, and the app loads no third-party scripts. The app keeps a few things in your browser’s own storage, such as your language choice.</p>
 <h3>Connected agents and personal tokens</h3>
 <ul>
-<li>When an AI agent registers with grub (OAuth dynamic client registration, which any app can do before anyone approves it), we store the client metadata it sends, including its name, its website and logo URLs, contact addresses if it gives any, the redirect URIs where it receives access, and other technical registration settings. A registration that is never used expires after ${days(CLIENT_REGISTRATION_TTL_S * SECOND)} days (up to 90 days for registrations created before 15 October 2026); one that keeps being used is renewed and stays.</li>
+<li>When an AI agent registers with grub (OAuth dynamic client registration, which any app can do before anyone approves it), we store the client metadata it sends, including its name, its website and logo URLs, contact addresses if it gives any, the redirect URIs where it receives access, and other technical registration settings. A registration that is never used expires after ${days(CLIENT_REGISTRATION_TTL_S * SECOND)} days (up to 90 days for registrations created on or before 15 October 2026); one that keeps being used is renewed and stays.</li>
 <li>When you connect an agent, we store what you allowed it to do and when it last used grub. Its access and refresh tokens reach the agent over HTTPS and are <b>not stored in plain text</b>: the OAuth library we use keeps only hashed or encrypted forms.</li>
 <li><b>Personal API tokens</b> you create in settings: we store only a hash of the token, its name, what it may do and when it was last used. The token itself is shown once.</li>
 </ul>
@@ -229,7 +229,7 @@ export function privacyPage(origin: string): string {
 <li><b>Sign-in state</b> (single-use records that protect sign-in) is valid for about 10 minutes and deleted within the hour after.</li>
 <li><b>Logs</b> in Cloudflare Workers Logs may include request URLs and headers. We use them only for security and debugging, and they expire after the retention period, at most 7 days.</li>
 <li><b>Invite links</b> that were used, revoked or expired are deleted within the hour once they’re more than a day old. <b>Per-day counters</b> (including the per-IP registration counters above) are deleted after a day or two.</li>
-<li><b>Agent registrations</b> nobody uses expire after ${days(CLIENT_REGISTRATION_TTL_S * SECOND)} days (up to 90 days for registrations created before 15 October 2026).</li>
+<li><b>Agent registrations</b> nobody uses expire after ${days(CLIENT_REGISTRATION_TTL_S * SECOND)} days (up to 90 days for registrations created on or before 15 October 2026).</li>
 <li>Places are shared across accounts (a restaurant has one record, whoever saves it), so a place’s name, address and location can remain after you remove it from your list. A place you typed in by hand is deleted with your spot if nobody else has it.</li>
 </ul>
 <h3>Deleting things yourself</h3>
