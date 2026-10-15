@@ -70,6 +70,19 @@ describe('on the place page', () => {
     });
   });
 
+  it('order this: a dish already there, in other case or spacing, is not added again', async () => {
+    const repository = demoRepository();
+    const update = vi.spyOn(repository, 'update');
+    const { user } = renderAt('/place/lucky-thread', { repository });
+    const order = await screen.findByRole('region', { name: 'order this' });
+    const input = within(order).getByLabelText('add a dish');
+    await user.type(input, 'Chili  Oil WONTONS');
+    await user.click(within(order).getByRole('button', { name: 'add' }));
+    expect(input).toHaveValue('');
+    expect(update).not.toHaveBeenCalled();
+    expect(within(order).getAllByRole('checkbox', { name: /chili oil wontons/i })).toHaveLength(1);
+  });
+
   it('delete asks first, then goes back to the list without it', async () => {
     const { user, router } = renderAt('/place/lucky-thread');
     await user.click(await screen.findByRole('button', { name: 'delete' }));

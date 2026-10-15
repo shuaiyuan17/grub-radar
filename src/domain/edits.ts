@@ -319,7 +319,7 @@ export function spotFromInput(
     status,
     verdict: status === 'been' ? input.verdict : undefined,
     note: orNone(input.note),
-    order: dedupeDishes(input.order ?? []).map((dish) => ({ dish, tried: false })),
+    order: dedupeDishes((input.order ?? []).map((dish) => ({ dish, tried: false }))),
     why: input.why ? { text: input.why, foundOn: today } : undefined,
     hours: input.hours,
     icon: input.icon ?? defaultIcon(input.kind),
@@ -333,11 +333,11 @@ function dedupe(items: readonly string[]): string[] {
   return [...new Set(items)];
 }
 
-/** Dishes, first spelling kept, later ones that differ only in case or whitespace dropped. */
-function dedupeDishes(dishes: readonly string[]): string[] {
+/** Dishes, first one kept, later ones that differ only in case or whitespace dropped. */
+function dedupeDishes<T extends { dish: string }>(dishes: readonly T[]): T[] {
   const seen = new Set<string>();
   return dishes.filter((d) => {
-    const key = dishKey(d);
+    const key = dishKey(d.dish);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -374,7 +374,7 @@ export function applyPatch(spot: Spot, patch: SpotPatch, today: string): Spot {
     verdict: status === 'been' ? verdict : undefined,
     note: patch.note === undefined ? spot.note : orNone(patch.note),
     myNote: patch.myNote === undefined ? spot.myNote : orNone(patch.myNote),
-    order: patch.order ?? spot.order,
+    order: patch.order ? dedupeDishes(patch.order) : spot.order,
     why,
     visibility: patch.visibility ?? spot.visibility,
   });

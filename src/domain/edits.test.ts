@@ -240,6 +240,25 @@ describe('dishes to order', () => {
     );
   });
 
+  it('a PATCH of the whole list drops dishes that differ only in case or spacing', () => {
+    const patch = SpotPatchSchema.parse({
+      order: [
+        { id: 'd4', dish: 'Cumin Lamb', tried: true },
+        { dish: 'cumin  lamb', tried: false },
+        { dish: 'mapo tofu', tried: false },
+      ],
+    });
+    const next = applyPatch(base, patch, TODAY);
+    expect(next.order.map((d) => [d.dish, d.tried])).toEqual([
+      ['Cumin Lamb', true],
+      ['mapo tofu', false],
+    ]);
+    // so removing one never takes two
+    expect(applyRemoveDish(next, dish('cumin lamb')).order.map((d) => d.dish)).toEqual([
+      'mapo tofu',
+    ]);
+  });
+
   it('add_spot drops dishes that differ only in case or spacing', () => {
     const spot = spotFromInput(
       'p-x',

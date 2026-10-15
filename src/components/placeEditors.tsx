@@ -8,7 +8,7 @@ import {
   type Verdict,
   type Visibility,
 } from '../domain/spot';
-import { parseNoteEntries, type SpotPatch } from '../domain/edits';
+import { dishKey, parseNoteEntries, type SpotPatch } from '../domain/edits';
 import { useT } from '../i18n/context';
 import { saveErrorMessage } from '../lib/errors';
 import { localDate, useSpots, type SpotActions } from '../lib/spots';
@@ -252,7 +252,7 @@ export function OrderEditor({ spot }: { spot: Spot }) {
     e.preventDefault();
     const name = dish.trim();
     if (!name || full) return;
-    if (spot.order.some((o) => o.dish === name)) {
+    if (spot.order.some((o) => dishKey(o.dish) === dishKey(name))) {
       setDish('');
       return;
     }
