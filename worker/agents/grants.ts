@@ -30,11 +30,32 @@ export async function allGrants(
   return out;
 }
 
-/** A client id that is a metadata document URL (CIMD), as opposed to a registered id. */
+/**
+ * The raw path of a client id, as @cloudflare/workers-oauth-provider reads it
+ * (its unexported `rawPath`): not `new URL().pathname`, which normalises.
+ */
+function rawPath(clientId: string): string {
+  const schemeEnd = clientId.indexOf('://');
+  if (schemeEnd === -1) return '';
+  const authorityStart = schemeEnd + 3;
+  const authorityEnd = clientId.slice(authorityStart).search(/[/?#]/);
+  if (authorityEnd === -1) return '';
+  const pathStart = authorityStart + authorityEnd;
+  if (clientId[pathStart] !== '/') return '';
+  const pathEnd = clientId.slice(pathStart).search(/[?#]/);
+  return pathEnd === -1
+    ? clientId.slice(pathStart)
+    : clientId.slice(pathStart, pathStart + pathEnd);
+}
+
+/**
+ * A client id that is a metadata document URL (CIMD), as opposed to a registered
+ * id. Mirrors the provider's `isClientIdMetadataDocumentUrl` exactly, so a bare
+ * `https://agent.example/` counts too.
+ */
 export const isCimdClientId = (clientId: string) => {
   try {
-    const u = new URL(clientId);
-    return u.protocol === 'https:' && u.pathname.length > 1;
+    return new URL(clientId).protocol === 'https:' && rawPath(clientId) !== '';
   } catch {
     return false;
   }
