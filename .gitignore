@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+*.tsbuildinfo
+
+# local env (your real home origin lives here, never commit it)
+.env
+.env.local
+.env.*.local
+*.local
+
+# test output
+coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# logs + os/editor junk
+*.log
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
