@@ -35,4 +35,8 @@ function securityHeaders(): Plugin {
 // Tests live in vitest.config.ts.
 export default defineConfig({
   plugins: [react(), bootLang(), securityHeaders(), cloudflare()],
+  build: {
+    // keep fonts as files: the CSP allows font-src 'self' only, no data: URIs
+    assetsInlineLimit: (file) => (/\.(woff2?|ttf|otf)$/.test(file) ? false : undefined),
+  },
 });
