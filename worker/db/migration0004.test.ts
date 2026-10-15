@@ -35,6 +35,10 @@ let after: Record<string, unknown[]> = {};
 
 beforeAll(async () => {
   for (const t of [
+    'daily_counts',
+    'agent_grants_revoked',
+    'agent_grants_seen',
+    'api_tokens',
     'auth_states_used',
     'photo_deletions',
     'photos',

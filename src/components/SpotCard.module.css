@@ -153,3 +153,17 @@
     display: inline;
   }
 }
+
+/* "found by Claude Code": the agent that added it, in pencil */
+.found {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--pencil);
+  overflow-wrap: anywhere;
+}
+.agent {
+  font-family: var(--font-note);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+}

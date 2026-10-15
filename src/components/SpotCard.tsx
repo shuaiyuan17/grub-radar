@@ -55,6 +55,11 @@ export function SpotCard({
         <div className={styles.meta}>
           <CuisineOrKind spot={spot} /> · <PriceText price={spot.price} />
         </div>
+        {spot.foundBy && (
+          <p className={styles.found}>
+            {t.foundByAgent} <bdi className={styles.agent}>{spot.foundBy}</bdi>
+          </p>
+        )}
       </div>
       <div className={styles.time}>
         <span className={styles.minutes}>{t.minutes(travel.minutes)}</span>

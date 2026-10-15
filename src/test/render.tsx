@@ -17,6 +17,30 @@ import { HomeClientContext, type HomeClient } from '../lib/homeClient';
 import { PlaceSearchClientContext, type PlaceSearchClient } from '../lib/placeSearch';
 import { SpotSourceContext } from '../lib/spotSource';
 import { routes } from '../routes';
+import { AgentsClientContext, type AgentsClient } from '../lib/agents';
+import type { ConnectedAgent, PersonalToken } from '../contracts/agents';
+
+/** An AgentsClient that never touches the network; every call is a spy you can re-stub. */
+export function fakeAgentsClient(agents: ConnectedAgent[] = [], tokens: PersonalToken[] = []) {
+  return {
+    agents: vi.fn<AgentsClient['agents']>(() => Promise.resolve(agents)),
+    disconnect: vi.fn<AgentsClient['disconnect']>(() => Promise.resolve()),
+    tokens: vi.fn<AgentsClient['tokens']>(() => Promise.resolve(tokens)),
+    createToken: vi.fn<AgentsClient['createToken']>((name, scopes) =>
+      Promise.resolve({
+        secret: `grub_pat_${'s'.repeat(43)}`,
+        token: {
+          id: 'pat_new',
+          name,
+          scopes,
+          createdAt: '2026-10-15T12:00:00.000Z',
+          lastUsedAt: null,
+        },
+      }),
+    ),
+    revokeToken: vi.fn<AgentsClient['revokeToken']>(() => Promise.resolve()),
+  } satisfies AgentsClient;
+}
 
 export const TEST_ME: MeResponse = {
   user: { id: 'u_test', displayName: 'Tess Lau', avatarEmoji: '🥟', nameSet: true },
@@ -146,6 +170,7 @@ export function renderAt(
     placeSearch?: PlaceSearchClient;
     friends?: FriendsClient;
     photos?: PhotosClient;
+    agents?: AgentsClient;
   } = {},
 ) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -155,6 +180,7 @@ export function renderAt(
   const repository = opts.repository ?? demoRepository();
   const friends = opts.friends ?? fakeFriendsClient();
   const photos = opts.photos ?? fakePhotosClient();
+  const agents = opts.agents ?? fakeAgentsClient();
   const auth =
     'auth' in opts
       ? opts.auth
@@ -167,6 +193,7 @@ export function renderAt(
     repository,
     friends,
     photos,
+    agents,
     ...render(
       <AuthProvider client={client} initial={auth}>
         <HomeClientContext value={homeClient}>
@@ -174,7 +201,9 @@ export function renderAt(
             <SpotSourceContext value={repository}>
               <FriendsClientContext value={friends}>
                 <PhotosClientContext value={photos}>
-                  <RouterProvider router={router} />
+                  <AgentsClientContext value={agents}>
+                    <RouterProvider router={router} />
+                  </AgentsClientContext>
                 </PhotosClientContext>
               </FriendsClientContext>
             </SpotSourceContext>

@@ -10,6 +10,7 @@ import { AddSpotPage, EditSpotPage } from './pages/SpotFormPage';
 import { FriendsPage } from './pages/FriendsPage';
 import { FriendSpotsPage } from './pages/FriendSpotsPage';
 import { InvitePage } from './pages/InvitePage';
+import { SettingsPage } from './pages/SettingsPage';
 
 export const routes: RouteObject[] = [
   {
@@ -30,6 +31,8 @@ export const routes: RouteObject[] = [
           { path: 'friends/:id', element: <FriendSpotsPage /> },
           // the token is in the fragment (/invite#<token>), never the path
           { path: 'invite', element: <InvitePage /> },
+          // connect an agent, connected agents, personal tokens
+          { path: 'settings', element: <SettingsPage /> },
           // owner-only: its own chunk; to anyone else it's the not-found page (see AdminPage)
           {
             path: 'admin',

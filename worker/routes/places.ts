@@ -18,7 +18,7 @@ import {
 import { ApplePlaceIdSchema, DATA_LANGS, type DataLang } from '../../src/domain/spot';
 import { defer, type AppEnv } from '../app';
 import { csrf } from '../auth/csrf';
-import { actingUser, prefetched, requireScope, type Prefetch } from '../auth/principal';
+import { actingUser, isAgent, prefetched, requireScope, type Prefetch } from '../auth/principal';
 import { homeFromResult, homeStatement } from '../db/users';
 import type { Env } from '../env';
 import { apiError, readBody } from '../lib/http';
@@ -93,6 +93,7 @@ async function search(c: Ctx, q: PlaceSearchQuery | { error: string }): Promise<
     userId,
     q.near,
     pre ? homeFromResult(pre[0]) : undefined,
+    { coarse: isAgent(c) },
   );
   if (!centre.ok)
     return apiError(c, 400, 'no_home', 'no home saved: set one, or pass near=lat,lng');

@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { Link } from 'react-router';
 import { useT } from '../i18n/context';
 import { firstName, useAuth } from '../lib/auth';
 import styles from './AccountMenu.module.css';
@@ -52,6 +53,15 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
             <span aria-hidden="true">{avatarEmoji} </span>
             {displayName}
           </p>
+          <Link
+            to="/settings"
+            className={`tap ${styles.menuLink}`}
+            onClick={() => {
+              setOpen(false);
+            }}
+          >
+            {t.agents.menuLink}
+          </Link>
           <button
             type="button"
             className={`tap ${styles.signOut}`}

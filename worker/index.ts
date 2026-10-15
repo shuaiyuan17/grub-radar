@@ -12,7 +12,9 @@ import { CorruptSpotError } from './db/spots';
 import { apiError } from './lib/http';
 import { timedD1 } from './lib/timedD1';
 import { Timing } from './lib/timing';
+import { agentDoor } from './agents/routes';
 import { admin, noSuchEndpoint } from './routes/admin';
+import { agentSettings } from './routes/agents';
 import { auth } from './routes/auth';
 import { friendPlacesPrefetch, friends, friendsPrefetch, invites } from './routes/friends';
 import { mapkit } from './routes/mapkit';
@@ -21,6 +23,7 @@ import { isPhotoUpload, photos, photosPrefetch } from './routes/photos';
 import { places, placesSearchPrefetch } from './routes/places';
 import { rollRoute, spots, spotsPrefetch } from './routes/spots';
 import { VERSION } from './version';
+import { publicOrigin } from './auth/siwa';
 import { sweepPhotoDeletions } from './db/photos';
 import type { Env } from './env';
 
@@ -60,6 +63,12 @@ app.use(async (c, next) => {
   // JSON and redirects need nothing; static files keep the CSP from _headers
   if (!h.has('Content-Security-Policy'))
     h.set('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+  // an API 401 tells an agent where to get a token (RFC 9728)
+  if (c.res.status === 401 && c.req.path.startsWith('/api/') && !h.has('WWW-Authenticate'))
+    h.set(
+      'WWW-Authenticate',
+      `Bearer resource_metadata="${publicOrigin(c.env, c.req.url)}/.well-known/oauth-protected-resource/api"`,
+    );
   // API answers are never cached, unless the route says otherwise (a photo: private, long)
   if (timed(c.req.path) && !h.has('Cache-Control')) h.set('Cache-Control', 'no-store');
 });
@@ -92,6 +101,7 @@ app.use(
   }),
 );
 app.route('/api/mapkit-token', mapkit);
+app.route('/api/me', agentSettings);
 app.route('/api/me', me);
 app.route('/api/places', places);
 app.route('/api/spots', spots);
@@ -104,7 +114,8 @@ app.route('/api/admin', admin);
 
 app.all('/api/*', noSuchEndpoint);
 app.all('/auth/*', (c) => apiError(c, 404, 'not_found', 'no such endpoint'));
-// the rest of run_worker_first (agent door, PR 5/6) isn't built yet: plain static handling
+// the agent door: OAuth, consent, MCP, and the docs agents read
+app.route('/', agentDoor);
 app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));
 
 app.onError((err, c) => {

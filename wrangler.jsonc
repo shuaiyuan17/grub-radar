@@ -3,6 +3,9 @@
   "name": "grub-radar",
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-14",
+  // Outbound fetches never take same-zone shortcuts: required for the OAuth server to fetch a
+  // client's Client ID Metadata Document safely (SSRF protection), see worker/agents/oauth.ts.
+  "compatibility_flags": ["global_fetch_strictly_public"],
   "upload_source_maps": true,
   "observability": { "enabled": true },
   // The Cloudflare Vite plugin builds the SPA into dist/client and points the
@@ -22,6 +25,7 @@
       "/.well-known/*",
       "/openapi.json",
       "/llms.txt",
+      "/agent-setup.md",
     ],
   },
   "d1_databases": [
@@ -65,7 +69,30 @@
       "namespace_id": "1005",
       "simple": { "limit": 30, "period": 60 },
     },
+    // Every request an agent makes (MCP at /mcp, REST with a personal token or OAuth token),
+    // per credential, on top of the write and search brakes above.
+    {
+      "name": "AGENT_LIMITER",
+      "namespace_id": "1006",
+      "simple": { "limit": 120, "period": 60 },
+    },
+    // The OAuth server (/authorize, /oauth/token, /oauth/register), per client IP.
+    {
+      "name": "OAUTH_LIMITER",
+      "namespace_id": "1007",
+      "simple": { "limit": 30, "period": 60 },
+    },
+    // Bad bearer tokens (unknown, malformed, revoked), per client IP: past this, that IP's
+    // tokens aren't looked up for a minute, so junk can't spend KV reads (worker/agents/oauth.ts).
+    {
+      "name": "BEARER_FAIL_LIMITER",
+      "namespace_id": "1008",
+      "simple": { "limit": 20, "period": 60 },
+    },
   ],
+  // The OAuth server's own store (workers-oauth-provider): agent clients, grants and tokens, all
+  // hashed or encrypted by the library. Nothing else goes here: KV allows 1,000 writes a day.
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "f244df2d3e084470ae3ab08a2826e365" }],
   // Photo bytes. Private bucket: no public access, no r2.dev URL, no custom domain. The Worker
   // serves every photo at /api/photos/:id after checking who's asking (worker/routes/photos.ts).
   "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "grub-radar-photos" }],

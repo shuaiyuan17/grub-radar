@@ -22,3 +22,5 @@ export const newVisitId = () => `v_${ulid()}`;
 export const newInviteId = () => `inv_${ulid()}`;
 /** Names a photo; also the last part of its R2 key. */
 export const newPhotoId = () => `ph_${ulid()}`;
+/** Names a personal API token (for listing and revoking). Not the secret. */
+export const newTokenId = () => `pat_${ulid()}`;

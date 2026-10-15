@@ -10,6 +10,7 @@
  * one: the loser retries from fresh data, or gets a 409 if the caller said
  * which version it edited.
  */
+import { agentName, FOUND_BY_AGENT } from '../../src/contracts/agents';
 import type { ApplePlace } from '../../src/contracts/places';
 import {
   applyAddNote,
@@ -56,12 +57,14 @@ interface Row {
   lang: string | null;
   visibility: string;
   version: number;
+  found_by: string;
 }
 
 // explicit columns, always joined through user_places for this user
 const SELECT = `SELECT p.id, p.name, p.lat, p.lng, p.created_by, p.apple_place_id, p.address,
   up.kind, up.cuisine, up.price, up.icon, up.hours_json, up.status, up.verdict, up.note, up.my_note,
-  up.order_json, up.tags_json, up.why_text, up.why_found_on, up.lang, up.visibility, up.version
+  up.order_json, up.tags_json, up.why_text, up.why_found_on, up.lang, up.visibility, up.version,
+  up.found_by
   FROM user_places up JOIN places p ON p.id = up.place_id
   WHERE up.user_id = ?`;
 
@@ -83,6 +86,26 @@ export function spotsFromRows(result: D1Result | undefined): Spot[] {
 }
 
 const json = (s: string | null): unknown => (s === null ? undefined : JSON.parse(s));
+
+/**
+ * `found_by` as a Spot shows it: the agent's name for 'agent:<name>', else
+ * nothing ('me', 'demo', v2's 'friend:…'). A name that wouldn't pass
+ * SpotSchema (a row written under some older rule) is dropped, never fatal:
+ * one odd label must not break the whole list.
+ */
+export function agentFoundBy(f: string | undefined): string | undefined {
+  if (!f?.startsWith(FOUND_BY_AGENT)) return undefined;
+  const name = f.slice(FOUND_BY_AGENT.length);
+  if (name && agentName(name, '') === name) return name;
+  console.error('unusable found_by dropped');
+  return undefined;
+}
+
+/** What a repository may stamp: 'me', the demo import, or a well-formed 'agent:<name>'. */
+function checkFoundBy(f: string): string {
+  if (f === 'me' || f === 'demo' || agentFoundBy(f) !== undefined) return f;
+  throw new Error('found_by must be "me" or "agent:<name>"');
+}
 
 /**
  * A saved spot that no longer passes SpotSchema. Never dropped quietly (the
@@ -125,6 +148,7 @@ function toSpot(r: Row): Spot {
         // absent = the default ('friends'); anything else in the column is a CHECK violation
         visibility: r.visibility === 'private' ? 'private' : undefined,
         version: r.version,
+        foundBy: agentFoundBy(r.found_by),
       }),
     );
     if (parsed.success) return parsed.data;
@@ -168,7 +192,7 @@ export class D1SpotRepository implements WritableSpotRepository {
   ) {
     this.#db = db;
     this.#userId = userId;
-    this.#foundBy = opts.foundBy ?? 'me';
+    this.#foundBy = checkFoundBy(opts.foundBy ?? 'me');
     this.#now = opts.now ?? Date.now;
     this.#photosDeleted = opts.photosDeleted;
   }
@@ -204,7 +228,12 @@ export class D1SpotRepository implements WritableSpotRepository {
 
   async add(input: AddSpot): Promise<Spot> {
     const id = newPlaceId();
-    const spot = { ...spotFromInput(id, input, this.#today()), version: 1 };
+    const foundBy = agentFoundBy(this.#foundBy);
+    const spot = {
+      ...spotFromInput(id, input, this.#today()),
+      version: 1,
+      ...(foundBy ? { foundBy } : {}),
+    };
     const at = iso(this.#now());
     const db = this.#db;
     const cap = this.#underCap();
