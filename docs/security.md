@@ -4,6 +4,12 @@ The invariants below are load-bearing. Each has tests; a change that weakens one
 very good reason and a matching test change. The mechanics behind them are in
 [auth.md](auth.md), [agents.md](agents.md) and [data.md](data.md).
 
+The user-facing version is the [Privacy Policy](https://grub.shuaiyuan.me/privacy) (and the
+[Terms of Service](https://grub.shuaiyuan.me/terms)), rendered by `worker/legal/pages.ts` from
+the constants in `src/contracts/legal.ts`. Every claim there is meant to match the code: if a
+change here alters what is collected, kept, logged or shared, update the policy and its
+"Last updated" date in the same PR.
+
 ## This repo is public
 
 Everything in `src/data/seed.ts` is **fictional demo data** scattered around a demo origin

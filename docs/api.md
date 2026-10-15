@@ -2,8 +2,8 @@
 
 One Worker (`worker/index.ts`, Hono) answers every path listed in `assets.run_worker_first`
 in `wrangler.jsonc`: `/api/*`, `/auth/*`, `/mcp`, `/mcp/*`, `/oauth/*`, `/authorize`,
-`/.well-known/*`, `/openapi.json`, `/llms.txt`, `/agent-setup.md`. Everything else is a
-static file (or `index.html`) and never costs a Worker request.
+`/.well-known/*`, `/openapi.json`, `/llms.txt`, `/agent-setup.md`, `/privacy`, `/terms`.
+Everything else is a static file (or `index.html`) and never costs a Worker request.
 
 The agent-facing subset is described machine-readably at
 [`/openapi.json`](https://grub.shuaiyuan.me/openapi.json), generated from the zod contracts in
@@ -92,21 +92,22 @@ All session-only.
 
 ## Agents and OAuth
 
-| endpoint                                                | auth    | what                                                            |
-| ------------------------------------------------------- | ------- | --------------------------------------------------------------- |
-| `GET /api/me/agents`                                    | session | connected OAuth agents (grants)                                 |
-| `DELETE /api/me/agents/:id`                             | session | disconnect one, 204 (404 if unknown)                            |
-| `GET /api/me/tokens`                                    | session | your personal tokens                                            |
-| `POST /api/me/tokens`                                   | session | `{ name, scopes }` → the secret, once (201); at most 10 (409)   |
-| `DELETE /api/me/tokens/:id`                             | session | revoke a personal token, 204                                    |
-| `GET /authorize`, `POST /authorize`                     | session | the consent page and its answer (signs in first if needed)      |
-| `GET /oauth/resume`                                     | none    | back from sign-in to the pending consent                        |
-| `POST /oauth/register`                                  | none    | dynamic client registration; 5 per IP, 50 in all per day        |
-| `/oauth/token`, other `/oauth/*`                        | client  | the OAuth library (code → tokens, refresh)                      |
-| `GET /.well-known/oauth-authorization-server`           | none    | authorization server metadata                                   |
-| `GET /.well-known/oauth-protected-resource/mcp`, `/api` | none    | protected resource metadata                                     |
-| `/mcp`                                                  | bearer  | the MCP server (stateless); tools in [agents.md](agents.md#mcp) |
-| `GET /openapi.json`, `/llms.txt`, `/agent-setup.md`     | none    | docs for agents                                                 |
+| endpoint                                                | auth    | what                                                                   |
+| ------------------------------------------------------- | ------- | ---------------------------------------------------------------------- |
+| `GET /api/me/agents`                                    | session | connected OAuth agents (grants)                                        |
+| `DELETE /api/me/agents/:id`                             | session | disconnect one, 204 (404 if unknown)                                   |
+| `GET /api/me/tokens`                                    | session | your personal tokens                                                   |
+| `POST /api/me/tokens`                                   | session | `{ name, scopes }` → the secret, once (201); at most 10 (409)          |
+| `DELETE /api/me/tokens/:id`                             | session | revoke a personal token, 204                                           |
+| `GET /authorize`, `POST /authorize`                     | session | the consent page and its answer (signs in first if needed)             |
+| `GET /oauth/resume`                                     | none    | back from sign-in to the pending consent                               |
+| `POST /oauth/register`                                  | none    | dynamic client registration; 5 per IP, 50 in all per day               |
+| `/oauth/token`, other `/oauth/*`                        | client  | the OAuth library (code → tokens, refresh)                             |
+| `GET /.well-known/oauth-authorization-server`           | none    | authorization server metadata                                          |
+| `GET /.well-known/oauth-protected-resource/mcp`, `/api` | none    | protected resource metadata                                            |
+| `/mcp`                                                  | bearer  | the MCP server (stateless); tools in [agents.md](agents.md#mcp)        |
+| `GET /openapi.json`, `/llms.txt`, `/agent-setup.md`     | none    | docs for agents                                                        |
+| `GET /privacy`, `/terms`                                | none    | Privacy Policy and Terms of Service: HTML, no script (`worker/legal/`) |
 
 ## Admin
 

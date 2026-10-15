@@ -1,0 +1,21 @@
+/* privacy policy · terms of service: small and quiet, under the content */
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 14px;
+  color: var(--pencil);
+}
+.links a {
+  color: var(--pencil);
+  text-decoration-color: var(--rule);
+  text-underline-offset: 3px;
+  /* a comfortable tap target without changing the line's look */
+  padding: 10px 2px;
+}
+.links a:hover {
+  color: var(--ink);
+  text-decoration-color: var(--tomato);
+}

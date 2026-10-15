@@ -8,11 +8,13 @@ import { bodyLimit } from 'hono/body-limit';
 import type { AppEnv } from './app';
 import { principalResolver } from './auth/principal';
 import { sweepSpentStates } from './db/authStates';
+import { sweepHousekeeping } from './db/housekeeping';
 import { CorruptSpotError } from './db/spots';
 import { apiError } from './lib/http';
 import { timedD1 } from './lib/timedD1';
 import { Timing } from './lib/timing';
 import { agentDoor } from './agents/routes';
+import { legal } from './legal/routes';
 import { admin, noSuchEndpoint } from './routes/admin';
 import { agentSettings } from './routes/agents';
 import { auth } from './routes/auth';
@@ -114,6 +116,8 @@ app.route('/api/admin', admin);
 
 app.all('/api/*', noSuchEndpoint);
 app.all('/auth/*', (c) => apiError(c, 404, 'not_found', 'no such endpoint'));
+// the Privacy Policy and Terms of Service: public, plain HTML
+app.route('/', legal);
 // the agent door: OAuth, consent, MCP, and the docs agents read
 app.route('/', agentDoor);
 app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));
@@ -128,8 +132,9 @@ app.onError((err, c) => {
 /**
  * Cron (wrangler.jsonc triggers.crons, hourly): delete the photo bytes still
  * on the deletion outbox (anything a request's own sweep didn't finish, and
- * everything an account deletion cascaded), and the spent sign-in states that
- * can no longer be valid (auth_states_used).
+ * everything an account deletion cascaded), the spent sign-in states that
+ * can no longer be valid (auth_states_used), and dead sessions, spent invites
+ * and old per-day counters (db/housekeeping.ts).
  */
 const scheduled: ExportedHandlerScheduledHandler<Env> = (_controller, env, ctx) => {
   ctx.waitUntil(
@@ -144,6 +149,16 @@ const scheduled: ExportedHandlerScheduledHandler<Env> = (_controller, env, ctx) 
       },
       (e: unknown) => {
         console.error('state sweep failed', e instanceof Error ? e.message : e);
+      },
+    ),
+  );
+  ctx.waitUntil(
+    sweepHousekeeping(env.DB).then(
+      (r) => {
+        if (r.sessions || r.invites || r.dailyCounts) console.log('housekeeping', r);
+      },
+      (e: unknown) => {
+        console.error('housekeeping failed', e instanceof Error ? e.message : e);
       },
     ),
   );

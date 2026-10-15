@@ -3,6 +3,8 @@
   min-height: 100vh;
   min-height: 100dvh;
   display: grid;
+  /* the card in the middle, the legal links underneath */
+  grid-template-rows: 1fr auto;
   overflow: hidden;
 }
 /* layer 1: fills the screen. Rings today; a MapKit map of nearby spots next. */
@@ -93,4 +95,11 @@
   line-height: 1.15;
   text-align: center;
   transform: rotate(-1.5deg);
+}
+
+/* privacy policy · terms of service, over the rings at the bottom */
+.footer {
+  position: relative;
+  z-index: 1;
+  padding: 0 var(--page-pad) 8px;
 }

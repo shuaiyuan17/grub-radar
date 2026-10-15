@@ -7,6 +7,7 @@
  * the client's own redirect origin (where the answer goes).
  */
 import type { ConsentDescription } from '@cloudflare/workers-oauth-provider';
+import { PRIVACY_PATH, TERMS_PATH } from '../../src/contracts/legal';
 import type { PageLocale } from '../auth/signingInPage';
 
 export type ConsentScope = 'spots:read' | 'spots:write';
@@ -32,6 +33,8 @@ const COPY = {
     errorTitle: "that didn't work · grub radar",
     errorHeading: "that didn't work",
     errorBack: 'go back to your agent and connect again.',
+    privacy: 'privacy policy',
+    terms: 'terms of service',
   },
   'zh-Hans': {
     lang: 'zh-Hans',
@@ -53,6 +56,8 @@ const COPY = {
     errorTitle: '没成功 · grub radar',
     errorHeading: '没成功',
     errorBack: '回到你的 agent 重新连接。',
+    privacy: '隐私政策',
+    terms: '服务条款',
   },
 } as const;
 
@@ -63,7 +68,7 @@ export const CONSENT_STYLE = `
 @font-face{font-family:Caveat;font-weight:700;font-display:swap;src:url(/fonts/caveat-latin-700-normal.woff2) format("woff2")}
 :root{color-scheme:light;--paper:#f7f3ea;--card:#fffdf8;--ink:#1e1b18;--pencil:#5a534b;--hl:#ffd84a;--tomato:#e0583a}
 html,body{margin:0;min-height:100%;background:var(--paper) radial-gradient(#ddd5c4 1px,transparent 1.2px) 0 0/22px 22px;color:var(--ink)}
-body{display:grid;place-items:center;min-height:100vh;font:17px/1.4 "Shantell Sans","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Chalkboard SE","Comic Sans MS",cursive}
+body{display:grid;grid-template-rows:1fr auto;place-items:center;min-height:100vh;font:17px/1.4 "Shantell Sans","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Chalkboard SE","Comic Sans MS",cursive}
 main{box-sizing:border-box;width:min(30rem,calc(100% - 32px));margin:24px 0;padding:26px 24px 22px;background:var(--card);border:2.4px solid var(--ink);border-radius:22px 28px 20px 26px/26px 20px 28px 22px;box-shadow:4px 5px 0 var(--ink)}
 .brand{font:700 26px Caveat,cursive;margin:0 0 4px;transform:rotate(-2deg);display:inline-block}
 .brand span{background:linear-gradient(transparent 55%,var(--hl) 55%)}
@@ -83,6 +88,8 @@ small{display:block;font-size:13px;color:var(--pencil)}
 button{font:inherit;font-weight:700;font-size:18px;cursor:pointer;padding:10px 22px;color:var(--ink);background:var(--card);border:2.4px solid var(--ink);border-radius:14px 18px 12px 20px/18px 12px 20px 14px}
 button.go{background:var(--hl);box-shadow:3px 3px 0 var(--ink)}
 button:focus-visible,input:focus-visible{outline:3px solid var(--tomato);outline-offset:3px}
+footer{font-size:13px;color:var(--pencil);text-align:center;margin:0 0 24px}
+footer a{color:var(--pencil);margin:0 6px}
 @media (prefers-reduced-motion:no-preference){button{transition:transform .12s}button:active{transform:translate(2px,2px)}}
 `;
 
@@ -134,6 +141,7 @@ function shell(locale: PageLocale, title: string, body: string): string {
 <p class="brand"><span>grub radar</span></p>
 ${body}
 </main>
+<footer><a href="${PRIVACY_PATH}">${COPY[locale].privacy}</a> · <a href="${TERMS_PATH}">${COPY[locale].terms}</a></footer>
 </body>
 </html>
 `;

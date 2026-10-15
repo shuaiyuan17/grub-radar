@@ -23,6 +23,19 @@ describe('the login wall', () => {
     }
   });
 
+  it('links the privacy policy and terms in its footer, as plain links', () => {
+    renderAt('/', { auth: { status: 'signed-out' } });
+    const nav = within(screen.getByRole('contentinfo')).getByRole('navigation', { name: 'legal' });
+    expect(within(nav).getByRole('link', { name: 'privacy policy' })).toHaveAttribute(
+      'href',
+      '/privacy',
+    );
+    expect(within(nav).getByRole('link', { name: 'terms of service' })).toHaveAttribute(
+      'href',
+      '/terms',
+    );
+  });
+
   it('sends you to Apple and back to the page you asked for', async () => {
     const { user, client } = renderAt('/radar', { auth: { status: 'signed-out' } });
     await user.click(screen.getByRole('button', { name: 'Sign in with Apple' }));

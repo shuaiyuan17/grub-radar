@@ -45,6 +45,9 @@
 - Your list is yours: every query is scoped to your account, and nothing is public. Signed
   out, you see a sign-in page and nothing else.
 
+The details: [Privacy Policy](https://grub.shuaiyuan.me/privacy) ·
+[Terms of Service](https://grub.shuaiyuan.me/terms).
+
 ## connect your agent
 
 Point your agent at [grub.shuaiyuan.me/agent-setup.md](https://grub.shuaiyuan.me/agent-setup.md)

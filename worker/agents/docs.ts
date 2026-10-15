@@ -26,6 +26,7 @@ import {
   MarkBeenSchema,
   SpotPatchSchema,
 } from '../../src/domain/edits';
+import { CONTACT_EMAIL, PRIVACY_PATH, TERMS_PATH } from '../../src/contracts/legal';
 import { SpotSchema } from '../../src/domain/spot';
 import { VERSION } from '../version';
 
@@ -193,6 +194,8 @@ export function openApi(origin: string): object {
     info: {
       title: 'grub radar',
       version: VERSION,
+      termsOfService: `${origin}${TERMS_PATH}`,
+      contact: { email: CONTACT_EMAIL },
       description:
         "One person's list of places to eat, for their agents. Authenticate with a personal API token (Settings → personal tokens; `Authorization: Bearer grub_pat_…`) or an OAuth access token issued for this API. Errors are `{ error: { code, message } }`.",
     },
@@ -240,6 +243,12 @@ Home's coordinates are never sent to an agent. For an agent, "home" is the centr
 ## What an agent may change
 
 With spots:write: add spots, mark them been, append notes, edit a spot's fields (PATCH). Not its visibility (private vs friends) or the person's notes as a whole (PATCH myNote); those, and removing spots, are the person's alone (403).
+
+## Legal
+
+- Privacy Policy: ${origin}${PRIVACY_PATH}
+- Terms of Service: ${origin}${TERMS_PATH}
+- Contact: ${CONTACT_EMAIL}
 `;
 }
 
@@ -323,5 +332,9 @@ curl -H "Authorization: Bearer $GRUB_TOKEN" "${origin}/api/spots/nearby?origin=h
 | \`add_note\` | add a dated line to a spot's notes, in their words |
 
 Only mark visits, give verdicts or write notes when the person told you to. Never invent places, verdicts or opening hours.
+
+## Privacy and terms
+
+What grub radar keeps and who sees it: ${origin}${PRIVACY_PATH}. Terms of use: ${origin}${TERMS_PATH}. Use what you read from grub only to do what the person asked. Questions: ${CONTACT_EMAIL}.
 `;
 }

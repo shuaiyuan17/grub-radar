@@ -63,3 +63,33 @@ test('the CSP blocks nothing the app needs (wall, app, zh fonts)', async ({ page
   await page.evaluate(() => document.fonts.ready);
   expect(await violations()).toEqual([]);
 });
+
+test('the legal pages are plain HTML: signed out, without JS, nothing blocked', async ({
+  browser,
+  page,
+}) => {
+  // no JavaScript at all: still the whole page
+  const noJs = await browser.newContext({ javaScriptEnabled: false });
+  const bare = await noJs.newPage();
+  for (const [path, title] of [
+    ['/privacy', 'Privacy Policy'],
+    ['/terms', 'Terms of Service'],
+  ] as const) {
+    const res = await bare.goto(path);
+    expect(res?.status(), path).toBe(200);
+    await expect(bare.getByRole('heading', { level: 1 })).toHaveText(title);
+    await expect(bare.getByText('Last updated: 2026-10-15')).toBeVisible();
+  }
+  await noJs.close();
+
+  // from the wall's footer, with the CSP watching
+  const violations = await watchCsp(page);
+  await page.goto('/');
+  await page.getByRole('link', { name: 'privacy policy' }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Privacy Policy');
+  // the hashed style applied: the paper card, in the app's font
+  await expect(page.locator('main')).toHaveCSS('background-color', 'rgb(255, 253, 248)');
+  await page.getByRole('link', { name: 'Terms of Service' }).first().click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Terms of Service');
+  expect(await violations()).toEqual([]);
+});
