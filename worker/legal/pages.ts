@@ -336,7 +336,7 @@ export function termsPage(origin: string): string {
       {
         id: 'liability',
         title: 'Disclaimers and limitation of liability',
-        body: `<p>To the extent the law allows, grub radar is provided without warranties of any kind, express or implied, including fitness for a particular purpose and non-infringement. We aren’t liable for indirect, incidental or consequential damages, or for lost data, and our total liability for any claim relating to the service is limited to US$50. Some places don’t allow these limits, so they may not all apply to you.</p>`,
+        body: `<p>To the extent the law allows, grub radar is provided without warranties of any kind, express or implied, including fitness for a particular purpose and non-infringement. We aren’t liable for indirect, incidental or consequential damages, or for lost data, and because the service is free, our total liability for any claim relating to it is limited to the amount you paid us, which is zero. Some places don’t allow these limits, so they may not all apply to you.</p>`,
       },
       {
         id: 'law',
