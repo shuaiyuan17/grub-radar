@@ -62,6 +62,27 @@ set from the app ("set your home": use where you are now, or type `lat, lng`). I
 this browser's `localStorage` only. Until you set one, distances are measured from a demo home
 in downtown Seattle, and the app says so.
 
+## Languages: en / 中文
+
+A small **en / 中文** switch sits at the top of every page. The first visit follows the
+browser's language (any `zh-*` gets Simplified Chinese), after that your choice is remembered
+in `localStorage`, and `<html lang>` follows it.
+
+- **Catalog**: `src/i18n/messages.ts`, a typed object. English defines the shape and Chinese
+  must match it exactly, so a missing or misspelt zh string fails `tsc`. Strings with
+  `*asterisks*` mark the highlighted words. No i18n library: a typed catalog plus a context
+  is all this needs.
+- **What's translated**: all UI chrome (modes, chips, radar labels, units like 分钟 / 步行 /
+  开车 / 公里, empty states, the set-home panel, aria-labels). Spot data (names, cuisines,
+  notes) stays as written.
+- **Headlines**: Chinese has its own time-of-day lines in `src/copy/headlines.ts`, written
+  in the same casual voice rather than translated (今晚吃点啥？ / 宵夜走起？ / 周末去哪儿吃？).
+- **Fonts**: headlines use ZCOOL KuaiLe (站酷快乐体), handwritten notes use Long Cang
+  (龙藏体). Both are self-hosted via Fontsource and split into ~90 `unicode-range` slices, so
+  the browser downloads only the slices containing characters on screen. They load only when
+  Chinese is active: English visitors never fetch them (checked in Playwright).
+  `node scripts/zh-fonts.mjs` reports the bytes a first Chinese visit downloads.
+
 ## How travel time is estimated
 
 No routing API, no keys. From the great-circle (haversine) distance:
@@ -138,7 +159,8 @@ can be deployed publicly without leaking where you live.
 src/
   domain/   framework-free TypeScript: Spot schema (zod), travel-time heuristic, sorting and
             filters, findNearby, roll, pickHeadline, the SpotRepository interface. No React, no DOM.
-  copy/     editable UI copy (time-of-day headlines).
+  copy/     editable UI copy (time-of-day headlines, per language).
+  i18n/     locales, the typed message catalog, language provider, zh font loading.
   data/     where spots come from. v0: StaticSpotRepository over the in-repo seed.
   lib/      React glue: origin (home / geolocation), spots context, radar geometry.
   components/, pages/   the UI.
