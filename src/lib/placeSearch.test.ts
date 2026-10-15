@@ -1,5 +1,15 @@
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
 import { HttpSpotRepository } from '../data/httpRepository';
-import { httpPlaceSearchClient, nearParam } from './placeSearch';
+import type { LatLng } from '../domain/geo';
+import {
+  forgetPlaceAnswers,
+  httpPlaceSearchClient,
+  nearParam,
+  PlaceSearchClientContext,
+  usePlaceSearch,
+  type PlaceSearchClient,
+} from './placeSearch';
 
 const respond = (status: number, body: unknown) =>
   vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(() =>
@@ -85,5 +95,39 @@ describe('HttpSpotRepository.addApplePlace', () => {
       kind: 'food',
       lang: 'en',
     });
+  });
+});
+
+describe('usePlaceSearch remembers answers per place searched around', () => {
+  it('moving home (near is still "home") searches again instead of reusing the old answer', async () => {
+    forgetPlaceAnswers();
+    const client = {
+      search: vi.fn<PlaceSearchClient['search']>(() => Promise.resolve([])),
+    } satisfies PlaceSearchClient;
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(PlaceSearchClientContext, { value: client }, children);
+    const OLD_HOME = { lat: 47.618421, lng: -122.321937 };
+    const NEW_HOME = { lat: 47.66, lng: -122.38 };
+    const { result, rerender } = renderHook(
+      ({ centre }: { centre: LatLng }) => usePlaceSearch('pho', 'home', 'en', centre),
+      { wrapper, initialProps: { centre: OLD_HOME } },
+    );
+    await waitFor(() => {
+      expect(result.current.state.status).toBe('ready');
+    });
+    expect(client.search).toHaveBeenCalledTimes(1);
+
+    rerender({ centre: NEW_HOME });
+    // not the old home's answer
+    expect(result.current.state.status).toBe('loading');
+    await waitFor(() => {
+      expect(client.search).toHaveBeenCalledTimes(2);
+    });
+
+    // back to the old home (within the same ~1 km): remembered, no new request
+    rerender({ centre: { lat: 47.6184, lng: -122.3219 } });
+    expect(result.current.state.status).toBe('ready');
+    await act(() => new Promise((r) => setTimeout(r, 400)));
+    expect(client.search).toHaveBeenCalledTimes(2);
   });
 });

@@ -9,6 +9,7 @@ import {
   type PlaceSearchQuery,
 } from '../contracts/places';
 import type { Origin } from '../contracts/spots';
+import type { LatLng } from '../domain/geo';
 import type { DataLang } from '../domain/spot';
 import { api, ApiRequestError } from './api';
 
@@ -47,7 +48,11 @@ export const SEARCH_DEBOUNCE_MS = 350;
 export type PlaceSearchState =
   /** Not enough typed yet. */
   | { status: 'idle' }
-  /** Waiting or asking; `places` are the previous answer, kept on screen meanwhile. */
+  /**
+   * Waiting or asking. `places` are the previous answer, kept on screen
+   * (dimmed) meanwhile: they belong to another query or place, so they must
+   * not be actionable.
+   */
   | { status: 'loading'; places: readonly ApplePlace[] }
   | { status: 'ready'; q: string; places: readonly ApplePlace[] }
   | { status: 'error'; code: string };
@@ -79,10 +84,18 @@ export function usePlaceSearch(
   text: string,
   near: Origin | undefined,
   lang: DataLang,
+  /**
+   * The point the search is really around (your home's coordinates when
+   * `near` is "home"). Part of the remembered-answer key, so a moved home
+   * never gets the answers for the old one.
+   */
+  centre: LatLng,
 ): { state: PlaceSearchState; now: () => void } {
   const client = usePlaceSearchClient();
   const q = normalizeQuery(text).slice(0, SEARCH_MAX_CHARS);
-  const key = q.length >= SEARCH_MIN_CHARS ? `${lang}|${nearParam(near) ?? ''}|${q}` : null;
+  const around = nearParam(centre) ?? '';
+  const key =
+    q.length >= SEARCH_MIN_CHARS ? `${lang}|${nearParam(near) ?? ''}@${around}|${q}` : null;
   const [settled, setSettled] = useState<Settled | null>(null);
   const [last, setLast] = useState<readonly ApplePlace[]>([]);
   const [hurry, setHurry] = useState<string | null>(null);

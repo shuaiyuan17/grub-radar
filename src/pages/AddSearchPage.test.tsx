@@ -195,6 +195,40 @@ describe('add a spot from Apple Maps', () => {
   });
 });
 
+describe('while a newer search loads', () => {
+  it('the previous results stay visible but cannot be tapped', async () => {
+    const repository = repo();
+    await repository.addApplePlace({ applePlaceId: 'IF0000000000000A2' }); // Pho Real is yours
+    const add = vi.spyOn(repository, 'addApplePlace');
+    // "pho" answers; anything after it never does (still loading)
+    const search = {
+      search: vi.fn((q: { q: string }) =>
+        q.q === 'pho'
+          ? Promise.resolve(PLACES.filter((p) => p.name.toLowerCase().includes('pho')))
+          : new Promise<ApplePlace[]>(() => undefined),
+      ),
+    };
+    const { user, router } = renderAt('/add', { repository, placeSearch: search });
+    const box = await searchBox();
+    await user.type(box, 'pho');
+    const owl = await screen.findByRole('button', { name: 'Add Night Owl Pho to your radar' });
+    expect(owl).toBeEnabled();
+    await user.type(box, ' sushi');
+    await waitFor(() => {
+      expect(statusLine()).toHaveTextContent('looking…');
+    });
+    // still on screen, but not actionable
+    expect(owl).toBeDisabled();
+    expect(owl).toHaveAttribute('aria-disabled', 'true');
+    await user.click(owl);
+    expect(add).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('link', { name: 'Open Pho Real (already on your list)' }),
+    ).not.toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/add');
+  });
+});
+
 describe('editing a spot from Apple Maps', () => {
   it('keeps Apple’s name and location (not fields), the rest is yours', async () => {
     const repository = repo();

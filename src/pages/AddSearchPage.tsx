@@ -48,7 +48,9 @@ export function AddSearchPage() {
   const { from } = useOrigin();
   const { near, origin } = useSearchCentre();
   const { spots, actions } = useSpots();
-  const { state, now } = usePlaceSearch(text, near, locale);
+  const { state, now } = usePlaceSearch(text, near, locale, origin);
+  // while a newer search loads, the old results are only a placeholder: no taps
+  const stale = state.status === 'loading';
   const [adding, setAdding] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
 
@@ -67,7 +69,7 @@ export function AddSearchPage() {
   };
 
   const add = async (place: ApplePlace) => {
-    if (!actions?.addApplePlace || adding) return;
+    if (!actions?.addApplePlace || adding || stale) return;
     setAdding(place.applePlaceId);
     setFailed(null);
     try {
@@ -154,7 +156,8 @@ export function AddSearchPage() {
               origin={origin}
               spot={mine.get(place.applePlaceId)}
               adding={adding === place.applePlaceId}
-              disabled={adding !== null || !actions?.addApplePlace}
+              stale={stale}
+              disabled={stale || adding !== null || !actions?.addApplePlace}
               onAdd={() => void add(place)}
             />
           ))}
@@ -197,6 +200,7 @@ function Result({
   origin,
   spot,
   adding,
+  stale,
   disabled,
   onAdd,
 }: {
@@ -205,6 +209,8 @@ function Result({
   origin: LatLng;
   spot: Spot | undefined;
   adding: boolean;
+  /** An older answer, shown while a newer search loads: nothing here acts. */
+  stale: boolean;
   disabled: boolean;
   onAdd: () => void;
 }) {
@@ -235,7 +241,13 @@ function Result({
           {t.minutes(travel.minutes)} {t.travelMode[travel.mode]}
         </span>
       </span>
-      {spot ? (
+      {spot && stale ? (
+        <span className={`sk flat ${styles.action} ${styles.mine}`} aria-disabled="true">
+          <Ink />
+          <Icon name="check" size={16} strokeWidth={3} />
+          <span>{t.addSearch.onList}</span>
+        </span>
+      ) : spot ? (
         <Link
           viewTransition
           to={`/place/${spot.id}`}
@@ -253,6 +265,7 @@ function Result({
           className={`sk press ${styles.action}`}
           aria-label={label}
           aria-busy={adding}
+          aria-disabled={disabled}
           disabled={disabled}
           onClick={onAdd}
         >
