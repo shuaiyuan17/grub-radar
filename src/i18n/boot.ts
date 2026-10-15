@@ -1,5 +1,5 @@
-import { detectLocale, LOCALES } from './locales';
-import { LANG_KEY } from './storage';
+import { detectLocale, LOCALES } from './locales.ts';
+import { LANG_KEY } from './storage.ts';
 
 /**
  * A tiny classic script for <head> that sets <html lang> before first paint,

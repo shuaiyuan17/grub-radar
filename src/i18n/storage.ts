@@ -1,4 +1,4 @@
-import { detectLocale, isLocale, type Locale } from './locales';
+import { detectLocale, isLocale, type Locale } from './locales.ts';
 
 export const LANG_KEY = 'grub-radar:lang';
 

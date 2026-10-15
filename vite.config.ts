@@ -1,7 +1,7 @@
 /// <reference types="vitest/config" />
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
-import { bootLangScript } from './src/i18n/boot';
+import { bootLangScript } from './src/i18n/boot.ts';
 
 /** Sets <html lang> from the saved/browser language before first paint. */
 function bootLang(): Plugin {
