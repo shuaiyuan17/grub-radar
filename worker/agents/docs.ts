@@ -233,7 +233,7 @@ How to connect (and the rules for doing it): ${origin}/agent-setup.md
 
 - OpenAPI: ${origin}/openapi.json
 - Auth: \`Authorization: Bearer grub_pat_…\` (a personal token the person makes in Settings) or an OAuth token for ${origin}/api
-- Scopes: spots:read (read), spots:write (add, edit, mark been, notes)
+- Scopes: spots:read (read), spots:write (add, edit, mark been, notes, dishes)
 - Main calls: GET /api/spots, GET /api/spots/nearby?origin=home, POST /api/spots, POST /api/spots/{id}/been, POST /api/spots/{id}/notes, POST /api/roll, GET /api/places/search?q=
 
 ## Privacy
@@ -242,7 +242,7 @@ Home's coordinates are never sent to an agent. For an agent, "home" is the centr
 
 ## What an agent may change
 
-With spots:write: add spots, mark them been, append notes, edit a spot's fields (PATCH). Not its visibility (private vs friends) or the person's notes as a whole (PATCH myNote); those, and removing spots, are the person's alone (403).
+With spots:write: add spots, mark them been, append notes, add or remove dishes to order (only ones the person named), edit a spot's fields (PATCH). Not its visibility (private vs friends) or the person's notes as a whole (PATCH myNote); those, and removing spots, are the person's alone (403).
 
 ## Legal
 
