@@ -21,6 +21,7 @@ import {
   answerConsent,
   authorizeUrl,
   connectAgent,
+  exchangeCode,
   mcpClient,
   openConsent,
   pkce,
@@ -29,7 +30,9 @@ import {
 } from '../test/agents';
 import { fakeAppleMaps, type FakeAppleMaps } from '../test/appleMaps';
 import { call, ORIGIN, send, userSession } from '../test/helpers';
+import { allGrants } from './grants';
 import { buildServer } from './mcp';
+import { authServer } from './oauth';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -441,5 +444,175 @@ describe('"home" is the grid point on every path that searches Apple Maps', () =
     await client.callTool({ name: 'add_spot', arguments: { query: 'paper kite' } });
     expect(lastNear()).toBe(where(snapToGrid(HOME)));
     await client.close();
+  });
+});
+
+describe('re-authorizing: every replaced grant is revoked in D1 before KV is touched', () => {
+  const oauth = () => authServer(ORIGIN).getOAuthApi(env);
+  const marked = async (grantId: string) =>
+    (await env.DB.prepare('SELECT 1 FROM agent_grants_revoked WHERE grant_id = ?')
+      .bind(grantId)
+      .first()) !== null;
+  const grantOf = (token: string) => token.split(':')[1] ?? '';
+  const rpc = (token: string) =>
+    call('/mcp', {
+      method: 'POST',
+      headers: {
+        ...bearer(token),
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      body: '{"jsonrpc":"2.0","id":1,"method":"tools/list"}',
+    });
+
+  it('allGrants reads every page', async () => {
+    const owner = await userSession('u_pages', 'P');
+    for (const n of ['A', 'B', 'C']) await connectAgent(owner, { name: n });
+    expect(await allGrants(oauth(), 'u_pages', 1)).toHaveLength(3);
+  });
+
+  it('marks all matching grants, across KV list pages, and only those', async () => {
+    const owner = await userSession('u_many', 'M');
+    const first = await connectAgent(owner, { name: 'Many' });
+    // two more grants for the same client and resource (as a race or a slow KV could leave)
+    const { challenge } = await pkce();
+    const request = await oauth().parseAuthRequest(
+      new Request(authorizeUrl(first.clientId, challenge)),
+    );
+    const extra: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const { redirectTo } = await oauth().completeAuthorization({
+        request,
+        userId: 'u_many',
+        metadata: {},
+        scope: ['spots:read'],
+        props: { userId: 'u_many', clientName: 'Many' },
+        revokeExistingGrants: false,
+      });
+      extra.push(new URL(redirectTo).searchParams.get('code')?.split(':')[1] ?? '');
+    }
+    // the same client's grant for the other resource, and another client's: not replaced
+    const { challenge: forApi } = await pkce();
+    const apiRequest = await oauth().parseAuthRequest(
+      new Request(authorizeUrl(first.clientId, forApi, { resource: `${ORIGIN}/api` })),
+    );
+    const { redirectTo: apiCode } = await oauth().completeAuthorization({
+      request: apiRequest,
+      userId: 'u_many',
+      metadata: {},
+      scope: ['spots:read'],
+      props: { userId: 'u_many', clientName: 'Many' },
+    });
+    const otherResource = new URL(apiCode).searchParams.get('code')?.split(':')[1] ?? '';
+    const otherClient = await connectAgent(owner, { name: 'Other' });
+    // one grant per KV list page
+    const list = env.OAUTH_KV.list.bind(env.OAUTH_KV);
+    vi.spyOn(env.OAUTH_KV, 'list').mockImplementation((opts?: KVNamespaceListOptions) =>
+      list({ ...opts, limit: 1 }),
+    );
+    const { challenge: again } = await pkce();
+    const page = await openConsent(authorizeUrl(first.clientId, again), owner);
+    expect((await answerConsent(page.handle ?? '', page.cookie)).status).toBe(302);
+    for (const id of [grantOf(first.access_token), ...extra]) expect(await marked(id)).toBe(true);
+    expect(await marked(otherResource)).toBe(false);
+    expect(await marked(grantOf(otherClient.access_token))).toBe(false);
+  });
+
+  it('an old bearer is refused right after re-authorizing, while KV still holds its grant', async () => {
+    const owner = await userSession('u_stale', 'St');
+    const old = await connectAgent(owner, { name: 'Stale' });
+    expect((await rpc(old.access_token)).status).toBe(200);
+    // KV deletes "haven't arrived yet"
+    vi.spyOn(env.OAUTH_KV, 'delete').mockResolvedValue(undefined);
+    const { challenge } = await pkce();
+    const page = await openConsent(authorizeUrl(old.clientId, challenge), owner);
+    await answerConsent(page.handle ?? '', page.cookie);
+    const kept = await env.OAUTH_KV.list({ prefix: `grant:u_stale:${grantOf(old.access_token)}` });
+    expect(kept.keys).toHaveLength(1);
+    expect((await rpc(old.access_token)).status).toBe(401);
+    // and settings no longer lists it
+    const { agents } = await (
+      await call('/api/me/agents', { cookie: owner })
+    ).json<{
+      agents: { id: string }[];
+    }>();
+    expect(agents.map((a) => a.id)).not.toContain(grantOf(old.access_token));
+  });
+
+  it("a metadata-URL client's other installation stays connected", async () => {
+    const clientId = 'https://agent.example/oauth/two-installs.json';
+    const A = 'https://agent.example/cb-a';
+    const B = 'https://agent.example/cb-b';
+    const realFetch = globalThis.fetch;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) =>
+      new Request(input, init).url === clientId
+        ? Promise.resolve(
+            Response.json({
+              client_id: clientId,
+              client_name: 'Two Installs',
+              redirect_uris: [A, B],
+              token_endpoint_auth_method: 'none',
+            }),
+          )
+        : realFetch(input, init),
+    );
+    const owner = await userSession('u_installs', 'I');
+    const connect = async (redirect: string) => {
+      const { verifier, challenge } = await pkce();
+      const page = await openConsent(authorizeUrl(clientId, challenge, { redirect }), owner);
+      const answer = await answerConsent(page.handle ?? '', page.cookie);
+      const code = new URL(answer.headers.get('location') ?? '').searchParams.get('code') ?? '';
+      const res = await exchangeCode(clientId, code, verifier, redirect);
+      return (await res.json<{ access_token: string }>()).access_token;
+    };
+    const onA = await connect(A);
+    await connect(B);
+    expect(await marked(grantOf(onA))).toBe(false);
+    expect((await rpc(onA)).status).toBe(200);
+    // the same installation again does replace it
+    await connect(A);
+    expect(await marked(grantOf(onA))).toBe(true);
+  });
+});
+
+describe('registration caps: only registrations that happen count', () => {
+  it('malformed registrations use none of the daily budget', async () => {
+    const ip = '203.0.113.50';
+    const count = async (key: string) =>
+      (
+        await env.DB.prepare('SELECT count FROM daily_counts WHERE key = ?')
+          .bind(key)
+          .first<{ count: number }>()
+      )?.count ?? 0;
+    const globalBefore = await count('register');
+    const register = (body: unknown) =>
+      call('/oauth/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'cf-connecting-ip': ip },
+        body: typeof body === 'string' ? body : JSON.stringify(body),
+      });
+    for (const bad of [
+      'not json',
+      {},
+      { client_name: 'x' },
+      { client_name: 'x', redirect_uris: ['javascript:alert(1)'] },
+      { client_name: 'x', redirect_uris: ['http://remote.example/cb'] },
+      { client_name: 'x', redirect_uris: ['https://x.example/cb#frag'] },
+      { client_name: 'x', redirect_uris: ['https://x.example/cb'], grant_types: ['password'] },
+    ]) {
+      const res = await register(bad);
+      expect(res.status, JSON.stringify(bad)).toBeGreaterThanOrEqual(400);
+      expect(res.status).toBeLessThan(500);
+    }
+    expect(await count(`register:${ip}`)).toBe(0);
+    expect(await count('register')).toBe(globalBefore);
+    const good = {
+      client_name: 'ok',
+      redirect_uris: ['https://x.example/cb'],
+      token_endpoint_auth_method: 'none',
+    };
+    for (let i = 0; i < 5; i++) expect((await register(good)).status).toBe(201);
+    expect((await register(good)).status).toBe(429);
+    expect(await count('register')).toBe(globalBefore + 5);
   });
 });

@@ -17,6 +17,7 @@ import {
   TOKENS_MAX,
   type ConnectedAgent,
 } from '../../src/contracts/agents';
+import { allGrants } from '../agents/grants';
 import { authServer, agentOrigin } from '../agents/oauth';
 import type { AppEnv } from '../app';
 import { csrf } from '../auth/csrf';
@@ -26,6 +27,7 @@ import {
   forgetGrant,
   grantsSeen,
   listTokens,
+  revokedGrants,
   revokeGrantStatement,
   revokeToken,
 } from '../db/agents';
@@ -44,18 +46,17 @@ agentSettings.use(requireSession);
 
 const write = [csrf, limitWrites] as const;
 
-/** Every grant of this person's, across pages (a person has a handful). */
+/**
+ * This person's grants, every page, minus any marked revoked in D1 (a grant
+ * the provider hasn't finished deleting from KV yet is already gone).
+ */
 async function grantsOf(c: Context<AppEnv>, userId: string): Promise<GrantSummary[]> {
   const oauth = authServer(agentOrigin(c)).getOAuthApi(c.env);
-  const out: GrantSummary[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < 5; page++) {
-    const res = await oauth.listUserGrants(userId, cursor ? { cursor } : {});
-    out.push(...res.items);
-    cursor = res.cursor;
-    if (!cursor) break;
-  }
-  return out;
+  const [grants, revoked] = await Promise.all([
+    allGrants(oauth, userId),
+    revokedGrants(c.env.DB, userId),
+  ]);
+  return grants.filter((g) => !revoked.has(g.id));
 }
 
 agentSettings.get('/agents', async (c) => {

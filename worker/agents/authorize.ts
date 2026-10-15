@@ -29,6 +29,7 @@ import { localeFromAcceptLanguage } from '../auth/signingInPage';
 import { openValue, sealValue } from '../lib/crypto';
 import type { GrantMetadata } from '../routes/agents';
 import { consentCsp, consentErrorPage, consentPage } from './consentPage';
+import { allGrants, replacedBy } from './grants';
 import { agentOrigin, authServer, CONSENTS_PER_DAY, GRANTABLE_SCOPES, oauthAllowed } from './oauth';
 
 type Ctx = Context<AppEnv>;
@@ -164,11 +165,14 @@ authorize.post('/authorize', async (c) => {
       clientName,
       ...(details.clientDomain ? { clientDomain: details.clientDomain } : {}),
     };
-    // completeAuthorization revokes this client's earlier grant(s) for the same resource
-    // (in KV only): mark them in D1 too, so they stop everywhere at once
-    const earlier = (await oauth.listUserGrants(me.userId)).items.filter(
-      (g) => g.clientId === pending.request.clientId && sameResource(g.resource, pending.request),
+    // completeAuthorization deletes the grants this one replaces, from KV only (eventually
+    // consistent). Mark every one of them revoked in D1 first, so no old bearer works for a
+    // moment longer anywhere. (If completing then fails, they stay revoked: reconnect.)
+    const replaced = (await allGrants(oauth, me.userId)).filter((g) =>
+      replacedBy(g, pending.request),
     );
+    if (replaced.length)
+      await c.env.DB.batch(replaced.map((g) => revokeGrantStatement(c.env.DB, g.id, me.userId)));
     const { redirectTo } = await oauth.completeAuthorization({
       request: { ...pending.request, scope },
       userId: me.userId,
@@ -176,19 +180,12 @@ authorize.post('/authorize', async (c) => {
       scope,
       props: { userId: me.userId, clientName },
     });
-    if (earlier.length)
-      await c.env.DB.batch(earlier.map((g) => revokeGrantStatement(c.env.DB, g.id, me.userId)));
     pending.headers.set('Location', redirectTo);
     return new Response(null, { status: 302, headers: pending.headers });
   } catch (e) {
     return authError(c, e);
   }
 });
-
-/** Is a stored grant for the resource this request asks for? (Parsed requests always name one.) */
-function sameResource(resource: string | string[] | undefined, request: AuthRequest): boolean {
-  return (Array.isArray(resource) ? resource[0] : resource) === request.resource;
-}
 
 /** Back from Sign in with Apple: on to the consent page with the waiting request. */
 authorize.get('/oauth/resume', async (c) => {

@@ -12,7 +12,7 @@
  */
 import { Hono, type Context } from 'hono';
 import { executionCtx, type AppEnv } from '../app';
-import { admitDaily } from '../db/agents';
+import { admitDaily, refundDaily } from '../db/agents';
 import { isDevelopment } from '../env';
 import { apiError } from '../lib/http';
 import { authorize } from './authorize';
@@ -34,16 +34,33 @@ const toAuthServer = (c: Context<AppEnv>) =>
 
 agentDoor.route('/', authorize);
 
+/**
+ * Dynamic client registration. Each one is a KV write and anyone may
+ * register, so there's a daily cap per IP (one IP can't use up the day for
+ * everyone) and one for everyone. A slot is reserved before the provider
+ * sees the request (compare-and-set in SQL, so the caps hold under races)
+ * and given back if the provider refuses it: malformed registrations cost
+ * nothing.
+ */
 agentDoor.post('/oauth/register', async (c) => {
   if (!(await oauthAllowed(c))) return apiError(c, 429, 'rate_limited', 'slow down');
-  // each registration is a KV write, and anyone may register: a daily cap per IP (so one IP
-  // can't use up the day for everyone), then one for everyone
+  const now = Date.now();
+  const db = c.env.DB;
   const ip = c.req.header('cf-connecting-ip') ?? (isDevelopment(c.env) ? null : 'unknown');
-  if (ip && !(await admitDaily(c.env.DB, `register:${ip}`, REGISTRATIONS_PER_IP_PER_DAY)))
+  const perIp = ip ? `register:${ip}` : null;
+  if (perIp && !(await admitDaily(db, perIp, REGISTRATIONS_PER_IP_PER_DAY, now)))
     return apiError(c, 429, 'rate_limited', 'too many new apps from here today, try tomorrow');
-  if (!(await admitDaily(c.env.DB, 'register', REGISTRATIONS_PER_DAY)))
+  if (!(await admitDaily(db, 'register', REGISTRATIONS_PER_DAY, now))) {
+    if (perIp) await refundDaily(db, perIp, now);
     return apiError(c, 429, 'rate_limited', 'too many new apps today, try tomorrow');
-  return toAuthServer(c);
+  }
+  const res = await toAuthServer(c);
+  if (res.status !== 201)
+    await Promise.all([
+      refundDaily(db, 'register', now),
+      ...(perIp ? [refundDaily(db, perIp, now)] : []),
+    ]);
+  return res;
 });
 
 agentDoor.all('/oauth/*', async (c) => {

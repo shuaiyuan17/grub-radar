@@ -202,3 +202,20 @@ export async function isGrantRevoked(db: D1Database, grantId: string): Promise<b
     .first();
   return row !== null;
 }
+
+/** The ids of `userId`'s grants marked revoked. */
+export async function revokedGrants(db: D1Database, userId: string): Promise<Set<string>> {
+  const { results } = await db
+    .prepare('SELECT grant_id FROM agent_grants_revoked WHERE user_id = ?')
+    .bind(userId)
+    .all<{ grant_id: string }>();
+  return new Set(results.map((r) => r.grant_id));
+}
+
+/** Gives back one `key` counted by admitDaily at `now` (a request it let through came to nothing). */
+export async function refundDaily(db: D1Database, key: string, now: number) {
+  await db
+    .prepare('UPDATE daily_counts SET count = count - 1 WHERE key = ? AND day = ? AND count > 0')
+    .bind(key, iso(now).slice(0, 10))
+    .run();
+}
