@@ -18,7 +18,7 @@ export const SEED_SPOTS = [
     price: '$$',
     tags: ['noodles', 'spicy'],
     status: 'been',
-    rating: 9,
+    verdict: 'good',
     note: 'cumin lamb, extra chili. trust.',
     order: [
       { dish: 'cumin lamb biang biang', tried: true },
@@ -84,7 +84,7 @@ export const SEED_SPOTS = [
     price: '$',
     tags: ['tacos', 'cheap'],
     status: 'been',
-    rating: 8,
+    verdict: 'good',
     note: 'al pastor off the spit',
     order: [
       { dish: 'al pastor tacos', tried: true },
@@ -121,7 +121,7 @@ export const SEED_SPOTS = [
     price: '$',
     tags: ['espresso', 'pastry'],
     status: 'been',
-    rating: 8,
+    verdict: 'good',
     note: 'cortado + cardamom bun',
     order: [
       { dish: 'cortado', tried: true },
@@ -192,7 +192,7 @@ export const SEED_SPOTS = [
     price: '$',
     tags: ['bakery', 'pastry'],
     status: 'been',
-    rating: 9,
+    verdict: 'good',
     note: 'morning buns before 10am',
     order: [
       { dish: 'morning bun', tried: true },

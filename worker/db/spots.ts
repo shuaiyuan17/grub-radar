@@ -26,7 +26,7 @@ import {
   type SpotPatch,
 } from '../../src/domain/edits';
 import type { WritableSpotRepository } from '../../src/domain/repository';
-import { LIMITS, SpotSchema, type Kind, type Spot } from '../../src/domain/spot';
+import { LIMITS, SpotSchema, type Kind, type Spot, type Verdict } from '../../src/domain/spot';
 import { newPlaceId, newVisitId } from '../lib/ids';
 import { userIdRef, type UserRef } from './users';
 import { iso, isoDate } from '../lib/time';
@@ -41,11 +41,11 @@ interface Row {
   address: string | null;
   kind: string;
   cuisine: string;
-  price: string;
+  price: string | null;
   icon: string;
   hours_json: string | null;
   status: string;
-  rating: number | null;
+  verdict: string | null;
   note: string;
   my_note: string | null;
   order_json: string;
@@ -58,7 +58,7 @@ interface Row {
 
 // explicit columns, always joined through user_places for this user
 const SELECT = `SELECT p.id, p.name, p.lat, p.lng, p.created_by, p.apple_place_id, p.address,
-  up.kind, up.cuisine, up.price, up.icon, up.hours_json, up.status, up.rating, up.note, up.my_note,
+  up.kind, up.cuisine, up.price, up.icon, up.hours_json, up.status, up.verdict, up.note, up.my_note,
   up.order_json, up.tags_json, up.why_text, up.why_found_on, up.lang, up.version
   FROM user_places up JOIN places p ON p.id = up.place_id
   WHERE up.user_id = ?`;
@@ -105,10 +105,10 @@ function toSpot(r: Row): Spot {
         name: r.name,
         kind: r.kind,
         cuisine: r.cuisine || undefined,
-        price: r.price,
+        price: r.price ?? undefined,
         tags: json(r.tags_json),
         status: r.status,
-        rating: r.rating ?? undefined,
+        verdict: r.verdict ?? undefined,
         note: r.note || undefined,
         order: json(r.order_json),
         why:
@@ -207,7 +207,7 @@ export class D1SpotRepository implements WritableSpotRepository {
         .bind(this.#userId, id, ...listValues(spot), this.#foundBy, at, at, id),
     ];
     if (spot.status === 'been')
-      stmts.push(this.#visit(id, this.#today(), spot.rating, null, at, 1));
+      stmts.push(this.#visit(id, this.#today(), spot.verdict, null, at, 1));
     const [place] = await db.batch(stmts);
     if (!place?.meta.changes)
       throw new SpotOpError('list_full', `a list holds at most ${String(LIMITS.spots)} spots`);
@@ -314,7 +314,7 @@ export class D1SpotRepository implements WritableSpotRepository {
       stmts.push(
         db
           .prepare(
-            `INSERT INTO visits (id, user_id, place_id, visited_on, rating, note, created_at)
+            `INSERT INTO visits (id, user_id, place_id, visited_on, verdict, note, created_at)
              SELECT ?, ?, up.place_id, ?, ?, NULL, ? FROM user_places up
              WHERE up.user_id = ? AND up.place_id = ${placeId} AND up.version = 1
                AND up.status = 'been'
@@ -324,7 +324,7 @@ export class D1SpotRepository implements WritableSpotRepository {
             newVisitId(),
             this.#userId,
             this.#today(),
-            draft.rating ?? null,
+            draft.verdict ?? null,
             at,
             this.#userId,
             applePlaceId,
@@ -373,7 +373,7 @@ export class D1SpotRepository implements WritableSpotRepository {
       // turning a spot "been" by editing it counts as a visit, same as /been
       extra: (before, next, version, at) =>
         before.status === 'want' && next.status === 'been'
-          ? this.#visit(id, this.#today(), next.rating, null, at, version)
+          ? this.#visit(id, this.#today(), next.verdict, null, at, version)
           : null,
     });
   }
@@ -381,7 +381,7 @@ export class D1SpotRepository implements WritableSpotRepository {
   markBeen(id: string, input: MarkBeen = {}): Promise<Spot> {
     return this.#edit(id, (spot, today) => applyMarkBeen(spot, input, today), {
       extra: (_before, next, version, at) =>
-        this.#visit(id, input.on ?? this.#today(), next.rating, input.note ?? null, at, version),
+        this.#visit(id, input.on ?? this.#today(), next.verdict, input.note ?? null, at, version),
     });
   }
 
@@ -502,14 +502,14 @@ export class D1SpotRepository implements WritableSpotRepository {
   #visit(
     placeId: string,
     on: string,
-    rating: number | undefined,
+    verdict: Verdict | undefined,
     note: string | null,
     at: string,
     version: number,
   ): D1PreparedStatement {
     return this.#db
       .prepare(
-        `INSERT INTO visits (id, user_id, place_id, visited_on, rating, note, created_at)
+        `INSERT INTO visits (id, user_id, place_id, visited_on, verdict, note, created_at)
          SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS
            (SELECT 1 FROM user_places WHERE user_id = ? AND place_id = ? AND version = ?)`,
       )
@@ -518,7 +518,7 @@ export class D1SpotRepository implements WritableSpotRepository {
         this.#userId,
         placeId,
         on,
-        rating ?? null,
+        verdict ?? null,
         note,
         at,
         this.#userId,
@@ -543,7 +543,7 @@ function placeValues(s: Spot) {
 }
 
 const LIST_COLUMNS =
-  'kind, cuisine, price, icon, hours_json, status, rating, note, my_note, order_json, tags_json, why_text, why_found_on, lang';
+  'kind, cuisine, price, icon, hours_json, status, verdict, note, my_note, order_json, tags_json, why_text, why_found_on, lang';
 const LIST_MARKS = LIST_COLUMNS.split(', ')
   .map(() => '?')
   .join(', ');
@@ -553,11 +553,11 @@ function listValues(s: Spot) {
   return [
     s.kind,
     s.cuisine ?? '',
-    s.price,
+    s.price ?? null,
     s.icon,
     s.hours ? JSON.stringify(s.hours) : null,
     s.status,
-    s.rating ?? null,
+    s.verdict ?? null,
     s.note ?? '',
     s.myNote ?? null,
     JSON.stringify(s.order),

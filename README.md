@@ -55,13 +55,13 @@ The first `test:e2e` run needs `npx playwright install chromium`.
   - Search looks across every spot (name, cuisine, tags, notes, dishes) regardless of mode.
     It ignores case, accents, apostrophes (straight or curly) and punctuation, so
     `mama kos` finds "Mama Ko's".
-- `/place/:id` one spot: mark it been with a rating out of 10, change the rating or move it
+- `/place/:id` one spot: mark it been with a verdict (loved it / it was fine / nope: three stamps), change the verdict or move it
   back to "want to try", tick off and edit "order this", add dated notes, edit, delete.
 - `/add` find a place on Apple Maps (restaurants, cafés, bakeries around where you measure
   from) and put it on your radar in one tap; `?q=pho` keeps the search. Places already on your
   list say so and open your entry. Apple's places appear only here, never on the list or radar.
 - `/add/manual` add a spot by hand (name, kind, where: "use where i am" or `lat, lng`, cuisine,
-  price, cravings, status/rating, one-liner, doodle); `?name=` prefills it.
+  price (or "?", not sure), cravings, status/verdict, one-liner, doodle); `?name=` prefills it.
   `/place/:id/edit` the same form (a place from Apple Maps keeps Apple's name and location).
 - `/radar` `?reach=0..3` (10 min … road trip), `?kinds=food,coffee`, `?sel=<spot id>`.
 
@@ -126,7 +126,7 @@ and draw rings.
 
 In the app: **+ add a spot** (desktop header, phone header, or the empty list). Type a name or
 a craving ("pho", "serious pie"), tap a result: it's on your list with Apple's Place ID, name,
-location and address; set been / rating / notes / kind on the place page. Can't find it?
+location and address; set been / verdict / price / notes / kind on the place page. Apple Maps has no price or cuisine, so those start unknown and show as a hand-drawn "price?" / "cuisine?" until you say. Can't find it?
 "add it by hand". Every account starts with an empty list; spots live in D1 and are yours
 alone.
 
@@ -140,9 +140,9 @@ the signed-in dev user's list, and Playwright uses it. Seed entries look like th
   name: 'Night Owl Pho',
   kind: 'food',                   // food | coffee | bakery
   cuisine: 'pho',                 // optional
-  price: '$',                     // $ … $$$$
+  price: '$',                     // $ … $$$$; optional: leave it out if you don't know
   tags: ['soup', 'late night'],   // first tag = what it is; the rest are modifiers
-  status: 'want',                 // want | been (rating 1-10 only when been)
+  status: 'want',                 // want | been (verdict good | meh | bad only when been)
   note: 'rare beef, extra basil', // optional, ≤ 60 chars, shown in handwriting
   order: [{ dish: 'pho tai', tried: false }],
   why: { text: 'open till 3am', foundOn: '2026-10-14' }, // optional
@@ -211,7 +211,7 @@ accounts, sessions, places and everyone's own list.
 | `POST /api/places/search`       | read     | the same, `{ q, near?, lang? }` in the body (the app)           |
 | `GET /api/places/:applePlaceId` | read     | one Apple Maps place (`?lang=`)                                 |
 | `PATCH /api/spots/:id`          | write    | edit; `null` clears; stale `version` → 409; to been = visit     |
-| `POST /api/spots/:id/been`      | write    | `mark_been`: `{ rating?, on?, note? }`, records a visit         |
+| `POST /api/spots/:id/been`      | write    | `mark_been`: `{ verdict?, on?, note? }`, records a visit        |
 | `POST /api/spots/:id/notes`     | write    | `add_note`: appends `— YYYY-MM-DD: …` to your notes             |
 | `DELETE /api/spots/:id`         | write    | 204; your entry and visits go (and a manual place only you had) |
 | `POST /api/roll`                | read     | `roll`: `{ origin, maxMinutes?, kinds?, previousId? }`          |
@@ -267,7 +267,7 @@ auth_identities"`) and `wrangler secret put OWNER_APPLE_SUB`.
 
 Each person's data is scoped by their `user_id` on every query: the Worker builds a
 `D1SpotRepository` for the caller's user and every statement joins through `user_places` for
-that user. Tests check a second user can't read or write the first's spots, notes, ratings or
+that user. Tests check a second user can't read or write the first's spots, notes, verdicts or
 home through any endpoint (404s, unchanged rows, no visits recorded). "read"/"write" above
 mean a signed-in person today, or an agent with `spots:read`/`spots:write` once the agent
 door ships; home is session-only.
@@ -276,7 +276,7 @@ door ships; home is session-only.
 location, address, Apple Place ID, who created it. Apple places are shared and deduped by
 Apple Place ID: adding one someone already saved reuses that row (no Apple call); adding one
 already on your list returns your entry (200, nothing written). Everything you _say_ about a place (kind, cuisine, price, doodle,
-hours, tags, status, rating, notes, "order this") is on your own `user_places` row, so on a
+hours, tags, status, verdict, notes, "order this") is on your own `user_places` row, so on a
 shared place each person keeps their own. Only whoever created a manual place can rename or
 move it (enforced in the `UPDATE`; your entry update only lands if the place change did).
 
@@ -329,7 +329,12 @@ WNAM, so a nearby replica would save little. Revisit if users far from WNAM show
 `d1_served_by`/`d1_wall_ms`.
 
 **Database**: migrations in `migrations/`, applied with Wrangler's D1 migrations
-(`db:migrate:*`); Worker tests apply the same files. Forward-only, additive.
+(`db:migrate:*`); Worker tests apply the same files. Forward-only. Additive where SQLite
+allows; a column whose type, nullability or CHECK changes needs a table rebuild (create the
+new table, copy, drop, rename, recreate indexes), as in `0003`, which made `price` nullable
+(unknown) and turned the 1-10 rating into a good/meh/bad verdict. Data migrations get a
+Worker test that applies the earlier files, writes old-shape rows, then the rest
+(`worker/db/migrations.test.ts`).
 
 **Deploying**: always `npm run deploy` (or `deploy:built` after a build, e.g. in Workers
 Builds). It builds, applies migrations, then deploys `dist/grub_radar/wrangler.json`, the

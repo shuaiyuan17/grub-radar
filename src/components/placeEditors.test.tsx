@@ -6,30 +6,31 @@ import { demoRepository, renderAt } from '../test/render';
 const today = localDate();
 
 describe('on the place page', () => {
-  it('mark as been, with a rating and a dated note', async () => {
+  it('mark as been, with a verdict stamp and a dated note', async () => {
     const { user, repository } = renderAt('/place/mama-kos');
     await user.click(await screen.findByRole('button', { name: 'mark as been' }));
-    await user.click(screen.getByRole('radio', { name: '7/10' }));
+    await user.click(screen.getByRole('radio', { name: 'it was fine' }));
     await user.type(screen.getByLabelText('anything to remember?'), 'cash only. bring it.');
     await user.click(screen.getByRole('button', { name: 'save' }));
-    expect(await screen.findByText(/been here · 7\/10/)).toBeInTheDocument();
+    expect(await screen.findByText('· it was fine')).toBeInTheDocument();
     const mine = screen.getByRole('region', { name: 'my note' });
     expect(within(mine).getByText('cash only. bring it.')).toBeInTheDocument();
     expect(await repository.get('mama-kos')).toMatchObject({
       status: 'been',
-      rating: 7,
+      verdict: 'meh',
       myNote: `— ${today}: cash only. bring it.`,
     });
   });
 
-  it('change the rating, then move back to want to try', async () => {
+  it('change the verdict, then move back to want to try', async () => {
     const { user, repository } = renderAt('/place/lucky-thread');
-    await user.click(await screen.findByRole('button', { name: 'change rating' }));
-    await user.click(screen.getByRole('radio', { name: '10/10' }));
-    expect(await screen.findByText(/been here · 10\/10/)).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'change verdict' }));
+    await user.click(screen.getByRole('radio', { name: 'nope' }));
+    expect(await screen.findByText('· nope')).toBeInTheDocument();
+    expect((await repository.get('lucky-thread'))?.verdict).toBe('bad');
     await user.click(screen.getByRole('button', { name: 'move back to want to try' }));
     expect(await screen.findByRole('button', { name: 'mark as been' })).toBeInTheDocument();
-    expect((await repository.get('lucky-thread'))?.rating).toBeUndefined();
+    expect((await repository.get('lucky-thread'))?.verdict).toBeUndefined();
   });
 
   it('add a note: appended under the old ones, dated', async () => {
@@ -74,7 +75,7 @@ describe('on the place page', () => {
     await user.click(await screen.findByRole('button', { name: 'delete' }));
     await user.click(screen.getByRole('button', { name: 'keep it' }));
     await user.click(screen.getByRole('button', { name: 'delete' }));
-    expect(screen.getByText(/your notes and rating go with it/)).toBeInTheDocument();
+    expect(screen.getByText(/your notes and verdict go with it/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'yes, delete' }));
     await vi.waitFor(() => {
       expect(router.state.location.pathname).toBe('/');
@@ -120,9 +121,16 @@ describe('on the place page', () => {
 
   it('in Chinese too', async () => {
     localStorage.setItem('grub-radar:lang', 'zh-Hans');
-    renderAt('/place/mama-kos');
+    const { user } = renderAt('/place/mama-kos');
     expect(await screen.findByRole('button', { name: '标记去过' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '编辑这家店' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '标记去过' }));
+    const stamps = screen.getByRole('group', { name: '你的评价' });
+    expect(
+      within(stamps)
+        .getAllByRole('radio')
+        .map((r) => r.closest('label')?.textContent),
+    ).toEqual(['好吃', '一般', '不好吃']);
     localStorage.clear();
   });
 });

@@ -1,5 +1,5 @@
 import { z } from 'zod/mini';
-import { ADD_EXTRAS, ratingNeedsBeen } from '../domain/edits';
+import { ADD_EXTRAS, verdictNeedsBeen } from '../domain/edits';
 import { parseLatLng, type LatLng } from '../domain/geo';
 import {
   ApplePlaceIdSchema,
@@ -137,7 +137,7 @@ export const AddApplePlaceSchema = z
     kind: z.optional(z.enum(KINDS)),
     ...ADD_EXTRAS,
   })
-  .check(ratingNeedsBeen());
+  .check(verdictNeedsBeen());
 export type AddApplePlaceInput = z.input<typeof AddApplePlaceSchema>;
 export type AddApplePlace = z.output<typeof AddApplePlaceSchema>;
 
@@ -160,7 +160,7 @@ export const AddByQuerySchema = z
     kind: z.optional(z.enum(KINDS)),
     ...ADD_EXTRAS,
   })
-  .check(ratingNeedsBeen());
+  .check(verdictNeedsBeen());
 export type AddByQuery = z.output<typeof AddByQuerySchema>;
 
 /**

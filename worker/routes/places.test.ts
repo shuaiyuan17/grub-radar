@@ -215,6 +215,36 @@ describe('POST /api/spots with an Apple Maps place', () => {
     expect(await (await call('/api/spots', { cookie })).json()).toEqual([spot]);
   });
 
+  it('Apple Maps gives no price, so the price is unknown (not a guessed "$$"); yours if you say', async () => {
+    const cookie = await userSession('u_apple_price');
+    const spot = await spotOf(
+      await send('POST', '/api/spots', cookie, { applePlaceId: NIGHT_OWL }),
+    );
+    expect(spot.price).toBeUndefined();
+    expect(spot).not.toHaveProperty('price');
+    expect(
+      await count(
+        "SELECT COUNT(*) AS n FROM user_places WHERE user_id = 'u_apple_price' AND place_id = ? AND price IS NULL",
+        spot.id,
+      ),
+    ).toBe(1);
+    // you can say what it costs, and take it back ("not sure")
+    const priced = await spotOf(
+      await send('PATCH', `/api/spots/${spot.id}`, cookie, { price: '$$$' }),
+    );
+    expect(priced.price).toBe('$$$');
+    const unsure = await spotOf(
+      await send('PATCH', `/api/spots/${spot.id}`, cookie, { price: null }),
+    );
+    expect(unsure).not.toHaveProperty('price');
+    // and a price given with the add is kept
+    const other = await userSession('u_apple_price_2');
+    const given = await spotOf(
+      await send('POST', '/api/spots', other, { applePlaceId: NIGHT_OWL, price: '$' }),
+    );
+    expect(given.price).toBe('$');
+  });
+
   it('adding it again opens your entry: 200, nothing written, Apple not asked', async () => {
     const cookie = await userSession('u_again');
     const first = await spotOf(
@@ -226,7 +256,7 @@ describe('POST /api/spots with an Apple Maps place', () => {
       applePlaceId: NIGHT_OWL,
       kind: 'coffee',
       status: 'been',
-      rating: 3,
+      verdict: 'bad',
     });
     expect(again.status).toBe(200);
     expect(await spotOf(again)).toMatchObject({
@@ -251,13 +281,13 @@ describe('POST /api/spots with an Apple Maps place', () => {
       applePlaceId: PAPER_KITE,
       kind: 'coffee',
       status: 'been',
-      rating: 9,
+      verdict: 'good',
       note: 'oat cortado',
     });
     expect(resB.status).toBe(201);
     const spotB = await spotOf(resB);
     expect(spotB.id).toBe(spotA.id);
-    expect(spotB).toMatchObject({ status: 'been', rating: 9, note: 'oat cortado' });
+    expect(spotB).toMatchObject({ status: 'been', verdict: 'good', note: 'oat cortado' });
     expect(apple.count('/v1/place')).toBe(lookups);
     expect(
       await count('SELECT COUNT(*) AS n FROM places WHERE apple_place_id = ?', PAPER_KITE),
@@ -485,7 +515,7 @@ describe('POST /api/spots with words (add_spot query)', () => {
 
   it.each([
     [{ query: '' }, /^query/],
-    [{ query: 'pho', rating: 8 }, /only rate places you have been to/],
+    [{ query: 'pho', verdict: 'good' }, /only give a verdict on places you have been to/],
     [{ query: 'pho', near: 'work' }, /^near/],
     [{ applePlaceId: 'not ok' }, /^applePlaceId/],
     [{ applePlaceId: 'I1', kind: 'bar' }, /^kind/],
@@ -511,10 +541,14 @@ describe('a want and a been add of the same new place, racing', () => {
     const gate = new Promise<void>((r) => {
       release = r;
     });
-    const been = repo.addApplePlace(place.applePlaceId, { status: 'been', rating: 9 }, async () => {
-      await gate;
-      return place;
-    });
+    const been = repo.addApplePlace(
+      place.applePlaceId,
+      { status: 'been', verdict: 'good' },
+      async () => {
+        await gate;
+        return place;
+      },
+    );
     // …while a "want" add of the same place gets in first
     const want = await repo.addApplePlace(place.applePlaceId, {}, () => Promise.resolve(place));
     expect(want).toMatchObject({ created: true, spot: { status: 'want' } });

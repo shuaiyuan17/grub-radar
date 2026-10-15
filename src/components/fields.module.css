@@ -92,20 +92,29 @@
   outline: 3px dashed var(--note-red);
   outline-offset: 3px;
 }
-.round {
-  flex-wrap: nowrap;
-  gap: 4px;
+.stamps {
+  gap: 10px;
 }
-/* ten across even on a 390px phone */
-.round .option {
-  flex: 1 1 0;
-  min-width: 0;
-  max-width: 44px;
-  height: 42px;
-  padding: 0;
-  justify-content: center;
+/* rubber stamps: handwriting, a little crooked, a bit bigger than a pill */
+.stamps .option {
+  min-height: 46px;
+  padding: 0 16px;
   border-radius: var(--r-round);
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-note);
+  font-size: 22px;
+  font-weight: 700;
+}
+.stamps .option:nth-child(1) {
+  transform: rotate(-3deg);
+}
+.stamps .option:nth-child(2) {
+  transform: rotate(1.5deg);
+}
+.stamps .option:nth-child(3) {
+  transform: rotate(-1deg);
+}
+.stamps .on {
+  --sh: var(--tomato);
 }
 
 .row {

@@ -18,7 +18,7 @@ describe('radar page', () => {
     const { user, router } = renderAt('/radar');
     await user.click(await screen.findByRole('button', { name: /^Hilltop Smokehouse/ }));
     const card = screen.getByRole('article', { name: 'Hilltop Smokehouse' });
-    expect(card).toHaveTextContent('bbq · 48 min drive');
+    expect(card).toHaveTextContent('bbq · $$ · 48 min drive');
     expect(screen.getByRole('button', { name: /^Hilltop Smokehouse/ })).toHaveAttribute(
       'aria-pressed',
       'true',

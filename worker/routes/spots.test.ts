@@ -65,7 +65,10 @@ describe('writing your list over HTTP', () => {
     [{ ...NEW_SPOT, name: '  ' }, /^name/],
     [{ ...NEW_SPOT, kind: 'bar' }, /^kind/],
     [{ ...NEW_SPOT, location: { lat: 91, lng: 0 } }, /^location\.lat/],
-    [{ ...NEW_SPOT, rating: 8 }, /only rate places you have been to/],
+    [{ ...NEW_SPOT, verdict: 'good' }, /only give a verdict on places you have been to/],
+    // the 1-10 score is gone: a number is not a verdict, and `rating` is not a field
+    [{ ...NEW_SPOT, status: 'been', verdict: 8 }, /^verdict/],
+    [{ ...NEW_SPOT, status: 'been', rating: 8 }, /Invalid input/],
     [{ ...NEW_SPOT, note: 'x'.repeat(61) }, /^note/],
     [{ ...NEW_SPOT, tags: Array.from({ length: 11 }, (_, i) => `t${i}`) }, /^tags/],
     [{ ...NEW_SPOT, id: 'lucky-thread' }, /id/],
@@ -95,22 +98,26 @@ describe('writing your list over HTTP', () => {
     expect(crossSite.status).toBe(403);
   });
 
-  it('mark been with a rating and a note, then rate again', async () => {
+  it('mark been with a verdict and a note, then change it', async () => {
     const res = await send('POST', `/api/spots/${id}/been`, cookie, {
-      rating: 9,
+      verdict: 'good',
       on: '2026-10-14',
       note: 'rare beef, extra basil',
     });
     expect(res.status).toBe(200);
     expect(await spotOf(res)).toMatchObject({
       status: 'been',
-      rating: 9,
+      verdict: 'good',
       myNote: '— 2026-10-14: rare beef, extra basil',
     });
-    const again = await spotOf(await send('PATCH', `/api/spots/${id}`, cookie, { rating: 10 }));
-    expect(again.rating).toBe(10);
-    const bad = await send('POST', `/api/spots/${id}/been`, cookie, { rating: 11 });
-    expect(bad.status).toBe(400);
+    const again = await spotOf(await send('PATCH', `/api/spots/${id}`, cookie, { verdict: 'meh' }));
+    expect(again.verdict).toBe('meh');
+    // numbers (the old 1-10 score) and the old field are refused, everywhere
+    for (const body of [{ verdict: 9 }, { verdict: 'great' }, { rating: 9 }]) {
+      const bad = await send('POST', `/api/spots/${id}/been`, cookie, body);
+      expect(bad.status).toBe(400);
+      expect((await send('PATCH', `/api/spots/${id}`, cookie, body)).status).toBe(400);
+    }
   });
 
   it('notes append, dated', async () => {
@@ -125,7 +132,7 @@ describe('writing your list over HTTP', () => {
     expect(empty.status).toBe(400);
   });
 
-  it('patch: order this, tags, the one-liner; back to want drops the rating', async () => {
+  it('patch: order this, tags, the one-liner; back to want drops the verdict', async () => {
     const res = await send('PATCH', `/api/spots/${id}`, cookie, {
       order: [
         { dish: 'rare beef pho', tried: true },
@@ -140,10 +147,10 @@ describe('writing your list over HTTP', () => {
       note: 'the 1am bowl',
     });
     const want = await spotOf(await send('PATCH', `/api/spots/${id}`, cookie, { status: 'want' }));
-    expect(want.rating).toBeUndefined();
-    const rateWant = await send('PATCH', `/api/spots/${id}`, cookie, { rating: 4 });
+    expect(want.verdict).toBeUndefined();
+    const rateWant = await send('PATCH', `/api/spots/${id}`, cookie, { verdict: 'bad' });
     expect(rateWant.status).toBe(400);
-    expect((await errorOf(rateWant)).code).toBe('rating_needs_been');
+    expect((await errorOf(rateWant)).code).toBe('verdict_needs_been');
     for (const body of [{}, { id: 'x' }, { status: 'meh' }]) {
       expect((await send('PATCH', `/api/spots/${id}`, cookie, body)).status).toBe(400);
     }
@@ -299,7 +306,7 @@ describe('import-demo is dev-only', () => {
   });
 });
 
-describe('user B can never read or write user A’s spots, notes, ratings or home', () => {
+describe('user B can never read or write user A’s spots, notes, verdicts or home', () => {
   let a = '';
   let b = '';
   let aSpot: Spot;
@@ -310,7 +317,7 @@ describe('user B can never read or write user A’s spots, notes, ratings or hom
     b = await userSession('u_bob', 'Bob');
     await send('PUT', '/api/me/home', a, A_HOME);
     aSpot = await spotOf(await send('POST', '/api/spots', a, { ...NEW_SPOT, note: 'A only' }));
-    await send('POST', `/api/spots/${aSpot.id}/been`, a, { rating: 8, note: A_NOTE });
+    await send('POST', `/api/spots/${aSpot.id}/been`, a, { verdict: 'good', note: A_NOTE });
     aSpot = await spotOf(await call(`/api/spots/${aSpot.id}`, { cookie: a }));
   });
 
@@ -333,8 +340,8 @@ describe('user B can never read or write user A’s spots, notes, ratings or hom
     const attempts = [
       call(path, { cookie: b }),
       send('PATCH', path, b, { name: 'pwned', note: 'pwned' }),
-      send('PATCH', path, b, { rating: 1 }),
-      send('POST', `${path}/been`, b, { rating: 1, note: 'pwned' }),
+      send('PATCH', path, b, { verdict: 'bad' }),
+      send('POST', `${path}/been`, b, { verdict: 'bad', note: 'pwned' }),
       send('POST', `${path}/notes`, b, { note: 'pwned' }),
       send('DELETE', path, b),
     ];
@@ -426,7 +433,7 @@ describe('CSRF on every write route (a valid session is not enough)', () => {
   const routes: [string, string, () => string, unknown][] = [
     ['POST', '/api/spots', () => '/api/spots', NEW_SPOT],
     ['PATCH', '/api/spots/:id', () => `/api/spots/${id}`, { note: 'pwned' }],
-    ['POST', '/api/spots/:id/been', () => `/api/spots/${id}/been`, { rating: 1 }],
+    ['POST', '/api/spots/:id/been', () => `/api/spots/${id}/been`, { verdict: 'bad' }],
     ['POST', '/api/spots/:id/notes', () => `/api/spots/${id}/notes`, { note: 'pwned' }],
     ['DELETE', '/api/spots/:id', () => `/api/spots/${id}`, {}],
     ['POST', '/api/roll', () => '/api/roll', { origin: { lat: 47.61, lng: -122.33 } }],

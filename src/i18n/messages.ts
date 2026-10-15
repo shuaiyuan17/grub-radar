@@ -1,5 +1,5 @@
 import type { ErrorCode, SigninResult } from '../contracts/errors';
-import type { Day, Hours, IconName, Kind } from '../domain/spot';
+import type { Day, Hours, IconName, Kind, Verdict } from '../domain/spot';
 import { formatMiles, formatMinutes, type TravelMode } from '../domain/travel';
 import type { Mode } from '../domain/modes';
 import type { From } from '../lib/origin';
@@ -100,6 +100,10 @@ const en = {
   been: 'been',
   wantToTry: 'want to try',
   beenHere: 'been here',
+  /** How it was: three stamps. */
+  verdicts: { good: 'loved it', meh: 'it was fine', bad: 'nope' } satisfies Record<Verdict, string>,
+  /** Shown, hand-drawn, where we don't know (never a guess). */
+  unknown: { price: 'price?', cuisine: 'cuisine?' },
   appleMaps: 'Apple Maps',
   /**
    * Labels that embed a spot name come as [before, after] around the name,
@@ -243,6 +247,8 @@ const en = {
     cuisinePlaceholder: 'e.g. pho',
     optional: '(optional)',
     price: 'price',
+    /** The "?" option: we don't know the price. */
+    priceUnknown: 'not sure',
     tags: 'cravings',
     tagsHint: 'comma separated, e.g. noodles, spicy',
     status: 'status',
@@ -265,7 +271,7 @@ const en = {
       price: 'price',
       tags: 'cravings',
       status: 'status',
-      rating: 'rating',
+      verdict: 'verdict',
       note: 'one-liner',
       icon: 'doodle',
     },
@@ -290,7 +296,7 @@ const en = {
   /** Why a save failed, by the server's error code. */
   apiErrors: {
     note_too_long: 'your notes for this spot are full.',
-    rating_needs_been: 'rate it once you’ve been.',
+    verdict_needs_been: 'save the verdict for after you’ve been.',
     not_editable: 'only whoever added this place can change its name or location.',
     conflict: 'this spot was updated somewhere else. here’s the latest; try again.',
     future_date: 'that date hasn’t happened yet.',
@@ -304,16 +310,15 @@ const en = {
 
   markBeen: 'mark as been',
   howWasIt: 'how was it?',
-  ratingGroup: 'rating, out of 10',
-  rating: (n: number) => `${n}/10`,
-  clearRating: 'no rating',
+  verdictGroup: 'your verdict',
+  clearVerdict: 'no verdict',
   anythingToRemember: 'anything to remember?',
-  changeRating: 'change rating',
+  changeVerdict: 'change verdict',
   backToWant: 'move back to want to try',
   edit: 'edit',
   editAria: 'Edit this spot',
   delete: 'delete',
-  deleteConfirm: 'delete this spot? your notes and rating go with it.',
+  deleteConfirm: 'delete this spot? your notes and verdict go with it.',
   deleteYes: 'yes, delete',
   deleteNo: 'keep it',
   addNote: 'add a note',
@@ -434,6 +439,8 @@ const zh: Messages = {
   been: '去过',
   wantToTry: '想去',
   beenHere: '去过',
+  verdicts: { good: '好吃', meh: '一般', bad: '不好吃' },
+  unknown: { price: '价位？', cuisine: '菜系？' },
   appleMaps: 'Apple 地图',
   mapsLabel: (mode) => ['带我去 ', `：在 Apple 地图中查看${mode === 'walk' ? '步行' : '驾车'}路线`],
   travelMode: { walk: '步行', drive: '开车' },
@@ -553,6 +560,7 @@ const zh: Messages = {
     cuisinePlaceholder: '比如：越南粉',
     optional: '（可不填）',
     price: '价位',
+    priceUnknown: '不确定',
     tags: '想吃',
     tagsHint: '用逗号隔开，比如：面, 辣',
     status: '状态',
@@ -574,7 +582,7 @@ const zh: Messages = {
       price: '价位',
       tags: '想吃',
       status: '状态',
-      rating: '评分',
+      verdict: '评价',
       note: '一句话',
       icon: '小图标',
     },
@@ -598,7 +606,7 @@ const zh: Messages = {
   },
   apiErrors: {
     note_too_long: '这家店的笔记写满了。',
-    rating_needs_been: '去过之后再打分。',
+    verdict_needs_been: '去过之后再评价。',
     not_editable: '只有添加这家店的人能改它的名字和位置。',
     conflict: '这家店刚在别处更新过，已显示最新内容，再试一次。',
     future_date: '那天还没到呢。',
@@ -612,16 +620,15 @@ const zh: Messages = {
 
   markBeen: '标记去过',
   howWasIt: '怎么样？',
-  ratingGroup: '评分，满分 10',
-  rating: (n) => `${n}/10`,
-  clearRating: '不打分',
+  verdictGroup: '你的评价',
+  clearVerdict: '不评价',
   anythingToRemember: '有什么要记下来的？',
-  changeRating: '改评分',
+  changeVerdict: '改评价',
   backToWant: '改回想去',
   edit: '编辑',
   editAria: '编辑这家店',
   delete: '删除',
-  deleteConfirm: '删掉这家店？笔记和评分会一起删掉。',
+  deleteConfirm: '删掉这家店？笔记和评价会一起删掉。',
   deleteYes: '删吧',
   deleteNo: '留着',
   addNote: '记一笔',

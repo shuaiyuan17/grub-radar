@@ -39,6 +39,10 @@
   font-size: 14px;
   font-weight: 700;
 }
+.verdict {
+  font-family: var(--font-note);
+  font-size: 1.3em;
+}
 .statusWant {
   --fill: var(--card);
 }

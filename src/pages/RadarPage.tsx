@@ -1,6 +1,6 @@
 import { Ink } from '../components/Ink';
 import { Link, useLocation, useSearchParams } from 'react-router';
-import { GoLink } from '../components/bits';
+import { CuisineText, GoLink, PriceText } from '../components/bits';
 import { BottomNav, DiceButton } from '../components/controls';
 import { FoodTile } from '../components/Icon';
 import { KindMark, Radar } from '../components/Radar';
@@ -146,11 +146,7 @@ export function RadarPage() {
                     {selected.spot.name}
                   </Link>
                   <div className={styles.cardMeta}>
-                    {selected.spot.cuisine ? (
-                      <span lang={dataLang(selected.spot)}>{selected.spot.cuisine}</span>
-                    ) : (
-                      t.kinds[selected.spot.kind]
-                    )}{' '}
+                    <CuisineText spot={selected.spot} /> · <PriceText price={selected.spot.price} />{' '}
                     · {t.minutes(selected.travel.minutes)} {t.travelMode[selected.travel.mode]}
                   </div>
                   {selected.spot.note && (

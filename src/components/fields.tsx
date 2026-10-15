@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from 'react';
+import { VERDICTS, type Verdict } from '../domain/spot';
 import { useT } from '../i18n/context';
 import styles from './fields.module.css';
 import { Ink } from './Ink';
@@ -63,28 +64,28 @@ export interface ChoiceOption<T extends string> {
 
 /**
  * One-of-many as real radio buttons (arrow keys, form semantics), drawn as
- * hand-drawn pills. `round` for the 1–10 rating dots.
+ * hand-drawn pills. `stamp` for the good / meh / bad verdict stamps.
  */
 export function Choice<T extends string>({
   legend,
   options,
   value,
   onChange,
-  round = false,
+  stamp = false,
   hideLegend = false,
 }: {
   legend: string;
   options: readonly ChoiceOption<T>[];
   value: T | null;
   onChange: (value: T) => void;
-  round?: boolean;
+  stamp?: boolean;
   hideLegend?: boolean;
 }) {
   const name = useId();
   return (
     <fieldset className={styles.choice}>
       <legend className={hideLegend ? 'visually-hidden' : styles.label}>{legend}</legend>
-      <div className={`${styles.options} ${round ? styles.round : ''}`}>
+      <div className={`${styles.options} ${stamp ? styles.stamps : ''}`}>
         {options.map((o) => {
           const on = o.value === value;
           return (
@@ -110,26 +111,25 @@ export function Choice<T extends string>({
   );
 }
 
-const RATINGS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'] as const;
-
-/** Out of 10, as ten round dots. */
-export function RatingPicker({
+/**
+ * How it was: three hand-drawn stamps you tap (radio buttons underneath), not
+ * a slider or a score.
+ */
+export function VerdictPicker({
   value,
   onChange,
 }: {
-  value: number | null;
-  onChange: (rating: number) => void;
+  value: Verdict | null;
+  onChange: (verdict: Verdict) => void;
 }) {
   const t = useT();
   return (
     <Choice
-      legend={t.ratingGroup}
-      round
-      options={RATINGS.map((r) => ({ value: r, label: r, aria: t.rating(Number(r)) }))}
-      value={value === null ? null : (String(value) as (typeof RATINGS)[number])}
-      onChange={(r) => {
-        onChange(Number(r));
-      }}
+      legend={t.verdictGroup}
+      stamp
+      options={VERDICTS.map((v) => ({ value: v, label: t.verdicts[v] }))}
+      value={value}
+      onChange={onChange}
     />
   );
 }

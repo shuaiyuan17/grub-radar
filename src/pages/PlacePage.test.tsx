@@ -7,7 +7,7 @@ describe('place page', () => {
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(
       'Lucky Thread Noodle Bar',
     );
-    expect(screen.getByText(/been here · 9\/10/)).toBeInTheDocument();
+    expect(screen.getByText('· loved it')).toBeInTheDocument();
     expect(screen.getByText('0.3 mi')).toBeInTheDocument();
     expect(screen.getByText('near home')).toBeInTheDocument();
     const order = screen.getByRole('region', { name: 'order this' });

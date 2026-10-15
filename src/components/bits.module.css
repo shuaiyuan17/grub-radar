@@ -47,6 +47,11 @@
   border: 1.5px solid var(--ink);
   transform: rotate(-2deg);
 }
+.verdict {
+  font-family: var(--font-note);
+  font-size: 1.15em;
+  margin-left: 2px;
+}
 .want {
   background: var(--hl);
   transform: rotate(1.5deg);
@@ -93,4 +98,15 @@
   justify-content: center;
   color: var(--ink);
   text-decoration: none;
+}
+
+/* "price?" / "cuisine?": handwriting, a little crooked, so it reads as a shrug, not data */
+.unknown {
+  font-family: var(--font-note);
+  font-size: 1.2em;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--note-red);
+  display: inline-block;
+  transform: rotate(-3deg);
 }

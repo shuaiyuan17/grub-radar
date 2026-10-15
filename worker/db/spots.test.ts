@@ -49,7 +49,6 @@ describe('D1SpotRepository', () => {
     expect(spot).toMatchObject({
       name: 'Night Owl Pho',
       status: 'want',
-      price: '$$',
       icon: 'bowl',
       tags: ['noodles', 'late night'],
       order: [],
@@ -58,26 +57,28 @@ describe('D1SpotRepository', () => {
     expect(spot.id).toMatch(/^p-[0-9a-z]{26}$/);
     expect(await repo.get(spot.id)).toEqual(spot);
     expect(await repo.visitCount(spot.id)).toBe(0);
-    const row = await env.DB.prepare('SELECT found_by FROM user_places WHERE place_id = ?')
+    // no price given: unknown (NULL), not the old "$$" guess
+    expect(spot.price).toBeUndefined();
+    const row = await env.DB.prepare('SELECT found_by, price FROM user_places WHERE place_id = ?')
       .bind(spot.id)
-      .first<{ found_by: string }>();
-    expect(row?.found_by).toBe('me');
+      .first<{ found_by: string; price: string | null }>();
+    expect(row).toEqual({ found_by: 'me', price: null });
   });
 
   it('adding as "been" records a visit; Chinese text is marked zh-Hans', async () => {
     const repo = new D1SpotRepository(env.DB, 'u_b');
-    const spot = await repo.add({ ...MANUAL, name: '老张拉面', status: 'been', rating: 8 });
-    expect(spot).toMatchObject({ status: 'been', rating: 8, lang: 'zh-Hans' });
+    const spot = await repo.add({ ...MANUAL, name: '老张拉面', status: 'been', verdict: 'good' });
+    expect(spot).toMatchObject({ status: 'been', verdict: 'good', lang: 'zh-Hans' });
     expect(await repo.visitCount(spot.id)).toBe(1);
   });
 
-  it('mark been: status, rating, a visit each time, a dated note; rating kept if omitted', async () => {
+  it('mark been: status, verdict, a visit each time, a dated note; verdict kept if omitted', async () => {
     const repo = new D1SpotRepository(env.DB, 'u_b', { now: at('2026-10-14T19:00:00Z') });
     const { id } = await repo.add(MANUAL);
-    const once = await repo.markBeen(id, { rating: 9, note: 'broth!' });
-    expect(once).toMatchObject({ status: 'been', rating: 9, myNote: '— 2026-10-14: broth!' });
+    const once = await repo.markBeen(id, { verdict: 'good', note: 'broth!' });
+    expect(once).toMatchObject({ status: 'been', verdict: 'good', myNote: '— 2026-10-14: broth!' });
     const twice = await repo.markBeen(id, { on: '2026-10-12' });
-    expect(twice.rating).toBe(9);
+    expect(twice.verdict).toBe('good');
     expect(await repo.visitCount(id)).toBe(2);
     expect(await repo.get(id)).toEqual(twice);
   });
@@ -94,14 +95,14 @@ describe('D1SpotRepository', () => {
     });
   });
 
-  it('edits: back to "want" drops the rating; rating a want is refused', async () => {
+  it('edits: back to "want" drops the verdict; a verdict on a want is refused', async () => {
     const repo = new D1SpotRepository(env.DB, 'u_b');
-    const { id } = await repo.add({ ...MANUAL, status: 'been', rating: 7 });
+    const { id } = await repo.add({ ...MANUAL, status: 'been', verdict: 'meh' });
     const want = await repo.update(id, { status: 'want' });
     expect(want.status).toBe('want');
-    expect(want.rating).toBeUndefined();
-    await expect(repo.update(id, { rating: 5 })).rejects.toMatchObject({
-      code: 'rating_needs_been',
+    expect(want.verdict).toBeUndefined();
+    await expect(repo.update(id, { verdict: 'meh' })).rejects.toMatchObject({
+      code: 'verdict_needs_been',
     });
     const edited = await repo.update(id, {
       name: 'Night Owl Phở',
@@ -206,9 +207,9 @@ describe('D1SpotRepository', () => {
   it('PATCH to "been" records a visit, like mark been; staying been does not', async () => {
     const repo = new D1SpotRepository(env.DB, 'u_b');
     const { id } = await repo.add(MANUAL);
-    await repo.update(id, { status: 'been', rating: 6 });
+    await repo.update(id, { status: 'been', verdict: 'meh' });
     expect(await repo.visitCount(id)).toBe(1);
-    await repo.update(id, { rating: 7 });
+    await repo.update(id, { verdict: 'good' });
     expect(await repo.visitCount(id)).toBe(1);
   });
 
@@ -307,10 +308,10 @@ describe('two users, one place', () => {
       price: '$',
       version: 1,
     });
-    await bob().markBeen(placeId, { rating: 3, note: 'meh' });
+    await bob().markBeen(placeId, { verdict: 'bad', note: 'meh' });
     const a = await alice().get(placeId);
     expect(a?.status).toBe('want');
-    expect(a?.rating).toBeUndefined();
+    expect(a?.verdict).toBeUndefined();
     expect(a?.myNote).toBeUndefined();
     expect(await alice().visitCount(placeId)).toBe(0);
   });

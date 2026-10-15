@@ -32,7 +32,7 @@ describe('add a spot', () => {
     await user.click(screen.getByRole('radio', { name: '$' }));
     await user.type(screen.getByLabelText(/^cravings/), 'Noodles, late night，noodles');
     await user.click(screen.getByRole('radio', { name: 'been' }));
-    await user.click(screen.getByRole('radio', { name: '8/10' }));
+    await user.click(screen.getByRole('radio', { name: 'loved it' }));
     await user.type(screen.getByLabelText(/^one-liner/), 'the 1am bowl');
     await user.click(screen.getByRole('button', { name: 'add it' }));
 
@@ -40,14 +40,14 @@ describe('add a spot', () => {
       await screen.findByRole('heading', { level: 1, name: /Night Owl Pho/ }),
     ).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/place/p-mem-1');
-    expect(screen.getByText(/been here · 8\/10/)).toBeInTheDocument();
+    expect(screen.getByText('· loved it')).toBeInTheDocument();
     expect(await repository.get('p-mem-1')).toMatchObject({
       kind: 'food',
       cuisine: 'pho',
       price: '$',
       tags: ['noodles', 'late night'],
       status: 'been',
-      rating: 8,
+      verdict: 'good',
       note: 'the 1am bowl',
       icon: 'bowl',
       location: { lat: 47.6152, lng: -122.3201 },
@@ -115,7 +115,7 @@ describe('edit a spot', () => {
     expect(await repository.get('lucky-thread')).toMatchObject({
       name: 'Lucky Thread',
       price: '$$$',
-      rating: 9, // untouched
+      verdict: 'good', // untouched
       location: { lat: 47.6135, lng: -122.3302 },
     });
   });
@@ -152,6 +152,56 @@ describe('edit a spot', () => {
     await user.click(screen.getByRole('button', { name: 'save' }));
     await vi.waitFor(() => {
       expect(update).toHaveBeenCalledWith('lucky-thread', { price: '$', version: 1 });
+    });
+  });
+
+  it('price starts as "?" (not sure): a new spot gets no price, not a guessed "$$"', async () => {
+    const repository = new MemorySpotRepository([]);
+    const add = vi.spyOn(repository, 'add');
+    const { user } = renderAt('/add/manual', { repository });
+    await user.type(await screen.findByLabelText('name'), 'Serious Pie');
+    expect(screen.getByRole('radio', { name: 'not sure' })).toBeChecked();
+    expect(screen.getByRole('radio', { name: '$$' })).not.toBeChecked();
+    await user.type(screen.getByLabelText('where is it?'), '47.6135, -122.3302');
+    await user.click(screen.getByRole('button', { name: 'add it' }));
+    await vi.waitFor(() => {
+      expect(add).toHaveBeenCalled();
+    });
+    expect(add.mock.calls[0]?.[0]).not.toHaveProperty('price');
+    expect(await screen.findByText('price?')).toBeInTheDocument();
+    expect((await repository.list())[0]).not.toHaveProperty('price');
+  });
+
+  it('"?" on an edit clears a price back to unknown', async () => {
+    const repository = demoRepository();
+    const update = vi.spyOn(repository, 'update');
+    const { user } = renderAt('/place/lucky-thread/edit', { repository });
+    expect(await screen.findByRole('radio', { name: '$$' })).toBeChecked();
+    await user.click(screen.getByRole('radio', { name: 'not sure' }));
+    await user.click(screen.getByRole('button', { name: 'save' }));
+    await vi.waitFor(() => {
+      expect(update).toHaveBeenCalledWith('lucky-thread', { price: null, version: 1 });
+    });
+    expect((await repository.get('lucky-thread'))?.price).toBeUndefined();
+  });
+
+  it('a "been" spot gets a verdict from three stamps, not a 1-10 score', async () => {
+    const repository = new MemorySpotRepository([]);
+    const { user } = renderAt('/add/manual', { repository });
+    await user.type(await screen.findByLabelText('name'), 'X');
+    await user.click(screen.getByRole('radio', { name: 'been' }));
+    const stamps = screen.getByRole('group', { name: 'your verdict' });
+    expect(
+      within(stamps)
+        .getAllByRole('radio')
+        .map((r) => r.closest('label')?.textContent),
+    ).toEqual(['loved it', 'it was fine', 'nope']);
+    expect(screen.queryByRole('radio', { name: /\/10$/ })).not.toBeInTheDocument();
+    await user.click(within(stamps).getByRole('radio', { name: 'nope' }));
+    await user.type(screen.getByLabelText('where is it?'), '1, 2');
+    await user.click(screen.getByRole('button', { name: 'add it' }));
+    await vi.waitFor(async () => {
+      expect((await repository.list())[0]).toMatchObject({ status: 'been', verdict: 'bad' });
     });
   });
 

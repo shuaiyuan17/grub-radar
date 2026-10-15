@@ -32,14 +32,16 @@ describe('AddSpotSchema', () => {
     }
   });
 
-  it('trims, lowercases tags, and refuses unknown keys or a rating without "been"', () => {
+  it('trims, lowercases tags, and refuses unknown keys or a verdict without "been"', () => {
     const parsed = AddSpotSchema.parse({ ...base, name: '  Pho  ', tags: [' Late Night '] });
     expect(parsed.name).toBe('Pho');
     expect(parsed.tags).toEqual(['late night']);
     expect(AddSpotSchema.safeParse({ ...base, id: 'x' }).success).toBe(false);
-    expect(AddSpotSchema.safeParse({ ...base, rating: 8 }).success).toBe(false);
-    expect(AddSpotSchema.safeParse({ ...base, status: 'been', rating: 8 }).success).toBe(true);
-    expect(AddSpotSchema.safeParse({ ...base, status: 'been', rating: 11 }).success).toBe(false);
+    expect(AddSpotSchema.safeParse({ ...base, verdict: 'good' }).success).toBe(false);
+    expect(AddSpotSchema.safeParse({ ...base, status: 'been', verdict: 'good' }).success).toBe(
+      true,
+    );
+    expect(AddSpotSchema.safeParse({ ...base, status: 'been', verdict: 8 }).success).toBe(false);
   });
 
   it('enforces the size limits', () => {
@@ -69,7 +71,7 @@ describe('spotFromInput', () => {
     ).not.toHaveProperty('applePlaceId');
   });
 
-  it('fills defaults: want, $$, the kind’s doodle, no empty strings', () => {
+  it('fills defaults: want, price unknown (never a guessed "$$"), the kind’s doodle, no empty strings', () => {
     const spot = spotFromInput(
       'p-1',
       AddSpotSchema.parse({
@@ -87,7 +89,6 @@ describe('spotFromInput', () => {
       id: 'p-1',
       name: 'Fig & Fern',
       kind: 'bakery',
-      price: '$$',
       tags: [],
       status: 'want',
       order: [{ id: 'd1', dish: 'morning bun', tried: false }],
@@ -115,13 +116,21 @@ describe('applyPatch', () => {
     expect(next.note).toBeUndefined();
     expect(next.cuisine).toBeUndefined();
     expect(next.order).toEqual(lucky.order);
-    expect(next.rating).toBe(9);
+    expect(next.verdict).toBe('good');
   });
 
-  it('back to "want" drops the rating; rating a want throws', () => {
-    expect(applyPatch(lucky, { status: 'want' }, TODAY).rating).toBeUndefined();
-    expect(() => applyPatch(mamaKos, { rating: 5 }, TODAY)).toThrow(SpotOpError);
-    expect(SpotPatchSchema.safeParse({ status: 'want', rating: 5 }).success).toBe(false);
+  it('price: null is "not sure" (unknown); leaving it out keeps it', () => {
+    expect(SpotPatchSchema.parse({ price: null }).price).toBeNull();
+    const unsure = applyPatch(lucky, { price: null }, TODAY);
+    expect(unsure).not.toHaveProperty('price');
+    expect(applyPatch(unsure, { note: 'x' }, TODAY)).not.toHaveProperty('price');
+    expect(applyPatch(lucky, { note: 'x' }, TODAY).price).toBe('$$');
+  });
+
+  it('back to "want" drops the verdict; a verdict on a want throws', () => {
+    expect(applyPatch(lucky, { status: 'want' }, TODAY).verdict).toBeUndefined();
+    expect(() => applyPatch(mamaKos, { verdict: 'meh' }, TODAY)).toThrow(SpotOpError);
+    expect(SpotPatchSchema.safeParse({ status: 'want', verdict: 'meh' }).success).toBe(false);
     expect(SpotPatchSchema.safeParse({}).success).toBe(false);
   });
 
@@ -145,11 +154,19 @@ describe('applyPatch', () => {
 });
 
 describe('mark been and notes', () => {
-  it('mark been: status + rating; a note is appended, dated', () => {
-    const been = applyMarkBeen(mamaKos, MarkBeenSchema.parse({ rating: 8, note: 'cash!' }), TODAY);
-    expect(been).toMatchObject({ status: 'been', rating: 8, myNote: `— ${TODAY}: cash!` });
-    // rating kept when not given again
-    expect(applyMarkBeen(been, { on: '2026-10-12' }, TODAY).rating).toBe(8);
+  it('mark been: status + verdict; a note is appended, dated', () => {
+    const been = applyMarkBeen(
+      mamaKos,
+      MarkBeenSchema.parse({ verdict: 'good', note: 'cash!' }),
+      TODAY,
+    );
+    expect(been).toMatchObject({ status: 'been', verdict: 'good', myNote: `— ${TODAY}: cash!` });
+    // verdict kept when not given again
+    expect(applyMarkBeen(been, { on: '2026-10-12' }, TODAY).verdict).toBe('good');
+    // mark_been takes a verdict, not a 1-10 score
+    expect(MarkBeenSchema.safeParse({ verdict: 'meh' }).success).toBe(true);
+    expect(MarkBeenSchema.safeParse({ verdict: 8 }).success).toBe(false);
+    expect(MarkBeenSchema.safeParse({ rating: 8 }).success).toBe(false);
   });
 
   it('add note appends one line per note, newlines folded', () => {

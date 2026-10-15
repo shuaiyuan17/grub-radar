@@ -1,7 +1,7 @@
 import { Ink } from './Ink';
 import { useId, type CSSProperties } from 'react';
 import { Link } from 'react-router';
-import { dataLang, type Spot } from '../domain/spot';
+import { dataLang, type Spot, type Verdict } from '../domain/spot';
 import { appleMapsUrl } from '../domain/maps';
 import { useT } from '../i18n/context';
 import type { TravelEstimate } from '../domain/travel';
@@ -23,12 +23,19 @@ export function Logo() {
   );
 }
 
-export function StatusBadge({ status }: { status: Spot['status'] }) {
+export function StatusBadge({
+  status,
+  verdict,
+}: {
+  status: Spot['status'];
+  verdict?: Verdict | undefined;
+}) {
   const t = useT();
   return status === 'been' ? (
     <span className={`${styles.badge} ${styles.been}`}>
       <Icon name="check" size={13} strokeWidth={3} />
       {t.been}
+      {verdict && <span className={styles.verdict}>· {t.verdicts[verdict]}</span>}
     </span>
   ) : (
     <span className={`${styles.badge} ${styles.want}`}>
@@ -120,4 +127,30 @@ export function SpotLabel({
       {after}
     </span>
   );
+}
+
+/**
+ * Something we don't know (a price Apple Maps doesn't give, a cuisine nobody
+ * typed), drawn as a hand-written "price?" / "cuisine?" so it never reads as
+ * a fact. Never a guess.
+ */
+export function Unknown({ what }: { what: 'price' | 'cuisine' }) {
+  const t = useT();
+  return (
+    <span className={styles.unknown} data-unknown={what}>
+      {t.unknown[what]}
+    </span>
+  );
+}
+
+/** What a spot's cuisine and price read as: their words, or a hand-drawn "?". */
+export function CuisineText({ spot }: { spot: Pick<Spot, 'cuisine' | 'lang'> }) {
+  return spot.cuisine ? (
+    <span lang={dataLang(spot)}>{spot.cuisine}</span>
+  ) : (
+    <Unknown what="cuisine" />
+  );
+}
+export function PriceText({ price }: { price: Spot['price'] }) {
+  return price ? <span>{price}</span> : <Unknown what="price" />;
 }

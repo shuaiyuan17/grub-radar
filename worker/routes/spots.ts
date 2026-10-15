@@ -64,8 +64,8 @@ function opError(c: Ctx, e: unknown): Response {
       return apiError(c, 409, 'conflict', e.message);
     case 'note_too_long':
       return apiError(c, 400, 'note_too_long', e.message);
-    case 'rating_needs_been':
-      return apiError(c, 400, 'rating_needs_been', e.message);
+    case 'verdict_needs_been':
+      return apiError(c, 400, 'verdict_needs_been', e.message);
     case 'future_date':
       return apiError(c, 400, 'future_date', e.message);
     case 'list_full':

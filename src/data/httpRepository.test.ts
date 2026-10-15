@@ -112,7 +112,7 @@ describe('HttpSpotRepository writes', () => {
     ],
     [
       'markBeen',
-      (r: HttpSpotRepository) => r.markBeen('x', { rating: 9 }),
+      (r: HttpSpotRepository) => r.markBeen('x', { verdict: 'good' }),
       'POST',
       '/api/spots/x/been',
     ],
