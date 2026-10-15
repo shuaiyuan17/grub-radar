@@ -275,3 +275,31 @@
   align-items: center;
   justify-content: center;
 }
+
+/* ---- language toggle ---- */
+.lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--pencil);
+}
+.langItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.langBtn {
+  min-height: 32px;
+  min-width: 32px;
+  padding: 0 4px;
+  color: var(--pencil);
+}
+.langBtn[aria-pressed='true'] {
+  color: var(--ink);
+  font-weight: 800;
+  text-decoration: underline;
+  text-decoration-color: var(--hl);
+  text-decoration-thickness: 4px;
+  text-underline-offset: 1px;
+}

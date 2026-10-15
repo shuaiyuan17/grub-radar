@@ -1,4 +1,7 @@
 import { HEADLINE_COPY } from '../copy/headlines';
+
+const EN = HEADLINE_COPY.en;
+const ZH = HEADLINE_COPY['zh-Hans'];
 import {
   defaultModeFor,
   parseHeadline,
@@ -76,7 +79,10 @@ describe('parseHeadline', () => {
 });
 
 describe('headline copy', () => {
-  it.each(Object.entries(HEADLINE_COPY))('%s has 4-6 valid lowercase variants', (_, lines) => {
+  const all = Object.entries(HEADLINE_COPY).flatMap(([locale, slots]) =>
+    Object.entries(slots).map(([slot, lines]) => [`${locale} ${slot}`, lines] as const),
+  );
+  it.each(all)('%s has 4-6 valid lowercase variants', (_, lines) => {
     expect(lines.length).toBeGreaterThanOrEqual(4);
     expect(lines.length).toBeLessThanOrEqual(6);
     for (const line of lines) {
@@ -95,8 +101,8 @@ describe('pickHeadline', () => {
       parts: ['what are we ', 'eating', ' tonight?'],
       defaultMode: 'near',
     });
-    expect(pickHeadline(at(MON, 19), () => 0.999).variant).toBe(HEADLINE_COPY.dinner.length - 1);
-    expect(pickHeadline(at(MON, 19), () => 1).variant).toBe(HEADLINE_COPY.dinner.length - 1);
+    expect(pickHeadline(at(MON, 19), () => 0.999).variant).toBe(EN.dinner.length - 1);
+    expect(pickHeadline(at(MON, 19), () => 1).variant).toBe(EN.dinner.length - 1);
   });
 
   it('is reproducible with a seeded rng', () => {
@@ -109,20 +115,18 @@ describe('pickHeadline', () => {
     const seen = new Set<number>();
     const rng = seededRandom(7);
     for (let i = 0; i < 200; i++) seen.add(pickHeadline(at(MON, 12), rng).variant);
-    expect(seen.size).toBe(HEADLINE_COPY.lunch.length);
+    expect(seen.size).toBe(EN.lunch.length);
   });
 
   it('weekend daytime picks weekend copy and mode', () => {
     const h = pickHeadline(at(SAT, 11), seededRandom(1));
     expect(h.slot).toBe('weekendDay');
     expect(h.defaultMode).toBe('weekend');
-    expect(HEADLINE_COPY.weekendDay).toContain(
-      h.parts.join('').replace(h.parts[1], `*${h.parts[1]}*`),
-    );
+    expect(EN.weekendDay).toContain(h.parts.join('').replace(h.parts[1], `*${h.parts[1]}*`));
   });
 
   it('accepts custom copy', () => {
-    const copy = { ...HEADLINE_COPY, dinner: ['*soup*?'] };
+    const copy = { ...EN, dinner: ['*soup*?'] };
     expect(pickHeadline(at(MON, 19), () => 0.5, copy).parts).toEqual(['', 'soup', '?']);
   });
 });
@@ -135,5 +139,31 @@ describe('seededRandom', () => {
       expect(x).toBeGreaterThanOrEqual(0);
       expect(x).toBeLessThan(1);
     }
+  });
+});
+
+describe('zh headlines', () => {
+  it('has its own lines for every slot (written, not translated)', () => {
+    expect(Object.keys(ZH).sort()).toEqual(Object.keys(EN).sort());
+    for (const lines of Object.values(ZH)) {
+      for (const line of lines) expect(line).toMatch(/[\u4e00-\u9fff]/);
+    }
+  });
+
+  it('picks from the zh set by time of day', () => {
+    expect(pickHeadline(at(MON, 19), () => 0, ZH).parts).toEqual(['今晚吃点', '啥', '？']);
+    expect(pickHeadline(at(MON, 23), () => 0, ZH).parts).toEqual(['', '宵夜', '走起？']);
+    expect(pickHeadline(at(MON, 7), () => 0, ZH).parts).toEqual(['早饭吃', '啥', '？']);
+    const weekend = pickHeadline(at(SAT, 11), () => 0, ZH);
+    expect(weekend.slot).toBe('weekendDay');
+    expect(weekend.defaultMode).toBe('weekend');
+    expect(weekend.parts).toEqual(['周末', '去哪儿', '吃？']);
+  });
+
+  it('a seeded rng reaches every zh variant', () => {
+    const seen = new Set<number>();
+    const rng = seededRandom(3);
+    for (let i = 0; i < 200; i++) seen.add(pickHeadline(at(MON, 12), rng, ZH).variant);
+    expect(seen.size).toBe(ZH.lunch.length);
   });
 });

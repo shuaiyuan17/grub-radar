@@ -1,9 +1,12 @@
 import { Ink } from '../components/Ink';
 import { Link, useLocation, useParams } from 'react-router';
 import { Icon } from '../components/Icon';
-import { appleMapsUrl, mapsLabel } from '../domain/maps';
+import { appleMapsUrl } from '../domain/maps';
+import { parseHeadline } from '../domain/headlines';
+import { dataLang } from '../domain/spot';
+import { useT } from '../i18n/context';
+import { Headline, SpotLabel } from '../components/bits';
 import { useOrigin } from '../lib/origin';
-import { formatMiles, formatMinutes } from '../domain/travel';
 import { useSpotViews } from '../lib/useSpotViews';
 import { FOOD_ICONS } from '../components/icons';
 import styles from './PlacePage.module.css';
@@ -21,13 +24,6 @@ function splitName(name: string): [string, string] {
   const n = words.length >= 3 ? 2 : 1;
   return [words.slice(0, -n).join(' '), words.slice(-n).join(' ')];
 }
-
-const dateFmt = new Intl.DateTimeFormat('en-US', {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-  timeZone: 'UTC',
-});
 
 function CheckBox({ checked, variant }: { checked: boolean; variant: number }) {
   const boxes = [
@@ -57,6 +53,7 @@ export function PlacePage() {
   const { id } = useParams();
   const location = useLocation();
   const { from } = useOrigin();
+  const t = useT();
   const views = useSpotViews();
   const view = views.find((v) => v.spot.id === id);
   const back = backTarget(location.state);
@@ -64,14 +61,12 @@ export function PlacePage() {
   if (!view) {
     return (
       <main id="main" className={`${styles.main} ${styles.notFound}`}>
-        <h1 className={styles.title}>
-          that spot&apos;s <span className="hl">not here</span>.
-        </h1>
+        <Headline className={styles.title} parts={parseHeadline(t.spotNotFound)} />
         <p className="note" style={{ fontSize: 24 }}>
-          maybe it got renamed. maybe it closed. either way:
+          {t.spotNotFoundBody}
         </p>
         <Link viewTransition to="/">
-          back to the list
+          {t.backToList}
         </Link>
       </main>
     );
@@ -79,10 +74,17 @@ export function PlacePage() {
 
   const { spot, travel, ring } = view;
   const [nameA, nameB] = splitName(spot.name);
-  const where = from === 'home' ? 'home' : 'you';
-  const nearness = ring === 0 ? `near ${where}` : ring === 3 ? 'road trip' : null;
-  const tags = [spot.cuisine, spot.price, ...spot.tags.filter((t) => t !== spot.cuisine)];
-  if (nearness) tags.push(nearness);
+  const nearness = ring === 0 ? t.nearness[from] : ring === 3 ? t.roadTrip : null;
+  // spot text is data in its own language; translated labels use the UI's
+  const lang = dataLang(spot);
+  const tags: { text: string; lang?: string }[] = [
+    { text: spot.cuisine, lang },
+    { text: spot.price },
+    ...spot.tags
+      .filter((tag) => tag !== spot.cuisine)
+      .map((tag) => (t.tags[tag] ? { text: t.tags[tag] } : { text: tag, lang })),
+  ];
+  if (nearness) tags.push({ text: nearness });
 
   return (
     <main id="main" className={styles.main}>
@@ -91,12 +93,12 @@ export function PlacePage() {
           viewTransition
           className={`sk press ${styles.back}`}
           to={back}
-          aria-label="Back to the list"
+          aria-label={t.backAria}
         >
           <Ink />
           <Icon name="back" size={22} strokeWidth={2.4} />
           <span className={styles.backLabel} aria-hidden="true">
-            back
+            {t.back}
           </span>
         </Link>
         <span className={styles.statusTilt}>
@@ -104,13 +106,14 @@ export function PlacePage() {
             <span className={`sk flat ${styles.status}`}>
               <Ink />
               <Icon name="check" size={15} strokeWidth={3} />
-              been here{spot.rating !== undefined ? ` · ${spot.rating}/10` : ''}
+              {t.beenHere}
+              {spot.rating !== undefined ? ` · ${spot.rating}/10` : ''}
             </span>
           ) : (
             <span className={`sk flat ${styles.status} ${styles.statusWant}`}>
               <Ink />
               <Icon name="star" size={15} strokeWidth={2.4} />
-              want to try
+              {t.wantToTry}
             </span>
           )}
         </span>
@@ -134,7 +137,7 @@ export function PlacePage() {
               >
                 <path d={FOOD_ICONS[spot.icon]} />
               </svg>
-              <span className={styles.photoCaption}>no photo yet</span>
+              <span className={styles.photoCaption}>{t.noPhoto}</span>
             </div>
             <span aria-hidden="true" className={`${styles.tape} ${styles.tapeL}`} />
             <span aria-hidden="true" className={`${styles.tape} ${styles.tapeR}`} />
@@ -143,31 +146,33 @@ export function PlacePage() {
           <dl className={styles.stats}>
             <div className={`sk flat ${styles.stat}`}>
               <Ink />
-              <dt>{travel.mode}</dt>
-              <dd>{formatMinutes(travel.minutes)}</dd>
+              <dt>{t.travelMode[travel.mode]}</dt>
+              <dd>{t.minutes(travel.minutes)}</dd>
             </div>
             <div className={`sk flat ${styles.stat}`}>
               <Ink />
-              <dt>from {where === 'you' ? 'here' : 'home'}</dt>
-              <dd>{formatMiles(travel.miles)}</dd>
+              <dt>{from === 'here' ? t.stats.fromHere : t.stats.fromHome}</dt>
+              <dd>{t.distance(travel.km, travel.miles)}</dd>
             </div>
             <div className={`sk flat ${styles.stat}`}>
               <Ink />
-              <dt>{spot.openTill ? 'open till' : 'kind'}</dt>
-              <dd>{spot.openTill ?? spot.kind}</dd>
+              <dt>{spot.hours ? t.stats.openTill : t.stats.kind}</dt>
+              <dd>{spot.hours ? t.hours(spot.hours) : t.kinds[spot.kind]}</dd>
             </div>
           </dl>
         </div>
 
         <div className={styles.colB}>
           <div className={styles.titleBlock}>
-            <h1 className={styles.title}>
+            <h1 className={styles.title} lang={lang}>
               {nameA && `${nameA} `}
               <span className="hl">{nameB}</span>
             </h1>
-            <ul className={styles.tags} aria-label="About this spot">
-              {tags.map((t) => (
-                <li key={t}>{t}</li>
+            <ul className={styles.tags} aria-label={t.aboutSpot}>
+              {tags.map((tag) => (
+                <li key={tag.text} lang={tag.lang}>
+                  {tag.text}
+                </li>
               ))}
             </ul>
           </div>
@@ -177,31 +182,31 @@ export function PlacePage() {
               <div className={`sk ${styles.whyNote}`}>
                 <Ink />
                 <h2 id="why" className={styles.kicker}>
-                  why it&apos;s on the list
+                  {t.whyTitle}
                 </h2>
-                <p className={styles.whyText}>{spot.why.text}</p>
-                <p className={styles.whyBy}>
-                  found by your agent · {dateFmt.format(new Date(spot.why.foundOn)).toLowerCase()}
+                <p className={styles.whyText} lang={lang}>
+                  {spot.why.text}
                 </p>
+                <p className={styles.whyBy}>{t.foundBy(t.formatDate(spot.why.foundOn))}</p>
               </div>
             </section>
           )}
 
           {spot.order.length > 0 && (
             <section aria-labelledby="order" className={styles.section}>
-              <h2 id="order">order this</h2>
+              <h2 id="order">{t.orderThis}</h2>
               <ul className={styles.orderList}>
                 {spot.order.map((o, i) => (
                   <li key={o.dish}>
                     <CheckBox checked={o.tried} variant={i} />
                     <span>
-                      {o.dish}
+                      <span lang={lang}>{o.dish}</span>
                       {o.tried ? (
-                        <span className="visually-hidden"> (had it)</span>
+                        <span className="visually-hidden">{t.hadIt}</span>
                       ) : (
                         <>
                           {' '}
-                          <span className={styles.nextTime}>next time</span>
+                          <span className={styles.nextTime}>{t.nextTime}</span>
                         </>
                       )}
                     </span>
@@ -212,10 +217,12 @@ export function PlacePage() {
           )}
 
           <section aria-labelledby="mine" className={styles.section}>
-            <h2 id="mine">my note</h2>
-            <p className={styles.myNote}>
-              {spot.myNote ??
-                (spot.status === 'been' ? spot.note : 'nothing yet. go, then scribble.')}
+            <h2 id="mine">{t.myNote}</h2>
+            <p
+              className={styles.myNote}
+              lang={spot.myNote || spot.status === 'been' ? lang : undefined}
+            >
+              {spot.myNote ?? (spot.status === 'been' ? spot.note : t.noNoteYet)}
             </p>
           </section>
 
@@ -225,11 +232,12 @@ export function PlacePage() {
               href={appleMapsUrl(spot.name, spot.location, travel.mode)}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label={mapsLabel(spot, travel)}
+              aria-labelledby="take-label"
             >
+              <SpotLabel id="take-label" parts={t.mapsLabel(travel.mode)} spot={spot} />
               <Ink />
               <Icon name="go" size={22} />
-              take me there
+              {t.takeMeThere}
             </a>
           </div>
         </div>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { StaticSpotRepository } from '../data/staticRepository';
 import type { SpotRepository } from '../domain/repository';
 import type { Spot } from '../domain/spot';
+import { useT } from '../i18n/context';
 import { SpotsContext } from '../lib/spots';
 
 const defaultRepository = new StaticSpotRepository();
@@ -32,6 +33,7 @@ export function SpotsProvider({
   children: ReactNode;
   repository?: SpotRepository;
 }) {
+  const t = useT();
   // load state belongs to one repository; when the prop changes, start over
   // from the new one (React's "adjust state on prop change" pattern)
   const [current, setCurrent] = useState(() => ({ repository, load: initialLoad(repository) }));
@@ -66,14 +68,14 @@ export function SpotsProvider({
   if (load.state === 'error') {
     return (
       <p role="alert" className="note" style={{ fontSize: 22, whiteSpace: 'pre-wrap' }}>
-        couldn&apos;t load the spots: {load.error.message}
+        {t.loadError(load.error.message)}
       </p>
     );
   }
   if (!value) {
     return (
       <p className="note" style={{ fontSize: 22 }} aria-busy="true">
-        unfolding the map…
+        {t.loading}
       </p>
     );
   }

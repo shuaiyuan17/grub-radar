@@ -1,5 +1,6 @@
 import { createContext, use } from 'react';
 import type { LatLng } from '../domain/geo';
+import type { NoticeKey } from '../i18n/messages';
 
 export type From = 'home' | 'here';
 export type LocateStatus = 'idle' | 'locating' | 'ok' | 'denied' | 'unavailable';
@@ -8,8 +9,8 @@ export interface OriginValue {
   from: From;
   origin: LatLng;
   status: LocateStatus;
-  /** Human-readable reason when we fell back to home. */
-  notice: string | null;
+  /** What to tell the user (a message key; the UI translates it). */
+  notice: NoticeKey | null;
   chooseHome: () => void;
   chooseHere: () => void;
   dismissNotice: () => void;

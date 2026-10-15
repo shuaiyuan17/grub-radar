@@ -1,7 +1,7 @@
-import { HEADLINE_COPY } from '../copy/headlines';
+import { HEADLINE_COPY, type Slot } from '../copy/headlines';
 import type { Mode } from './modes';
 
-export type Slot = keyof typeof HEADLINE_COPY;
+export type { Slot };
 export type HeadlineParts = readonly [before: string, highlight: string, after: string];
 export type HeadlineCopy = Readonly<Record<Slot, readonly string[]>>;
 
@@ -55,7 +55,7 @@ export interface PickedHeadline {
 export function pickHeadline(
   date: Date,
   random: () => number = Math.random,
-  copy: HeadlineCopy = HEADLINE_COPY,
+  copy: HeadlineCopy = HEADLINE_COPY.en,
 ): PickedHeadline {
   const slot = slotFor(date);
   const variants = copy[slot];

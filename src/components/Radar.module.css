@@ -111,6 +111,41 @@
   display: flex;
 }
 
+/* highlighted dot (rolled / hovered card): a ring that pops in once */
+.hiDot {
+  z-index: 2;
+}
+.hiDot > .mark {
+  position: relative;
+  z-index: 1;
+}
+.radar .hiRing {
+  --fill: rgba(255, 216, 74, 0.55);
+  --bw: 2.5px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border-radius: 50%;
+  animation: hi-pop var(--hi-duration) var(--ease-pop) both;
+}
+@keyframes hi-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 /* kind marks: colour AND shape */
 .mark {
   display: block;

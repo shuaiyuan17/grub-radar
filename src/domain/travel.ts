@@ -64,7 +64,6 @@ export function estimateTravel(from: LatLng, to: LatLng): TravelEstimate {
 
 /** Upper bound (inclusive, minutes) of each radar ring; anything beyond is a road trip. */
 export const RING_LIMITS = [10, 30, 60] as const;
-export const RING_LABELS = ['10 min', '30 min', '1 hr', 'road trip'] as const;
 export type Ring = 0 | 1 | 2 | 3;
 export const MAX_RING: Ring = 3;
 

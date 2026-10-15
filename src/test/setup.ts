@@ -11,6 +11,7 @@ beforeEach(() => {
   // dinner, first variant = "what are we eating tonight?", mode near.
   resetPageHeadline();
   getPageHeadline(
+    'en',
     () => WEEKDAY_DINNER,
     () => 0,
   );

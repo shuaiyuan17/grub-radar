@@ -131,6 +131,7 @@ describe('time-of-day headline', () => {
   it('opens weekend daytime in weekend mode with weekend copy', async () => {
     resetPageHeadline();
     getPageHeadline(
+      'en',
       () => new Date(2026, 9, 17, 11), // Saturday 11:00
       () => 0,
     );
@@ -151,6 +152,7 @@ describe('time-of-day headline', () => {
   it('uses the slot copy, highlighting the marked words', async () => {
     resetPageHeadline();
     getPageHeadline(
+      'en',
       () => new Date(2026, 9, 14, 23), // Wednesday 23:00
       () => 0,
     );
@@ -207,5 +209,54 @@ describe('list URL state', () => {
     const items = (await screen.findAllByRole('article')).map((a) => a.closest('li')!);
     expect(items[2]).toHaveClass('enter');
     expect(items[2]!.style.getPropertyValue('--i')).toBe('2');
+  });
+});
+
+describe('mini radar highlight', () => {
+  const miniDot = (id: string) =>
+    screen
+      .getByRole('img', { name: /Radar of saved places/ })
+      .querySelector<HTMLElement>(`[data-spot="${id}"]`)!;
+  const highlighted = () =>
+    [
+      ...screen
+        .getByRole('img', { name: /Radar of saved places/ })
+        .querySelectorAll('[aria-current="true"]'),
+    ].map((el) => el.getAttribute('data-spot'));
+
+  it('lights up the rolled spot, and clears with the roll', async () => {
+    const { user } = renderAt('/?tag=tacos');
+    await screen.findAllByRole('article');
+    expect(highlighted()).toEqual([]);
+    await user.click(screen.getAllByRole('button', { name: /can't decide/ })[0]!);
+    expect(miniDot('two-fires')).toHaveAttribute('aria-current', 'true');
+    expect(highlighted()).toEqual(['two-fires']);
+    await user.click(screen.getAllByRole('button', { name: 'Clear the roll' })[0]!);
+    expect(highlighted()).toEqual([]);
+  });
+
+  it('a rolled spot from the URL is highlighted too', async () => {
+    renderAt('/?roll=ondo-soup');
+    await screen.findAllByRole('article');
+    expect(highlighted()).toEqual(['ondo-soup']);
+  });
+
+  it('hovering or focusing a card lights up its dot, then falls back to the roll', async () => {
+    const { user } = renderAt('/?roll=ondo-soup');
+    const cards = await screen.findAllByRole('article');
+    const lucky = cards.find((c) => c.textContent.includes('Lucky Thread'))!;
+    await user.hover(lucky);
+    expect(highlighted()).toEqual(['lucky-thread']);
+    await user.unhover(lucky);
+    expect(highlighted()).toEqual(['ondo-soup']);
+
+    act(() => {
+      within(lucky).getByRole('link', { name: 'Lucky Thread Noodle Bar' }).focus();
+    });
+    expect(highlighted()).toEqual(['lucky-thread']);
+    act(() => {
+      (document.activeElement as HTMLElement).blur();
+    });
+    expect(highlighted()).toEqual(['ondo-soup']);
   });
 });

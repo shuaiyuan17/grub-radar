@@ -1,5 +1,5 @@
 import { Ink } from './Ink';
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Kind } from '../domain/spot';
 import type { From } from '../lib/origin';
 import {
@@ -12,8 +12,10 @@ import {
 
 /** Non-interactive dots (desktop mini radar) only need to not overlap visually. */
 const STATIC_DOT_PX = 16;
-import { byTravelTime, describeDot, type SpotView } from '../domain/spotView';
-import { RING_LABELS, type Ring } from '../domain/travel';
+import { byTravelTime, type SpotView } from '../domain/spotView';
+import { useT } from '../i18n/context';
+import type { Ring } from '../domain/travel';
+import { SpotLabel } from './bits';
 import { Icon } from './Icon';
 import styles from './Radar.module.css';
 
@@ -38,6 +40,8 @@ interface RadarProps {
   /** Dots beyond this ring are faded. */
   reach?: Ring;
   selectedId?: string | null;
+  /** A dot to call out (the rolled spot, or the card you're pointing at). */
+  highlightId?: string | null;
   /** Makes dots tappable. Without it the radar is a picture (role="img"). */
   onSelect?: (id: string) => void;
   className?: string;
@@ -48,9 +52,12 @@ export function Radar({
   from,
   reach = 3,
   selectedId = null,
+  highlightId = null,
   onSelect,
   className = '',
 }: RadarProps) {
+  const t = useT();
+  const uid = useId();
   const interactive = Boolean(onSelect);
   const ref = useRef<HTMLDivElement>(null);
   // spacing depends on the rendered size: 40px tap targets must not overlap
@@ -81,18 +88,13 @@ export function Radar({
       ),
     [sorted, size, interactive],
   );
-  const where = from === 'home' ? 'home' : 'you';
 
   return (
     <div
       ref={ref}
       className={`${styles.radar} ${className}`}
       role={interactive ? 'group' : 'img'}
-      aria-label={
-        interactive
-          ? `Places around ${where} by travel time`
-          : `Radar of saved places around ${where}, in 10 minute, 30 minute, 1 hour and road trip rings`
-      }
+      aria-label={interactive ? t.radarGroup(from) : t.radarImg(from)}
     >
       {[3, 2, 1, 0].map((i) => (
         <span
@@ -109,7 +111,7 @@ export function Radar({
         </span>
       ))}
       {interactive &&
-        RING_LABELS.map((label, i) => (
+        t.ringLabels.map((label, i) => (
           <span
             key={label}
             aria-hidden="true"
@@ -127,7 +129,7 @@ export function Radar({
         className={`sk flat ${styles.home}`}
         style={{ width: `clamp(32px, ${HUB_DIAMETER * 100}%, 52px)` }}
         role="img"
-        aria-label={from === 'home' ? 'Home' : 'You are here'}
+        aria-label={t.hub[from]}
       >
         <Ink />
         <Icon name={from === 'home' ? 'home' : 'pin'} size={22} />
@@ -143,9 +145,22 @@ export function Radar({
           '--dy': `${(0.5 - p.y) * 100}cqw`,
         };
         const inReach = v.ring <= reach;
+        const highlighted = v.spot.id === highlightId;
         if (!onSelect) {
           return (
-            <span key={v.spot.id} className={styles.staticDot} style={pos}>
+            <span
+              key={v.spot.id}
+              className={`${styles.staticDot} ${highlighted ? styles.hiDot : ''}`}
+              style={pos}
+              data-spot={v.spot.id}
+              aria-current={highlighted ? 'true' : undefined}
+            >
+              {highlighted && (
+                // keyed by spot so the pop replays when the highlight moves
+                <span key={v.spot.id} aria-hidden="true" className={`sk flat ${styles.hiRing}`}>
+                  <Ink />
+                </span>
+              )}
               <KindMark kind={v.spot.kind} size="small" />
             </span>
           );
@@ -157,12 +172,23 @@ export function Radar({
             type="button"
             className={`${styles.dot} ${inReach ? '' : styles.out}`}
             style={pos}
-            aria-label={describeDot(v, inReach)}
+            aria-labelledby={`${uid}-${v.spot.id}`}
             aria-pressed={selected}
+            aria-current={highlighted ? 'true' : undefined}
             onClick={() => {
               onSelect(v.spot.id);
             }}
           >
+            <SpotLabel
+              id={`${uid}-${v.spot.id}`}
+              spot={v.spot}
+              parts={t.dotLabel(
+                t.kinds[v.spot.kind],
+                t.minutes(v.travel.minutes),
+                t.travelMode[v.travel.mode],
+                inReach,
+              )}
+            />
             {selected && (
               <span aria-hidden="true" className={`sk flat ${styles.selRing}`}>
                 <Ink />
