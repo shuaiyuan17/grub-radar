@@ -190,7 +190,7 @@ accounts, sessions, places and everyone's own list.
 | `GET /api/health`              | none     | `{ ok, version }`                                                |
 | `GET /auth/apple/start`        | none     | 302 to Apple (`?returnTo=/same/origin/path`)                     |
 | `POST /auth/callback`          | Apple    | Apple's form_post; the "signing you in…" page, or `/?signin=…`   |
-| `GET /auth/finish?t=`          | hand-off | the slow half of sign-in; 303 back with a session                |
+| `POST /auth/finish`            | hand-off | the slow half of sign-in (`t` in the body); 303 with a session   |
 | `GET /auth/callback`           | none     | 303 to `/` (never Apple: iOS preloads it, or the back button)    |
 | `POST /auth/logout`            | session  | 204, session deleted                                             |
 | `GET /api/me`, `PATCH /api/me` | session  | `{ user, home, signupOpen }`; change name / avatar emoji         |
@@ -212,19 +212,20 @@ accounts, sessions, places and everyone's own list.
 `response_mode=form_post`. `state` and a hashed `nonce` ride in an HMAC-signed, 10-minute,
 single-use `__Host-grub_siwa` cookie (`SameSite=None`, because Apple's callback is a
 cross-site POST). The callback checks the state, spends it, and answers at once with a tiny
-"signing you in…" page (en/中文, inline CSS allowed by hash, no script) that moves on by meta
-refresh to `/auth/finish?t=…`. What crosses over (code, nonce hash, returnTo, previous
+"signing you in…" page (en/中文). Its one-line inline script (allowed by CSP hash, like its
+CSS) submits a same-origin POST form to `/auth/finish` with the hand-off value `t` in the
+body, never in a URL; a "continue" button is the no-JS fallback. What crosses over (code, nonce hash, returnTo, previous
 session, Apple's one-time `user` field) is AES-GCM-sealed in a two-minute `__Host-grub_signin`
-cookie (HttpOnly, Secure, Lax) bound to the random `t` only that page knows; `/auth/finish`
-refuses (and leaves alone) anything without the matching `t`, never runs for a prefetch, and
-clears the cookie on first use (`worker/auth/pending.ts`). It then exchanges the code with a
+cookie (HttpOnly, Secure, Lax) bound to that random `t`; `/auth/finish`
+refuses (and leaves alone) anything without the matching `t` or not `Sec-Fetch-Site:
+same-origin`, a GET there just goes home, and the cookie is cleared on first use (`worker/auth/pending.ts`). It then exchanges the code with a
 fresh 5-minute ES256 client secret **while** loading Apple's JWKS, verifies the id_token
 (RS256; `iss`, `aud`, `exp`, nonce), and finds or creates the user by Apple `sub` and starts
 the session in one D1 batch. Apple sends the person's name only on the first authorization;
 it's stored then. The JWKS is kept in isolate memory and the Cache API
 (`worker/auth/appleKeys.ts`): Apple's `max-age` if it sends one (clamped 5 min–24 h); it sends
-`no-store` today, so an hour. An unknown `kid` (or a signature that fails against a cached
-key) refetches once, at most once a minute.
+`no-store` today, so an hour. An unknown `kid` or a failing signature refetches once (even
+when the set came straight from Apple), at most once a minute.
 
 **Sessions** (`worker/auth/session.ts`): a random 32-byte token in `__Host-grub_session`
 (HttpOnly, Secure, SameSite=Lax, 30 days sliding, never more than 90 days after sign-in).
