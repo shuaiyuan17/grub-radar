@@ -52,43 +52,6 @@
   font-size: 15px;
   padding: 0;
 }
-.grid {
-  border: 0;
-  margin: 0;
-  padding: 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.emojis {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
-  gap: 6px;
-}
-.emoji {
-  position: relative;
-  height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid transparent;
-  border-radius: var(--r-round);
-  font-size: 24px;
-  line-height: 1;
-  cursor: pointer;
-}
-.emoji:hover {
-  border-color: var(--rule);
-}
-.on {
-  border-color: var(--ink);
-  background: var(--hl);
-}
-.emoji:has(:focus-visible) {
-  outline: 3px dashed var(--note-red);
-  outline-offset: 2px;
-}
 .status:empty {
   display: none;
 }

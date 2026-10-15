@@ -161,3 +161,15 @@ describe('GET /api/admin/stats, as the admin', () => {
     expect(stats.users.find((u) => u.displayName === 'Someone')?.lastSeenAt).toBe(later);
   });
 });
+
+describe('GET /api/admin/stats: someone who hasn’t chosen a name', () => {
+  it('is listed with no name (the page shows a placeholder), never as "you"', async () => {
+    await userSession('u_unnamed', 'ignored', { named: false });
+    await env.DB.prepare("UPDATE users SET avatar_emoji = '🫥' WHERE id = 'u_unnamed'").run();
+    const res = await call('/api/admin/stats', { cookie: admin });
+    const text = await res.clone().text();
+    const stats = AdminStatsSchema.parse(await res.json());
+    expect(stats.users.find((u) => u.avatarEmoji === '🫥')?.displayName).toBeNull();
+    expect(text).not.toMatch(/"you"/);
+  });
+});

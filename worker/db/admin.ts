@@ -7,6 +7,7 @@
 import { SIGNUP_DAYS, type AdminStats } from '../../src/contracts/admin';
 import type { Env } from '../env';
 import { DAY, isoDate } from '../lib/time';
+import { publicNameSql } from './users';
 
 /** The configured admin subs: trimmed, empties dropped. Empty when unset. */
 export function adminSubs(env: Pick<Env, 'ADMIN_APPLE_SUBS'>): string[] {
@@ -39,7 +40,7 @@ export async function isAdmin(
 const USERS_SHOWN = 500;
 
 interface UserRow {
-  display_name: string;
+  display_name: string | null;
   avatar_emoji: string;
   created_at: string;
   last_seen_at: string;
@@ -62,7 +63,7 @@ export async function adminStats(db: D1Database, now = Date.now()): Promise<Admi
       .prepare(
         // last seen: the newest session activity, but never before the last sign-in
         // (signing out deletes the session row, and its last_seen_at with it)
-        `SELECT u.display_name, u.avatar_emoji, u.created_at,
+        `SELECT ${publicNameSql('u')} AS display_name, u.avatar_emoji, u.created_at,
            max(u.last_login_at, COALESCE(
              (SELECT MAX(s.last_seen_at) FROM sessions s WHERE s.user_id = u.id), u.last_login_at
            )) AS last_seen_at,

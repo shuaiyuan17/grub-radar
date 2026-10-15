@@ -19,7 +19,7 @@ import { SpotSourceContext } from '../lib/spotSource';
 import { routes } from '../routes';
 
 export const TEST_ME: MeResponse = {
-  user: { id: 'u_test', displayName: 'Tess Lau', avatarEmoji: '🥟' },
+  user: { id: 'u_test', displayName: 'Tess Lau', avatarEmoji: '🥟', nameSet: true },
   home: null,
   signupOpen: false,
 };

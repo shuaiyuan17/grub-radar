@@ -16,7 +16,14 @@ import {
   type PendingInvite,
 } from '../contracts/friends';
 import { MeUserSchema, type MeUser, type PatchMe } from '../contracts/me';
+import type { Messages } from '../i18n/messages';
 import { api } from './api';
+
+/**
+ * Someone's name for display: theirs, or the placeholder ("a friend") while
+ * they haven't chosen one. Never the stand-in their own account carries.
+ */
+export const nameOf = (name: string | null, t: Messages): string => name ?? t.friends.unnamed;
 
 /**
  * How the app talks to /api/friends*, /api/invites* and PATCH /api/me (your

@@ -1,6 +1,6 @@
 import type { Photo } from '../contracts/photos';
 import { useT } from '../i18n/context';
-import { takesFor, useFriendTakes } from '../lib/friends';
+import { nameOf, takesFor, useFriendTakes } from '../lib/friends';
 import { FriendAvatars } from './FriendAvatars';
 import styles from './FriendTakes.module.css';
 import { Ink } from './Ink';
@@ -41,7 +41,7 @@ export function FriendTakes({
               </span>
               <span className={styles.body}>
                 <span className={styles.who}>
-                  <span className={styles.name}>{take.friend.displayName}</span>
+                  <span className={styles.name}>{nameOf(take.friend.displayName, t)}</span>
                   <span className={styles.verdict}>
                     {take.status === 'want'
                       ? t.wantToTry
@@ -56,7 +56,7 @@ export function FriendTakes({
                   </span>
                 )}
                 <FriendPhotos
-                  name={take.friend.displayName}
+                  name={nameOf(take.friend.displayName, t)}
                   photos={photos[take.friend.id] ?? []}
                 />
               </span>

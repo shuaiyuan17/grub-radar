@@ -21,6 +21,8 @@ const en = {
   spots: 'spots',
   friends: 'friends',
   loading: 'counting…',
+  /** Someone who hasn't chosen a name yet. */
+  unnamed: '(no name yet)',
 };
 
 export type AdminMessages = typeof en;
@@ -40,6 +42,7 @@ const zh: AdminMessages = {
   spots: '店',
   friends: '好友',
   loading: '数一数…',
+  unnamed: '（还没起名字）',
 };
 
 export const ADMIN_MESSAGES: Record<Locale, AdminMessages> = { en, 'zh-Hans': zh };

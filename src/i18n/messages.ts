@@ -457,6 +457,19 @@ const en = {
         'friends see the place, your verdict, your one-liner and your photos. never your notes.',
       private: 'only you see this spot.',
     } satisfies Record<Visibility, string>,
+    /** Someone who hasn't chosen a name yet, wherever their name would go. */
+    unnamed: 'a friend',
+  },
+  /** Asked once, before the app, when Apple didn't give us a name (or it was hidden). */
+  namePrompt: {
+    title: 'what should we call you?',
+    hint: 'your friends will see this.',
+    nameLabel: 'your name',
+    emojiGroup: 'pick an emoji',
+    save: 'save',
+    saving: 'saving…',
+    empty: 'type a name first.',
+    tooLong: 'that’s a bit long: 40 characters at most.',
   },
 };
 
@@ -877,6 +890,17 @@ const zh: Messages = {
       friends: '好友能看到店、你的评价、那句话和照片，看不到你的笔记。',
       private: '只有你自己能看到这家店。',
     },
+    unnamed: '一位好友',
+  },
+  namePrompt: {
+    title: '我们该怎么称呼你？',
+    hint: '你的好友会看到这个名字。',
+    nameLabel: '你的名字',
+    emojiGroup: '挑一个表情',
+    save: '保存',
+    saving: '保存中…',
+    empty: '先写个名字吧。',
+    tooLong: '名字有点长，最多 40 个字。',
   },
 };
 

@@ -529,3 +529,73 @@ describe('invite links', () => {
     expect(left?.n).toBe(0);
   });
 });
+
+describe('someone who hasn’t chosen a name: friends see a placeholder, never "you"', () => {
+  // Nell signed up without Apple's name: her account carries the stand-in 'you'
+  const NAMELESS = 'u_nameless';
+  const DANA = 'u_dana';
+  let nell = '';
+  let dana = '';
+  const as = (cookie: string, path: string) => call(path, { cookie });
+  /** Every way Dana can see Nell, as raw bodies, plus the parsed names. */
+  async function danaSeesNell() {
+    const token = CreatedInviteSchema.parse(
+      await json(await send('POST', '/api/invites', nell)),
+    ).token;
+    const [list, places, spots, preview] = await Promise.all([
+      as(dana, '/api/friends'),
+      as(dana, '/api/friends/places'),
+      as(dana, `/api/friends/${NAMELESS}/spots`),
+      send('POST', '/api/invites/preview', dana, { token }),
+    ]);
+    const bodies = await Promise.all([list, places, spots, preview].map((r) => r.clone().text()));
+    const takes = FriendPlacesResponseSchema.parse(await places.json()).places[SHARED] ?? [];
+    return {
+      bodies: bodies.join('\n'),
+      names: [
+        FriendsResponseSchema.parse(await list.json()).friends.find((f) => f.id === NAMELESS)
+          ?.displayName,
+        takes.find((t) => t.friend.id === NAMELESS)?.friend.displayName,
+        FriendSpotsResponseSchema.parse(await spots.json()).friend.displayName,
+        InvitePreviewSchema.parse(await preview.json()).from.displayName,
+      ],
+    };
+  }
+
+  beforeAll(async () => {
+    nell = await userSession(NAMELESS, 'ignored', { named: false });
+    dana = await userSession(DANA, 'Dana');
+    for (const c of [nell, dana])
+      expect((await send('POST', '/api/spots/import-demo', c)).status).toBe(200);
+    const token = CreatedInviteSchema.parse(
+      await json(await send('POST', '/api/invites', nell)),
+    ).token;
+    const res = await send('POST', '/api/invites/accept', dana, { token });
+    expect(res.status).toBe(201);
+    // accepting already names nobody
+    expect(AcceptInviteResponseSchema.parse(await res.json()).friend.displayName).toBeNull();
+  });
+
+  it('friends list, takes, their spots and invite previews all say null (no name yet)', async () => {
+    const { bodies, names } = await danaSeesNell();
+    expect(names).toEqual([null, null, null, null]);
+    expect(bodies).not.toMatch(/"you"/);
+  });
+
+  it('Nell herself still has her stand-in, and is asked for a name', async () => {
+    const me = await json<{ user: { displayName: string; nameSet: boolean } }>(
+      await as(nell, '/api/me'),
+    );
+    expect(me.user).toMatchObject({ displayName: 'you', nameSet: false });
+    // and she sees Dana's chosen name as usual
+    const hers = FriendsResponseSchema.parse(await json(await as(nell, '/api/friends')));
+    expect(hers.friends.map((f) => f.displayName)).toEqual(['Dana']);
+  });
+
+  it('once she saves a name, everyone sees it', async () => {
+    const res = await send('PATCH', '/api/me', nell, { displayName: 'Nell' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ displayName: 'Nell', nameSet: true });
+    expect((await danaSeesNell()).names).toEqual(['Nell', 'Nell', 'Nell', 'Nell']);
+  });
+});

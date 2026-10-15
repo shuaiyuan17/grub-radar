@@ -21,6 +21,8 @@ const snapshot = async () =>
   ) as Record<string, unknown[]>;
 
 let before: Record<string, unknown[]> = {};
+/** Right after this migration (later ones may add columns of their own, as 0007 does). */
+let after: Record<string, unknown[]> = {};
 
 beforeAll(async () => {
   for (const t of [
@@ -50,6 +52,8 @@ beforeAll(async () => {
     ).bind(AT, AT),
   ]);
   before = await snapshot();
+  await applyD1Migrations(env.DB, upTo(6));
+  after = await snapshot();
   await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
 });
 
@@ -59,7 +63,7 @@ describe('migration 0006: auth_states_used', () => {
       (r) => (r as { name: string }).name,
     );
     expect(names).toContain('0006_auth_states_used.sql');
-    expect(await snapshot()).toEqual(before);
+    expect(after).toEqual(before);
     expect(await all('SELECT * FROM auth_states_used')).toEqual([]);
   });
 

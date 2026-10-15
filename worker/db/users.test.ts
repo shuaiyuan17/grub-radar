@@ -2,10 +2,12 @@ import { env } from 'cloudflare:workers';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { AppleIdentity } from '../auth/siwa';
 import type { Env } from '../env';
-import { admission, signInWithApple, signupOpen } from './users';
+import { DEFAULT_DISPLAY_NAME } from '../../src/contracts/me';
+import { admission, getUser, signInWithApple, signupOpen, updateUser } from './users';
 
 const who = (sub: string): AppleIdentity => ({ sub, email: null, emailIsRelay: false });
 const opts = { displayName: null, refreshToken: null };
+const NOW = Date.parse('2026-10-15T12:00:00.000Z');
 const closed: Env = { ...env, SIGNUP_OPEN: 'false', OWNER_APPLE_SUB: undefined };
 const open: Env = { ...env, SIGNUP_OPEN: 'true' };
 const users = async () =>
@@ -74,5 +76,48 @@ describe('signInWithApple, concurrently', () => {
   it('open sign-up lets everyone in', async () => {
     await Promise.all([1, 2, 3].map((i) => signInWithApple(open, who(`friend-${i}`), opts)));
     expect(await users()).toBe(3);
+  });
+});
+
+describe('name_set_at: has this person chosen their name?', () => {
+  const nameRow = async (id: string) =>
+    env.DB.prepare('SELECT display_name, name_set_at FROM users WHERE id = ?')
+      .bind(id)
+      .first<{ display_name: string; name_set_at: string | null }>();
+
+  it('Apple sent a name at sign-up: chosen, dated then', async () => {
+    const out = await signInWithApple(open, who('named'), { ...opts, displayName: 'Nia' }, NOW);
+    expect(out.kind).toBe('created');
+    expect(await nameRow(out.kind === 'created' ? out.userId : '')).toEqual({
+      display_name: 'Nia',
+      name_set_at: '2026-10-15T12:00:00.000Z',
+    });
+    expect((await getUser(env.DB, out.kind === 'created' ? out.userId : ''))?.nameSet).toBe(true);
+  });
+
+  it('no name from Apple (a retried first sign-in, or hidden): the stand-in, not chosen', async () => {
+    const out = await signInWithApple(open, who('hidden'), opts, NOW);
+    const id = out.kind === 'created' ? out.userId : '';
+    expect(await nameRow(id)).toEqual({ display_name: DEFAULT_DISPLAY_NAME, name_set_at: null });
+    expect((await getUser(env.DB, id))?.nameSet).toBe(false);
+    // signing in again (Apple sends no name the second time) changes nothing
+    await signInWithApple(open, who('hidden'), opts, NOW + 1000);
+    expect((await nameRow(id))?.name_set_at).toBeNull();
+  });
+
+  it('saving a name chooses it (once dated, the date stays); an emoji alone does not', async () => {
+    const out = await signInWithApple(open, who('later'), opts, NOW);
+    const id = out.kind === 'created' ? out.userId : '';
+    expect((await updateUser(env.DB, id, { avatarEmoji: '🥟' }, NOW))?.nameSet).toBe(false);
+    expect((await nameRow(id))?.name_set_at).toBeNull();
+    expect(await updateUser(env.DB, id, { displayName: 'Lee' }, NOW + 1000)).toEqual({
+      id,
+      displayName: 'Lee',
+      avatarEmoji: '🥟',
+      nameSet: true,
+    });
+    expect((await nameRow(id))?.name_set_at).toBe('2026-10-15T12:00:01.000Z');
+    await updateUser(env.DB, id, { displayName: 'Lee Two' }, NOW + 5000);
+    expect((await nameRow(id))?.name_set_at).toBe('2026-10-15T12:00:01.000Z');
   });
 });

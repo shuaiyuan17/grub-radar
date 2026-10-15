@@ -24,11 +24,14 @@ import { DATA_LANGS, KINDS, PRICES, VERDICTS, type DataLang } from '../../src/do
 import { randomToken, sha256Hex } from '../lib/crypto';
 import { newInviteId } from '../lib/ids';
 import { DAY, iso } from '../lib/time';
-import { userIdRef, type UserRef } from './users';
+import { publicNameSql, userIdRef, type UserRef } from './users';
+
+/** Their name, or NULL while they haven't chosen one (never the stand-in 'you'). */
+const PUBLIC_NAME = publicNameSql('u');
 
 interface PersonRow {
   id: string;
-  display_name: string;
+  display_name: string | null;
   avatar_emoji: string;
 }
 interface FriendRow extends PersonRow {
@@ -66,7 +69,7 @@ const compact = <T extends Record<string, unknown>>(o: T): T =>
 export function friendsStatement(db: D1Database, user: UserRef): D1PreparedStatement {
   return db
     .prepare(
-      `SELECT u.id, u.display_name, u.avatar_emoji, f.created_at AS since
+      `SELECT u.id, ${PUBLIC_NAME} AS display_name, u.avatar_emoji, f.created_at AS since
        FROM friendships f JOIN users u ON u.id = f.friend_id
        WHERE f.user_id = ${user.sql}
        ORDER BY f.created_at, u.id`,
@@ -108,7 +111,7 @@ interface TakeRow extends PersonRow {
 export function friendPlacesStatement(db: D1Database, user: UserRef): D1PreparedStatement {
   return db
     .prepare(
-      `SELECT theirs.place_id, u.id, u.display_name, u.avatar_emoji,
+      `SELECT theirs.place_id, u.id, ${PUBLIC_NAME} AS display_name, u.avatar_emoji,
          theirs.status, theirs.verdict, theirs.note, theirs.lang
        FROM user_places mine
        JOIN friendships f ON f.user_id = mine.user_id
@@ -170,7 +173,7 @@ export async function friendSpots(
   const [who, list] = await db.batch([
     db
       .prepare(
-        `SELECT u.id, u.display_name, u.avatar_emoji, f.created_at AS since
+        `SELECT u.id, ${PUBLIC_NAME} AS display_name, u.avatar_emoji, f.created_at AS since
          FROM friendships f JOIN users u ON u.id = f.friend_id
          WHERE f.user_id = ? AND f.friend_id = ?`,
       )
@@ -284,7 +287,7 @@ export async function revokeInvite(
 
 interface PreviewRow {
   user_id: string;
-  display_name: string;
+  display_name: string | null;
   avatar_emoji: string;
   usable: number;
   friends: number;
@@ -304,7 +307,7 @@ export async function previewInvite(
   const at = iso(now);
   const row = await db
     .prepare(
-      `SELECT i.user_id, u.display_name, u.avatar_emoji,
+      `SELECT i.user_id, ${PUBLIC_NAME} AS display_name, u.avatar_emoji,
          (i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > ?) AS usable,
          EXISTS (SELECT 1 FROM friendships WHERE user_id = ? AND friend_id = i.user_id) AS friends
        FROM invites i JOIN users u ON u.id = i.user_id
@@ -328,7 +331,7 @@ export type AcceptOutcome =
 
 interface AcceptRow {
   user_id: string;
-  display_name: string;
+  display_name: string | null;
   avatar_emoji: string;
   /** 1 when this attempt's claim is the one on the link. */
   mine: number | null;
@@ -399,7 +402,7 @@ export async function acceptInvite(
       .bind(at, hash, claim),
     db
       .prepare(
-        `SELECT i.user_id, u.display_name, u.avatar_emoji, i.claim = ? AS mine,
+        `SELECT i.user_id, ${PUBLIC_NAME} AS display_name, u.avatar_emoji, i.claim = ? AS mine,
            (i.used_at IS NULL AND i.revoked_at IS NULL AND i.expires_at > ?) AS usable,
            (SELECT created_at FROM friendships WHERE user_id = ? AND friend_id = i.user_id) AS since,
            (SELECT COUNT(*) FROM friendships WHERE user_id = ?) AS mine_count,

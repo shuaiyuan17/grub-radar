@@ -1,0 +1,84 @@
+/* the whole screen: nothing of the app behind it until a name is saved */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px var(--page-pad);
+  overflow-y: auto;
+  background: var(--paper);
+}
+.dialog {
+  --fill: var(--card);
+  position: relative;
+  border-radius: var(--r-panel);
+  padding: 22px 20px 24px;
+  width: min(100%, 420px);
+  rotate: -0.5deg;
+  animation: pop var(--enter-duration) var(--ease-pop) backwards;
+}
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+.lang {
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  z-index: 1;
+}
+.form {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.coin {
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2.5px solid var(--ink);
+  border-radius: var(--r-round);
+  background: var(--hl);
+  font-size: 30px;
+  line-height: 1;
+  transform: rotate(-4deg);
+  animation: drop var(--enter-duration) var(--ease-pop);
+}
+@keyframes drop {
+  from {
+    opacity: 0;
+    transform: rotate(-4deg) scale(0.7);
+  }
+}
+.title {
+  font-family: var(--font-head);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+.hint {
+  font-size: 22px;
+  line-height: 1.1;
+}
+.label {
+  font-weight: 700;
+  font-size: 15px;
+  padding: 0;
+}
+.status:empty {
+  display: none;
+}
+/* belt and braces: global.css turns all motion off too */
+@media (prefers-reduced-motion: reduce) {
+  .dialog,
+  .coin {
+    animation: none;
+  }
+}

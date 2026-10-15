@@ -7,9 +7,11 @@ import styles from './AuthGate.module.css';
 import { Logo } from './bits';
 import { Icon } from './Icon';
 import { Ink } from './Ink';
+import { NamePrompt } from './NamePrompt';
 
 /**
- * The route root. Signed in: the app. Signed out: the login wall, on every
+ * The route root. Signed in: the app (after "what should we call you?" if
+ * the account's name was never chosen). Signed out: the login wall, on every
  * URL. The language switch works on both, so I18nProvider lives here.
  */
 export function AuthGate() {
@@ -35,6 +37,8 @@ function Gate() {
     );
   }
   if (state.status === 'signed-out') return <SignInPage />;
+  // no name chosen yet: ask first; the page asked for (an invite, say) mounts after
+  if (!state.me.user.nameSet) return <NamePrompt user={state.me.user} />;
   return (
     <>
       <AlreadySignedIn />

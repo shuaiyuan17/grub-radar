@@ -8,7 +8,7 @@
  * half of APPLE_PRIVATE_KEY, issues single-use codes, and signs RS256
  * id_tokens (iss https://appleid.apple.com, aud = client_id, our nonce)
  * published at /auth/keys. The `user` JSON is sent only on a person's first
- * authorization, like Apple.
+ * authorization, like Apple, with the name unless "Share my name" is unticked.
  *
  * It also stands in for maps-api.apple.com (APPLE_MAPS_BASE): /v1/token
  * checks our ES256 server_api JWT and hands out an access token, /v1/search
@@ -255,6 +255,7 @@ const server = createServer((req, res) => {
         `<h1>Sign in with Apple (stub)</h1>
 <form method="POST" action="/stub/decide">${hidden({ redirect_uri: p.redirect_uri ?? '', state: p.state ?? '', nonce: p.nonce ?? '' })}
 <label>Apple ID <input name="who" value="tess"></label>
+<label><input type="checkbox" name="share" value="name" checked> Share my name</label>
 <button name="decision" value="continue">Continue</button>
 <button name="decision" value="cancel">Cancel</button></form>`,
       );
@@ -279,8 +280,10 @@ const server = createServer((req, res) => {
       if (!seen.has(sub)) {
         seen.add(sub);
         const first = who.charAt(0).toUpperCase() + who.slice(1);
+        // unticked "Share my name": the first authorization's `user` comes without one
+        // (what our side sees when Apple's name is hidden, or a first sign-in is retried)
         fields.user = JSON.stringify({
-          name: { firstName: first, lastName: 'Stub' },
+          ...(f.get('share') === 'name' ? { name: { firstName: first, lastName: 'Stub' } } : {}),
           email: `${who}@privaterelay.appleid.com`,
         });
       }

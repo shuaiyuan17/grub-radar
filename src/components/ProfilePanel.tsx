@@ -1,14 +1,10 @@
 import { useId, useState, type SyntheticEvent } from 'react';
-import {
-  DEFAULT_DISPLAY_NAME,
-  DisplayNameSchema,
-  DISPLAY_NAME_MAX,
-  type MeUser,
-} from '../contracts/me';
+import { DisplayNameSchema, DISPLAY_NAME_MAX, type MeUser } from '../contracts/me';
 import { useT } from '../i18n/context';
 import { useAuth } from '../lib/auth';
 import { saveErrorMessage } from '../lib/errors';
-import { AVATAR_CHOICES, useFriendsClient } from '../lib/friends';
+import { useFriendsClient } from '../lib/friends';
+import { EmojiPicker } from './EmojiPicker';
 import { formErrorClass, inputClass } from './fieldClasses';
 import { InkBox, InkButton } from './fields';
 import styles from './ProfilePanel.module.css';
@@ -29,12 +25,7 @@ export function ProfilePanel({ user }: { user: MeUser }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const nameId = useId();
-  const groupName = useId();
-  const unnamed = user.displayName === DEFAULT_DISPLAY_NAME;
-  // any emoji the server accepts; the grid offers a few, plus whatever you have now
-  const choices = AVATAR_CHOICES.includes(emoji as (typeof AVATAR_CHOICES)[number])
-    ? AVATAR_CHOICES
-    : [emoji, ...AVATAR_CHOICES];
+  const unnamed = !user.nameSet;
 
   const changed = name.trim() !== user.displayName || emoji !== user.avatarEmoji;
 
@@ -90,28 +81,15 @@ export function ProfilePanel({ user }: { user: MeUser }) {
           }}
         />
       </InkBox>
-      <fieldset className={styles.grid}>
-        <legend className={styles.label}>{t.friends.emojiGroup}</legend>
-        <div className={styles.emojis}>
-          {choices.map((e) => (
-            <label key={e} className={`tap ${styles.emoji} ${e === emoji ? styles.on : ''}`}>
-              <input
-                type="radio"
-                className="visually-hidden"
-                name={groupName}
-                value={e}
-                checked={e === emoji}
-                aria-label={t.friends.emojiAria(e)}
-                onChange={() => {
-                  setEmoji(e);
-                  setSaved(false);
-                }}
-              />
-              <span aria-hidden="true">{e}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      <EmojiPicker
+        value={emoji}
+        legend={t.friends.emojiGroup}
+        legendClassName={styles.label}
+        onChange={(e) => {
+          setEmoji(e);
+          setSaved(false);
+        }}
+      />
       <div aria-live="polite" className={styles.status}>
         {error && (
           <p role="alert" className={formErrorClass}>

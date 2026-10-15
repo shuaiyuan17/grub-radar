@@ -6,7 +6,7 @@ import { Ink } from '../components/Ink';
 import type { FriendSpotsResponse } from '../contracts/friends';
 import { useI18n } from '../i18n/context';
 import { ApiRequestError } from '../lib/api';
-import { useFriendsClient } from '../lib/friends';
+import { nameOf, useFriendsClient } from '../lib/friends';
 import { useSpots } from '../lib/spots';
 import styles from './FriendsPage.module.css';
 
@@ -70,7 +70,7 @@ export function FriendSpotsPage() {
             <span className={styles.titleCoin} aria-hidden="true">
               {current.data.friend.avatarEmoji}
             </span>{' '}
-            {t.friends.theirSpots(current.data.friend.displayName)}
+            {t.friends.theirSpots(nameOf(current.data.friend.displayName, t))}
           </h1>
           {current.data.spots.length === 0 ? (
             <p className={`note ${styles.empty}`}>{t.friends.theirSpotsEmpty}</p>
