@@ -29,7 +29,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npm run build && npm run preview -- --port ${PORT} --strictPort`,
+    // CI builds once in its own step; locally, build first so tests see current code
+    command: process.env.CI
+      ? `npm run preview -- --port ${PORT} --strictPort`
+      : `npm run build && npm run preview -- --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

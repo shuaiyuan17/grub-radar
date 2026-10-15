@@ -8,7 +8,12 @@ async function noHorizontalScroll(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
+const runningAnimations = (page: Page) =>
+  page.evaluate(() => document.getAnimations().filter((a) => a.playState === 'running').length);
+
 async function noSeriousA11yIssues(page: Page) {
+  // let entrance animations finish: axe measures contrast at the current opacity
+  await expect.poll(() => runningAnimations(page)).toBe(0);
   const { violations } = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .analyze();
@@ -115,4 +120,39 @@ test('where i am: denied location falls back to home', async ({ page, context })
     .getByRole('button', { name: 'where i am' })
     .click();
   await expect(page.getByRole('status').filter({ hasText: /measuring from home/ })).toBeVisible();
+});
+
+test('motion settles: nothing keeps animating at idle', async ({ page }) => {
+  await pinTime(page, WEEKDAY_DINNER);
+  await page.goto('/');
+  await expect(page.getByRole('article').first()).toBeVisible();
+  // entrances (cards, highlighter, radar dots) are short; then the page is still
+  await expect.poll(() => runningAnimations(page), { timeout: 3000 }).toBe(0);
+  await page.goto('/radar');
+  await expect(page.getByRole('slider')).toBeVisible();
+  await expect.poll(() => runningAnimations(page), { timeout: 3000 }).toBe(0);
+});
+
+test('prefers-reduced-motion: no animations at all', async ({ page }, info) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await pinTime(page, WEEKDAY_DINNER);
+  await page.goto('/');
+  await expect(page.getByRole('article').first()).toBeVisible();
+  expect(await runningAnimations(page)).toBe(0);
+
+  // things that would animate: roll the dice (wiggle), hover it (boil), change mode (stagger)
+  const dice = page.getByRole('button', { name: /can't decide/ }).filter({ visible: true });
+  await dice.hover();
+  await dice.click();
+  expect(await runningAnimations(page)).toBe(0);
+  await page.getByRole('button', { name: 'weekend' }).click();
+  expect(await runningAnimations(page)).toBe(0);
+
+  if (info.project.name === 'phone')
+    await page.getByRole('link', { name: 'radar', exact: true }).click();
+  else await page.getByRole('link', { name: 'open the full radar' }).click();
+  await expect(page.getByRole('slider')).toBeVisible();
+  expect(await runningAnimations(page)).toBe(0);
+  await page.getByRole('slider').fill('0');
+  expect(await runningAnimations(page)).toBe(0);
 });
