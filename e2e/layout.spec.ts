@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { devLogin, freshUser } from './session';
+import { devLogin, freshUser, withSession } from './session';
 
 // Narrow-phone layout guard: nothing may push the page sideways, and the
 // home panel's field + save button and the list's count + roll button stay
@@ -261,9 +261,10 @@ test('fields fit: settings in Chinese', async ({ page }) => {
 
 test('fields fit: the name prompt', async ({ page }) => {
   // the prompt shows while the account has no name (name.spec.ts walks the real flow, which
-  // WebKit can't: it won't keep the Secure sign-in cookies on http://localhost)
+  // WebKit can't: it won't keep the Secure sign-in cookies on http://localhost). This route
+  // is the page's newest, so it runs instead of devLogin's: it adds the cookie itself.
   await page.route('**/api/me', async (route) => {
-    const res = await route.fetch();
+    const res = await route.fetch({ headers: withSession(page, route.request().headers()) });
     const me = (await res.json()) as { user: { nameSet: boolean } };
     me.user.nameSet = false;
     await route.fulfill({ status: res.status(), json: me });
@@ -321,9 +322,26 @@ test('fields fit: the home panel', async ({ page }) => {
   await fieldsFit(page, 1);
 });
 
+/** A JPEG without its APP1-APP15 segments (the canvas adds ICC / EXIF; the server refuses them). */
+function stripJpegMetadata(b: Buffer): Buffer {
+  const parts: Buffer[] = [b.subarray(0, 2)];
+  let i = 2;
+  while (i + 4 <= b.length && b[i] === 0xff) {
+    const marker = b[i + 1] ?? 0;
+    if (marker === 0xda) break; // start of scan: the rest is image data
+    const end = i + 2 + b.readUInt16BE(i + 2);
+    if (marker < 0xe1 || marker > 0xef) parts.push(b.subarray(i, end));
+    i = end;
+  }
+  parts.push(b.subarray(i));
+  return Buffer.concat(parts);
+}
+
 test('fields fit: a photo caption', async ({ page }) => {
   await page.goto('/place/lucky-thread');
-  const png = await page.evaluate(async () => {
+  // a small JPEG from the browser's canvas (no EXIF), stored through the API: WebKit's
+  // request interception (the session route) drops an XHR upload's body
+  const jpeg = await page.evaluate(async () => {
     const c = document.createElement('canvas');
     c.width = 120;
     c.height = 80;
@@ -332,16 +350,24 @@ test('fields fit: a photo caption', async ({ page }) => {
     ctx.fillStyle = '#e0583a';
     ctx.fillRect(0, 0, 120, 80);
     const blob = await new Promise<Blob | null>((r) => {
-      c.toBlob(r, 'image/png');
+      c.toBlob(r, 'image/jpeg', 0.9);
     });
-    if (!blob) throw new Error('no png');
+    if (!blob) throw new Error('no jpeg');
     let s = '';
     for (const b of new Uint8Array(await blob.arrayBuffer())) s += String.fromCharCode(b);
     return btoa(s);
   });
-  await page
-    .getByLabel('Add photos of this spot')
-    .setInputFiles({ name: 'dish.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+  const origin = new URL(page.url()).origin;
+  const res = await page.request.post(`${origin}/api/photos?place=lucky-thread`, {
+    headers: withSession(page, {
+      'content-type': 'image/jpeg',
+      'x-grub-request': '1',
+      origin,
+    }),
+    data: stripJpegMetadata(Buffer.from(jpeg, 'base64')),
+  });
+  expect(res.status(), await res.text()).toBe(201);
+  await page.reload();
   await page.getByRole('button', { name: 'Photo 1 of 1, view larger' }).click();
   await expect(page.getByRole('dialog').getByLabel('caption')).toBeVisible();
   await fieldsFit(page, 1);

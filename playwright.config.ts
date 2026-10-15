@@ -31,7 +31,8 @@ export default defineConfig({
     },
     {
       // Safari's engine on an iPhone: some layout bugs (an <input>'s intrinsic width in a
-      // flex box) only show in WebKit. Layout spec only, to keep CI quick.
+      // flex box) only show in WebKit, and only on Apple platforms (CI runs it on macOS).
+      // Layout spec only.
       name: 'webkit-phone',
       testMatch: 'layout.spec.ts',
       use: { ...devices['iPhone 17 Pro'] },
