@@ -25,8 +25,20 @@
   font-weight: 600;
 }
 
+/*
+ * The frame fills its container's width and never takes its size from the
+ * field inside. WebKit gives a bare <input> a wide intrinsic size (hundreds of
+ * px, from the font's average glyph width), so a frame or card sized by its
+ * content (align-items: flex-start, a centred grid) ran off an iPhone screen.
+ * width: 100% + min-width: 0 on both, and a 0 flex-basis on the field, keep
+ * that intrinsic width out of every layout. e2e/layout.spec.ts checks WebKit.
+ */
 .box {
   --bw: 2px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 44px;
   border-radius: var(--r-tile);
   display: flex;
@@ -39,7 +51,9 @@
   min-height: 84px;
 }
 .input {
-  flex: 1;
+  box-sizing: border-box;
+  flex: 1 1 0;
+  width: 100%;
   min-width: 0;
   border: 0;
   background: transparent;

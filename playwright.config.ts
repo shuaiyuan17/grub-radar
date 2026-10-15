@@ -29,6 +29,13 @@ export default defineConfig({
       name: 'desktop',
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
     },
+    {
+      // Safari's engine on an iPhone: some layout bugs (an <input>'s intrinsic width in a
+      // flex box) only show in WebKit. Layout spec only, to keep CI quick.
+      name: 'webkit-phone',
+      testMatch: 'layout.spec.ts',
+      use: { ...devices['iPhone 17 Pro'] },
+    },
   ],
   webServer: [
     {

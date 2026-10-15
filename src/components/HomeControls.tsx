@@ -3,6 +3,8 @@ import { parseLatLng } from '../domain/geo';
 import { useT } from '../i18n/context';
 import { useOrigin } from '../lib/origin';
 import styles from './HomeControls.module.css';
+import { inputClass } from './fieldClasses';
+import { InkBox } from './fields';
 import { Icon } from './Icon';
 import { Ink } from './Ink';
 
@@ -71,11 +73,10 @@ export function HomeEditor() {
           {t.typeLatLng}
         </label>
         <div className={styles.row}>
-          <span className={`sk flat ${styles.field}`}>
-            <Ink />
+          <InkBox>
             <input
               id={`${id}-coords`}
-              className={styles.input}
+              className={inputClass}
               inputMode="decimal"
               autoComplete="off"
               placeholder="47.61, -122.33"
@@ -87,7 +88,7 @@ export function HomeEditor() {
                 setError(false);
               }}
             />
-          </span>
+          </InkBox>
           <button type="submit" className={`sk press ${styles.btn}`}>
             <Ink />
             {t.save}
