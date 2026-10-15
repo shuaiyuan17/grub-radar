@@ -68,6 +68,7 @@
   font-size: 20px;
   line-height: 1.1;
   margin-top: 2px;
+  overflow-wrap: anywhere; /* a long word ("marionberry") in a 320px card's narrow column */
 }
 .go {
   grid-area: go;

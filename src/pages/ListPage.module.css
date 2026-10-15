@@ -4,6 +4,7 @@
   gap: 14px;
 }
 .phoneHeader {
+  container: phone-header / inline-size;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -12,6 +13,14 @@
 .phoneHeaderBtns {
   display: flex;
   gap: 12px;
+}
+/* narrow phones (under ~375px): four 44px buttons + the wordmark don't fit.
+   Tighten the buttons first; below ~360px the logo drops to just its blob
+   (bits.module.css; the link keeps its aria-label). */
+@container phone-header (max-width: 334.98px) {
+  .phoneHeaderBtns {
+    gap: 8px;
+  }
 }
 .iconBtn {
   --sx: 2px;
@@ -43,6 +52,7 @@
 }
 .countRow {
   display: flex;
+  flex-wrap: wrap; /* 320px en: the roll button drops under the count instead of off-screen */
   align-items: center;
   justify-content: space-between;
   gap: 8px;

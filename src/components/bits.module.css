@@ -22,6 +22,12 @@
   font-weight: 800;
   letter-spacing: -0.02em;
 }
+/* the list page's phone header on a narrow phone: blob only (see ListPage.module.css) */
+@container phone-header (max-width: 324.98px) {
+  .logoText {
+    display: none;
+  }
+}
 @media (min-width: 960px) {
   .logoBlob {
     width: 44px;
