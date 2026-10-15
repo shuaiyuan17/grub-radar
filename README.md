@@ -41,6 +41,7 @@ returns people to `https://grub.shuaiyuan.me`), where you pick any name and cont
 | `npm run db:migrate:remote` | apply D1 migrations to the real database                              |
 | `npm run dev:vars`          | write `.dev.vars` (`-- --from-keychain` for the real Apple key)       |
 | `npm run format`            | Prettier                                                              |
+| `npm run og-image`          | redraw the link-preview images (`public/og.png`, icons)               |
 
 The first `test:e2e` run needs `npx playwright install chromium`.
 

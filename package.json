@@ -17,6 +17,7 @@
     "db:migrate:remote": "wrangler d1 migrations apply grub-radar --remote",
     "dev:vars": "node scripts/dev-vars.mjs",
     "apple-stub": "node e2e/apple-stub.ts",
+    "og-image": "node scripts/og-image.ts",
     "typecheck": "tsc -b",
     "lint": "eslint .",
     "format": "prettier --write .",
