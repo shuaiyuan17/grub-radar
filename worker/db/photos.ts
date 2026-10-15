@@ -19,6 +19,7 @@ import {
   type Photo,
   type PhotoType,
 } from '../../src/contracts/photos';
+import { iso } from '../lib/time';
 import { userIdRef, type UserRef } from './users';
 
 interface PhotoRow {
@@ -201,11 +202,25 @@ export interface NewPhoto {
 }
 
 /**
- * Stores the row, only if the place is on the uploader's list, the spot has
- * room (PHOTOS_PER_SPOT) and so does the person (PHOTO_STORAGE_BYTES), all
- * judged inside the one INSERT. Same batch (one transaction, one round trip):
- * when the row wasn't inserted, the bytes already in R2 go on the deletion
- * outbox, and a read says why.
+ * Step 1 of an upload, before the bytes go to R2: the key goes on the outbox
+ * as pending. Whatever happens next (R2 fails, the Worker dies, D1 fails or
+ * times out), the key is known; the sweeper deletes its bytes only once it's
+ * old and no photos row points at it.
+ */
+export async function reservePhotoKey(db: D1Database, key: string, at: string): Promise<void> {
+  await db
+    .prepare('INSERT INTO photo_deletions (r2_key, created_at, pending) VALUES (?, ?, 1)')
+    .bind(key, at)
+    .run();
+}
+
+/**
+ * Step 3 of an upload (after the bytes are in R2). Stores the row, only if
+ * the place is on the uploader's list, the spot has room (PHOTOS_PER_SPOT) and
+ * so does the person (PHOTO_STORAGE_BYTES), all judged inside the one INSERT.
+ * In the same batch (one transaction, one round trip): inserted, the pending
+ * outbox row goes; refused, it becomes due now (pending = 0); and a read says
+ * why. If D1 fails or times out, either all of it happened or none of it.
  */
 export async function insertPhoto(
   db: D1Database,
@@ -213,7 +228,7 @@ export async function insertPhoto(
 ): Promise<
   { ok: true; photo: Photo } | { ok: false; why: 'no_spot' | 'photo_limit' | 'storage_full' }
 > {
-  const [inserted, , after] = await db.batch([
+  const [inserted, , , after] = await db.batch([
     db
       .prepare(
         `INSERT INTO photos (id, user_id, place_id, r2_key, content_type, width, height, bytes, created_at)
@@ -243,10 +258,15 @@ export async function insertPhoto(
       ),
     db
       .prepare(
-        `INSERT OR IGNORE INTO photo_deletions (r2_key, created_at)
-         SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM photos WHERE id = ?)`,
+        'DELETE FROM photo_deletions WHERE r2_key = ? AND EXISTS (SELECT 1 FROM photos WHERE id = ?)',
       )
-      .bind(p.key, p.createdAt, p.id),
+      .bind(p.key, p.id),
+    db
+      .prepare(
+        `UPDATE photo_deletions SET pending = 0
+         WHERE r2_key = ? AND NOT EXISTS (SELECT 1 FROM photos WHERE id = ?)`,
+      )
+      .bind(p.key, p.id),
     usageStatement(db, userIdRef(p.userId), p.placeId),
   ]);
   if (inserted?.meta.changes) {
@@ -321,35 +341,50 @@ export const keysFromResult = (result: D1Result | undefined): string[] =>
 
 /** Sweeps that fail this many times are left for a person to look at (the cron skips them). */
 export const MAX_SWEEP_ATTEMPTS = 10;
+/** A pending upload key older than this can't belong to a request still running. */
+export const PENDING_GRACE_MS = 15 * 60 * 1000;
 
 /**
  * Deletes R2 objects on the outbox (photo_deletions), then their outbox rows.
- * `keys`: just these (right after the request that deleted them); otherwise
- * the oldest `limit` rows still under MAX_SWEEP_ATTEMPTS (the cron). A failed
- * R2 delete leaves the rows, one attempt more, for the next sweep. Never throws.
+ * Only rows that are due: pending = 0, or pending and older than
+ * PENDING_GRACE_MS. `keys`: only those (right after the request that queued
+ * them); otherwise the oldest `limit` due rows under MAX_SWEEP_ATTEMPTS (the
+ * cron). A key some photos row still points at is never deleted from R2: its
+ * outbox row just goes (a committed upload whose answer was lost). A failed R2
+ * delete leaves the rows, one attempt more, for the next sweep. Never throws.
  */
 export async function sweepPhotoDeletions(
   db: D1Database,
   bucket: R2Bucket,
-  opts: { keys?: string[]; limit?: number } = {},
-): Promise<{ deleted: number; failed: number }> {
-  let keys = opts.keys;
+  opts: { keys?: string[]; limit?: number; now?: number } = {},
+): Promise<{ deleted: number; failed: number; kept: number }> {
+  const done = { deleted: 0, failed: 0, kept: 0 };
+  const due = iso((opts.now ?? Date.now()) - PENDING_GRACE_MS);
+  let keys: string[];
   try {
-    keys ??= (
-      await db
+    // due rows; the referenced ones leave the outbox here and now, bytes untouched
+    const [referenced, rest] = await db.batch<{ r2_key: string }>([
+      db
         .prepare(
-          `SELECT r2_key FROM photo_deletions WHERE attempts < ?
-           ORDER BY attempts, created_at LIMIT ?`,
+          `DELETE FROM photo_deletions
+           WHERE r2_key IN (${CANDIDATES}) AND EXISTS (SELECT 1 FROM photos WHERE r2_key = photo_deletions.r2_key)
+           RETURNING r2_key`,
         )
-        .bind(MAX_SWEEP_ATTEMPTS, opts.limit ?? 1000)
-        .all<{ r2_key: string }>()
-    ).results.map((r) => r.r2_key);
+        .bind(...candidateBinds(opts, due)),
+      // never bytes a photos row points at (the batch is one transaction: none can appear here)
+      db
+        .prepare(
+          `SELECT c.r2_key FROM (${CANDIDATES}) c
+           WHERE NOT EXISTS (SELECT 1 FROM photos WHERE photos.r2_key = c.r2_key)`,
+        )
+        .bind(...candidateBinds(opts, due)),
+    ]);
+    done.kept = referenced?.results.length ?? 0;
+    keys = (rest?.results ?? []).map((r) => r.r2_key);
   } catch (e) {
     console.error('photo sweep: outbox read failed', e instanceof Error ? e.message : e);
-    return { deleted: 0, failed: 0 };
+    return done;
   }
-  let deleted = 0;
-  let failed = 0;
   // R2 takes at most 1000 keys per delete
   for (let i = 0; i < keys.length; i += 1000) {
     const chunk = keys.slice(i, i + 1000);
@@ -357,7 +392,7 @@ export async function sweepPhotoDeletions(
     try {
       await bucket.delete(chunk);
     } catch (e) {
-      failed += chunk.length;
+      done.failed += chunk.length;
       console.error('photo sweep: R2 delete failed', e instanceof Error ? e.message : e);
       await db
         .prepare(
@@ -373,14 +408,27 @@ export async function sweepPhotoDeletions(
         .prepare('DELETE FROM photo_deletions WHERE r2_key IN (SELECT value FROM json_each(?))')
         .bind(list)
         .run();
-      deleted += chunk.length;
+      done.deleted += chunk.length;
     } catch (e) {
       // the objects are gone; the rows stay and a later sweep deletes nothing again (harmless)
       console.error('photo sweep: outbox cleanup failed', e instanceof Error ? e.message : e);
     }
   }
-  return { deleted, failed };
+  return done;
 }
+
+/** Due outbox keys: `?1` the keys (JSON, or NULL for any), `?2` grace cutoff, `?3` attempts cap, `?4` limit. */
+const CANDIDATES = `SELECT r2_key FROM photo_deletions
+  WHERE (?1 IS NULL OR r2_key IN (SELECT value FROM json_each(?1)))
+    AND (pending = 0 OR created_at < ?2)
+    AND attempts < ?3
+  ORDER BY attempts, created_at LIMIT ?4`;
+const candidateBinds = (opts: { keys?: string[]; limit?: number }, due: string) => [
+  opts.keys ? JSON.stringify(opts.keys) : null,
+  due,
+  opts.keys ? Number.MAX_SAFE_INTEGER : MAX_SWEEP_ATTEMPTS,
+  opts.keys?.length ?? opts.limit ?? 1000,
+];
 
 /**
  * Every photo object of one person, by prefix, whether or not D1 or the

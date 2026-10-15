@@ -250,15 +250,18 @@ The browser shrinks every photo first (`src/lib/photoProcess.ts`: EXIF orientati
 applied, ≤ 1600px, WebP or JPEG fallback, ~150-300 KB), and re-encoding through a canvas
 drops all metadata, the GPS position included. The Worker doesn't trust that: it reads the
 container (`worker/lib/imageGuard.ts`), checks type and size from the headers, and is an
-allowlist: for JPEG only an exact JFIF/JFXX APP0 and Adobe's APP14 pass, every other APPn
+allowlist: for JPEG only an exact, thumbnail-free JFIF APP0 (never JFXX) and Adobe's APP14 pass, every other APPn
 and COM is refused (the app strips what canvas encoders add: Chrome's ICC APP2, Safari's
 EXIF APP1 and APP13); for WebP, EXIF/XMP chunks and flags are refused. Caps (6 per spot, 200 MB per
 person) are checked inside the `INSERT`, so parallel uploads can't overshoot; uploads also
-have their own limiter (20/min). R2 can't join a D1 transaction, so bytes are deleted
-through an outbox, `photo_deletions`: a trigger queues the key of every deleted photo row
-(one photo, a spot, a place, or an account by cascade), and an upload refused after its
-bytes were stored queues them in the same batch. A sweeper deletes the objects right after
-the request (`waitUntil`) and hourly from the cron trigger, giving up after 10 failures.
+have their own limiter (20/min). R2 can't join a D1 transaction, so R2 keys go through an
+outbox, `photo_deletions`. An upload is staged: its key goes on the outbox as pending, the
+bytes go to R2, then one batch inserts the photo row and takes the pending row out (or, if
+refused, makes it due now). A trigger queues the key of every deleted photo row (one photo,
+a spot, a place, or an account by cascade). The sweeper deletes due keys (pending ones only
+after 15 minutes) right after the request (`waitUntil`) and hourly from the cron trigger,
+giving up after 10 failures, and never deletes bytes a photos row still points at: a
+committed upload whose answer was lost keeps its photo, a rolled-back one is swept.
 `purgeUserPhotos` also sweeps an account's bytes by prefix.
 
 **Sign in with Apple** (`worker/auth/siwa.ts`): web flow with `response_type=code` and

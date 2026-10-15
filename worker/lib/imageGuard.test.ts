@@ -14,11 +14,49 @@ describe('checkImage: JPEG', () => {
     });
   });
 
-  it('passes an exact JFIF APP0 and Adobe’s APP14, nothing else in APPn', () => {
+  it('passes an exact, thumbnail-free JFIF APP0 and Adobe’s APP14, nothing else in APPn', () => {
+    // jpeg() starts with JFIF 1.01, no thumbnail
+    expect(checkImage(jpeg()).ok).toBe(true);
     const adobe = segment(0xee, [...enc.encode('Adobe'), 0, 100, 0, 0, 0, 0, 1]);
     expect(checkImage(jpeg({ before: [adobe] })).ok).toBe(true);
-    const jfxx = segment(0xe0, [...enc.encode('JFXX\0'), 0x10]);
-    expect(checkImage(jpeg({ before: [jfxx] })).ok).toBe(true);
+  });
+
+  it('refuses JFXX and JFIF thumbnails: a thumbnail is a whole JPEG, EXIF and all', () => {
+    // a JFXX extension (0x10: thumbnail coded as JPEG) holding a JPEG that carries GPS
+    const thumbnail = jpeg({ width: 16, height: 16, before: [segment(0xe1, exifBody())] });
+    const jfxx = segment(0xe0, [...enc.encode('JFXX\0'), 0x10, ...thumbnail]);
+    expect(checkImage(jpeg({ before: [jfxx] }))).toMatchObject({ ok: false, reason: 'metadata' });
+    // even an empty-looking one
+    const bare = segment(0xe0, [...enc.encode('JFXX\0'), 0x10]);
+    expect(checkImage(jpeg({ before: [bare] }))).toMatchObject({ ok: false, reason: 'metadata' });
+    // JFIF with a 2x1 RGB thumbnail after the header
+    const jfifThumb = segment(0xe0, [
+      ...enc.encode('JFIF\0'),
+      1,
+      1,
+      0,
+      0,
+      1,
+      0,
+      1,
+      2,
+      1,
+      255,
+      0,
+      0,
+      0,
+      255,
+      0,
+    ]);
+    expect(checkImage(jpeg({ before: [jfifThumb] }))).toMatchObject({
+      ok: false,
+      reason: 'metadata',
+    });
+    // JFIF that says "no thumbnail" but carries bytes anyway, or is cut short
+    const padded = segment(0xe0, [...enc.encode('JFIF\0'), 1, 1, 0, 0, 1, 0, 1, 0, 0, 47, 62]);
+    const short = segment(0xe0, [...enc.encode('JFIF\0'), 1, 1]);
+    for (const s of [padded, short])
+      expect(checkImage(jpeg({ before: [s] }))).toMatchObject({ ok: false, reason: 'metadata' });
   });
 
   it('refuses every other APPn, whatever it says it is (fail closed)', () => {
@@ -28,7 +66,7 @@ describe('checkImage: JPEG', () => {
       segment(0xe5, enc.encode('lat=47.6205;lng=-122.3493')),
       segment(0xe3, enc.encode('Meta\0anything')),
       segment(0xef, [1, 2, 3]),
-      // APP0 that isn't JFIF/JFXX, and an Adobe APP14 with room for more
+      // APP0 that isn't JFIF, and an Adobe APP14 with room for more
       segment(0xe0, enc.encode('NOTJFIF-47.62N')),
       segment(0xee, [...enc.encode('Adobe'), 0, 100, 0, 0, 0, 0, 1, ...enc.encode('47.62N')]),
     ];

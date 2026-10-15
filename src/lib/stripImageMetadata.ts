@@ -5,7 +5,7 @@
  * their own (colour space, size). The Worker refuses any EXIF/XMP at all, so
  * this drops what an encoder might add, whatever it holds:
  *
- *   JPEG  every APPn except an exact JFIF/JFXX APP0 and Adobe's APP14 (so
+ *   JPEG  every APPn except an exact, thumbnail-free JFIF APP0 and Adobe's APP14 (so
  *         APP1 EXIF/XMP, APP2 ICC/MPF, APP13 IPTC, …), COM, and anything
  *         after EOI: what the Worker accepts (worker/lib/imageGuard.ts).
  *         Safari's canvas JPEG carries APP1 EXIF and APP13; Chrome's an
@@ -62,7 +62,7 @@ function stripJpeg(b: Bytes): Bytes | null {
     const end = i + len;
     const id = ascii(b, i + 2, 5);
     const keepApp =
-      (m === 0xe0 && (id === 'JFIF\0' || id === 'JFXX\0')) ||
+      (m === 0xe0 && id === 'JFIF\0' && len === 16 && !b[i + 14] && !b[i + 15]) ||
       (m === 0xee && id === 'Adobe' && len === 14);
     const drop = (m >= 0xe0 && m <= 0xef && !keepApp) || m === 0xfe;
     i = end;

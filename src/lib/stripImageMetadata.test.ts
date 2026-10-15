@@ -47,6 +47,7 @@ describe('stripImageMetadata', () => {
       segment(0xe1, exifBody({ gps: false })),
       segment(0xed, enc.encode('Photoshop 3.0\0')),
       segment(0xe5, enc.encode('anything')),
+      segment(0xe0, [...enc.encode('JFXX\0'), 0x10, ...jpeg({ width: 8, height: 8 })]),
     ];
     const clean = strip(jpeg({ before: added }));
     expect(clean).toEqual(jpeg());

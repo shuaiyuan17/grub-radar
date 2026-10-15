@@ -5,7 +5,8 @@
  *
  *   JPEG  SOI, then marker segments up to EOI. An allowlist: frame headers
  *         (SOFn), tables (DQT, DHT, DAC, DRI), scans (SOS, RSTn), APP0 only
- *         when it's exactly JFIF or JFXX, and APP14 only when it's Adobe's
+ *         when it's exactly JFIF with no thumbnail (never JFXX: that's for
+ *         embedding a thumbnail JPEG), and APP14 only when it's Adobe's
  *         colour-transform note. Every other APPn (APP1 EXIF/XMP, APP2 ICC
  *         or MPF, APP13 IPTC, …) and COM is refused as metadata; any other
  *         marker, a segment running past the end, or bytes after EOI is
@@ -68,10 +69,15 @@ const standalone = (m: number) => m === 0x01 || (m >= 0xd0 && m <= 0xd7);
 /** DHT, DAC, DQT, DRI, SOS. */
 const TABLES_AND_SCANS = new Set([0xc4, 0xcc, 0xdb, 0xdd, 0xda]);
 
-/** APP0 that is exactly JFIF/JFXX, APP14 that is Adobe's: no room for metadata in either. */
+/**
+ * APP0 that is exactly a JFIF header with no thumbnail, APP14 that is Adobe's
+ * colour note: no room for anything else in either. (JFXX, the JFIF extension,
+ * exists to embed a thumbnail, which is a whole JPEG with its own EXIF: refused.)
+ */
 function allowedApp(m: number, b: Uint8Array, body: number, size: number): boolean {
   const id = ascii(b, body, 5);
-  if (m === 0xe0) return id === 'JFIF\0' || id === 'JFXX\0';
+  // "JFIF\0" + version (2) + units (1) + densities (2 + 2) + thumbnail width, height (1 + 1)
+  if (m === 0xe0) return id === 'JFIF\0' && size === 14 && b[body + 12] === 0 && b[body + 13] === 0;
   // "Adobe" + version (2) + flags0 (2) + flags1 (2) + transform (1)
   if (m === 0xee) return id === 'Adobe' && size === 12;
   return false;

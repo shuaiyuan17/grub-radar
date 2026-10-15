@@ -39,6 +39,7 @@ import {
   placePhotosFromResults,
   placePhotosStatements,
   refusal,
+  reservePhotoKey,
   servableFromResult,
   servableStatement,
   setCaption,
@@ -189,8 +190,8 @@ photos.get('/', async (c) => {
  * Upload one photo of a spot on your list. The body is the image itself
  * (Content-Type image/webp or image/jpeg), already shrunk and re-encoded by
  * the app. The Worker checks it doesn't lie about its type or size and
- * carries no EXIF/XMP, puts the bytes in R2, then stores the row only if both
- * caps still allow (in the INSERT). A refused row takes its R2 object with it.
+ * carries no EXIF/XMP, then stores it in three steps (see below) so the bytes
+ * in R2 and the row in D1 can't drift apart, whatever fails.
  */
 photos.post(
   '/',
@@ -229,27 +230,28 @@ photos.post(
 
     const id = newPhotoId();
     const key = photoKey(userId, place, id);
+    const at = iso(Date.now());
+    // staged, because R2 and D1 can't share a transaction:
+    //   1. the key goes on the outbox as pending (so it's never unknown)
+    //   2. the bytes go to R2
+    //   3. one batch: the photo row in, the pending row out (or, refused, due now)
+    // If 3 fails or times out, it either committed (the row points at the key, so the
+    // sweeper keeps the bytes) or it didn't (the pending row ages out and the bytes go).
+    await reservePhotoKey(c.env.DB, key, at);
     await c.var.timing.measure('r2_put', () =>
       c.env.PHOTOS.put(key, bytes, { httpMetadata: { contentType: image.type } }),
     );
-    let stored: Awaited<ReturnType<typeof insertPhoto>>;
-    try {
-      stored = await insertPhoto(c.env.DB, {
-        id,
-        userId,
-        placeId: place,
-        key,
-        type: image.type,
-        width: image.width,
-        height: image.height,
-        bytes: bytes.length,
-        createdAt: iso(Date.now()),
-      });
-    } catch (e) {
-      // D1 failed, so the outbox may not have it either: best effort, now
-      defer(c, c.env.PHOTOS.delete(key));
-      throw e;
-    }
+    const stored = await insertPhoto(c.env.DB, {
+      id,
+      userId,
+      placeId: place,
+      key,
+      type: image.type,
+      width: image.width,
+      height: image.height,
+      bytes: bytes.length,
+      createdAt: at,
+    });
     if (!stored.ok) {
       // the refused row's bytes are on the outbox (same batch); sweep them after the answer
       defer(c, sweepPhotoDeletions(c.env.DB, c.env.PHOTOS, { keys: [key] }));

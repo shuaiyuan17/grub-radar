@@ -31,22 +31,28 @@ CREATE INDEX photos_user_place ON photos(user_id, place_id, created_at);
 -- friends' photos of a place; ON DELETE CASCADE from places
 CREATE INDEX photos_place ON photos(place_id);
 
--- R2 can't join a D1 transaction, so deleting a photo is two steps: the row goes (here, in
--- the same transaction as whatever deleted it), the bytes go after. This outbox is the
--- durable list of bytes still to delete: the trigger below writes one row per deleted photo,
--- however it was deleted (one photo, a spot, a place, or the whole account by cascade), and an
--- upload whose row was refused after its bytes were stored writes one too. A sweeper
--- (worker/db/photos.ts sweepPhotoDeletions) deletes the objects and then the rows: right
--- after the request that deleted them, and hourly from the cron trigger, with capped retries.
+-- R2 can't join a D1 transaction, so this outbox is the durable list of R2 keys whose
+-- bytes may need deleting. Two kinds of row:
+--   pending = 1  written by an upload BEFORE it puts the bytes; the same batch that inserts
+--                the photo row deletes it. If it's still here, the upload didn't finish
+--                (refused, crashed, or D1 failed at the end): once it's old enough that no
+--                request can still be working on it, and no photos row has the key, the
+--                bytes go.
+--   pending = 0  the key of a deleted photo row (the trigger below: one photo, a spot, a
+--                place, or a whole account by cascade), or of a refused upload: due now.
+-- A sweeper (worker/db/photos.ts sweepPhotoDeletions) never deletes bytes a photos row still
+-- points at; it deletes the objects and then the rows: right after the request, and hourly
+-- from the cron trigger, with capped retries.
 CREATE TABLE photo_deletions (
   r2_key     TEXT PRIMARY KEY,
   created_at TEXT NOT NULL,
+  pending    INTEGER NOT NULL DEFAULT 0 CHECK (pending IN (0, 1)),
   attempts   INTEGER NOT NULL DEFAULT 0     -- failed sweeps so far; the cron gives up at 10
 );
 CREATE INDEX photo_deletions_due ON photo_deletions(attempts, created_at);
 
 CREATE TRIGGER photos_to_outbox AFTER DELETE ON photos
 BEGIN
-  INSERT OR IGNORE INTO photo_deletions (r2_key, created_at)
-  VALUES (OLD.r2_key, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+  INSERT OR REPLACE INTO photo_deletions (r2_key, created_at, pending)
+  VALUES (OLD.r2_key, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 0);
 END;

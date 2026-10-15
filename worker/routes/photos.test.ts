@@ -14,9 +14,12 @@ import {
   waitOnExecutionContext,
 } from 'cloudflare:test';
 import worker from '../index';
+import { ORIGIN } from '../test/helpers';
 import {
   deleteOwnPhoto,
   insertPhoto,
+  PENDING_GRACE_MS,
+  reservePhotoKey,
   MAX_SWEEP_ATTEMPTS,
   photoKey,
   purgeUserPhotos,
@@ -566,6 +569,7 @@ describe('the deletion outbox', () => {
     expect(await sweepPhotoDeletions(env.DB, failingBucket, { keys: [key] })).toEqual({
       deleted: 0,
       failed: 1,
+      kept: 0,
     });
     expect(await outbox()).toEqual([{ r2_key: key, attempts: 1 }]);
     expect(await keys('u/u_ana/flaky/')).toEqual([key]);
@@ -590,9 +594,10 @@ describe('the deletion outbox', () => {
     await env.DB.prepare('DELETE FROM photo_deletions').run();
   });
 
-  it('a refused upload’s bytes are queued in the same batch as the refusal, then swept', async () => {
+  it('a refused upload’s pending key turns due in the same batch as the refusal, then is swept', async () => {
     // straight to the INSERT (no pre-check): a place that isn't on the list
     const id = 'ph_00000000000000000000000000';
+    await reservePhotoKey(env.DB, photoKey('u_ana', 'nowhere', id), new Date().toISOString());
     await env.PHOTOS.put(photoKey('u_ana', 'nowhere', id), new Uint8Array([1]));
     const refused = await insertPhoto(env.DB, {
       id,
@@ -610,5 +615,97 @@ describe('the deletion outbox', () => {
     await runCron();
     expect(await keys('u/u_ana/nowhere/')).toEqual([]);
     expect(await outbox()).toEqual([]);
+  });
+});
+
+describe('upload: when D1 fails at the last step', () => {
+  /**
+   * env.DB, except the batch that inserts the photo row fails: after it
+   * committed (the answer was lost: a timeout) or instead of it (rolled back).
+   */
+  function flakyDb(mode: 'after-commit' | 'rolled-back'): D1Database {
+    const real = env.DB;
+    return new Proxy(real, {
+      get(target, prop) {
+        if (prop === 'batch')
+          return async (stmts: D1PreparedStatement[]) => {
+            const sql = stmts.map((st) =>
+              String((st as unknown as { statement?: string }).statement),
+            );
+            if (!sql.some((q) => q.includes('INSERT INTO photos'))) return target.batch(stmts);
+            if (mode === 'after-commit') await target.batch(stmts);
+            throw new Error('D1_ERROR: Network connection lost.');
+          };
+        const v: unknown = Reflect.get(target, prop);
+        return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(target) : v;
+      },
+    });
+  }
+
+  const uploadWith = (db: D1Database, place: string) =>
+    worker.request(
+      `${ORIGIN}/api/photos?place=${place}`,
+      {
+        method: 'POST',
+        headers: { ...uploadHeaders('image/webp'), cookie: who('ana') },
+        body: webp(),
+      },
+      { ...env, DB: db },
+    );
+  const age = () =>
+    env.DB.prepare('UPDATE photo_deletions SET created_at = ?')
+      .bind(new Date(Date.now() - PENDING_GRACE_MS - 60_000).toISOString())
+      .run();
+
+  it('committed, answer lost: a 500, but the photo is there and its bytes stay', async () => {
+    await spot('ana', 'lost-answer');
+    const res = await uploadWith(flakyDb('after-commit'), 'lost-answer');
+    expect(res.status).toBe(500);
+    const [row] = (await rows(
+      "SELECT id, r2_key FROM photos WHERE user_id = 'u_ana' AND place_id = 'lost-answer'",
+    )) as { id: string; r2_key: string }[];
+    expect(row).toBeDefined();
+    // the same batch took the pending outbox row out
+    expect(await outbox()).toEqual([]);
+    await runCron();
+    expect(await keys('u/u_ana/lost-answer/')).toEqual([row?.r2_key]);
+    expect((await call(`/api/photos/${String(row?.id)}`, { cookie: who('ana') })).status).toBe(200);
+  });
+
+  it('rolled back: a 500, the key stays pending, the cron deletes the bytes once it’s old', async () => {
+    await spot('ana', 'rolled-back');
+    const res = await uploadWith(flakyDb('rolled-back'), 'rolled-back');
+    expect(res.status).toBe(500);
+    expect(await rows("SELECT id FROM photos WHERE place_id = 'rolled-back'")).toEqual([]);
+    const [stored] = await keys('u/u_ana/rolled-back/');
+    expect(stored).toBeDefined();
+    expect(await outbox()).toEqual([{ r2_key: stored, attempts: 0 }]);
+    // young: a request could still be working on it, so the cron leaves it
+    await runCron();
+    expect(await keys('u/u_ana/rolled-back/')).toEqual([stored]);
+    await age();
+    await runCron();
+    expect(await keys('u/u_ana/rolled-back/')).toEqual([]);
+    expect(await outbox()).toEqual([]);
+  });
+
+  it('the sweeper never deletes bytes a photos row points at; it drops the outbox row', async () => {
+    await spot('ana', 'still-mine');
+    const photo = await uploaded(who('ana'), 'still-mine');
+    const key = photoKey('u_ana', 'still-mine', photo.id);
+    for (const pending of [0, 1]) {
+      await env.DB.prepare(
+        'INSERT INTO photo_deletions (r2_key, created_at, pending) VALUES (?, ?, ?)',
+      )
+        .bind(key, new Date(0).toISOString(), pending)
+        .run();
+      expect(await sweepPhotoDeletions(env.DB, env.PHOTOS)).toMatchObject({
+        kept: 1,
+        deleted: 0,
+      });
+      expect(await outbox()).toEqual([]);
+      expect(await keys('u/u_ana/still-mine/')).toEqual([key]);
+    }
+    expect((await call(photo.url, { cookie: who('ana') })).status).toBe(200);
   });
 });
