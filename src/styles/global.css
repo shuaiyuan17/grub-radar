@@ -358,6 +358,20 @@ ul {
   color: var(--note-red);
 }
 
+/* the static placeholder in index.html, before the app renders */
+.boot-note {
+  font-size: 22px;
+  margin: 0;
+  padding: 24px;
+}
+.boot-zh,
+:lang(zh-Hans) .boot-en {
+  display: none;
+}
+:lang(zh-Hans) .boot-zh {
+  display: inline;
+}
+
 .noscroll {
   scrollbar-width: none;
 }

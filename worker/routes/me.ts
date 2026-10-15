@@ -3,27 +3,54 @@ import { PatchMeSchema, type MeResponse } from '../../src/contracts/me';
 import { HomeSchema } from '../../src/contracts/spots';
 import type { AppEnv } from '../app';
 import { csrf } from '../auth/csrf';
-import { limitWrites, requireSession, sessionUser } from '../auth/principal';
+import {
+  limitWrites,
+  prefetched,
+  requireSession,
+  sessionUser,
+  type Prefetch,
+} from '../auth/principal';
 import { clearSessionCookie } from '../auth/session';
-import { clearHome, getHome, getUser, setHome, signupOpen, updateUser } from '../db/users';
+import {
+  clearHome,
+  getUser,
+  meStatements,
+  readMe,
+  setHome,
+  updateUser,
+  userIdRef,
+} from '../db/users';
+import type { Env } from '../env';
 import { apiError, readJson } from '../lib/http';
 
 export const me = new Hono<AppEnv>();
 
 me.use(requireSession);
 
+const ME = 'GET /api/me';
+
+/** GET /api/me's reads, run in the session lookup's batch (see index.ts). */
+export const mePrefetch = (env: Env): Prefetch => ({
+  key: ME,
+  statements: (scope) => meStatements(env, env.DB, scope),
+});
+
+/**
+ * Who you are: the profile came with the session row, home (and sign-up
+ * state) with the same batch, so this is one D1 round trip in all.
+ */
 me.get('/', async (c) => {
   const { userId } = sessionUser(c.var.principal);
-  const [user, home, open] = await Promise.all([
-    getUser(c.env.DB, userId),
-    getHome(c.env.DB, userId),
-    signupOpen(c.env),
+  const [user, results] = await Promise.all([
+    c.var.account ?? getUser(c.env.DB, userId),
+    prefetched(c, ME) ?? c.env.DB.batch(meStatements(c.env, c.env.DB, userIdRef(userId))),
   ]);
   if (!user) {
     clearSessionCookie(c);
     return apiError(c, 401, 'unauthorized', 'sign in first');
   }
-  const body: MeResponse = { user, home, signupOpen: open };
+  const { home, signupOpen } = readMe(c.env, results);
+  const body: MeResponse = { user, home, signupOpen };
   return c.json(body);
 });
 

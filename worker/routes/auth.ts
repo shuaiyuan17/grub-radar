@@ -2,28 +2,30 @@ import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { SigninResult } from '../../src/contracts/errors';
 import type { AppEnv } from '../app';
-import { csrf } from '../auth/csrf';
+import { appleKeys, verifyWithAppleKeys } from '../auth/appleKeys';
+import { csrf, csrfForCookie } from '../auth/csrf';
+import { openPending, PENDING_COOKIE, PENDING_MAX_AGE_S, sealPending } from '../auth/pending';
 import { resolvePrincipal } from '../auth/principal';
 import {
   clearSessionCookie,
   createSession,
-  deleteSession,
+  newSession,
   readSessionCookie,
   revokeSessionToken,
   setSessionCookie,
 } from '../auth/session';
 import {
-  appleJwks,
   exchangeCode,
   nameFromUserField,
+  publicOrigin,
   readStateCookie,
   redirectUri,
   SiwaError,
   startAuthorize,
   STATE_COOKIE,
   STATE_MAX_AGE_S,
-  verifyIdToken,
 } from '../auth/siwa';
+import { localeFromAcceptLanguage, signingInCsp, signingInPage } from '../auth/signingInPage';
 import { ensureDevUser, signInWithApple } from '../db/users';
 import { isDevelopment } from '../env';
 import { sha256Hex } from '../lib/crypto';
@@ -49,6 +51,17 @@ auth.get('/apple/start', async (c) => {
 
 const backTo = (c: Context<AppEnv>, result: SigninResult) => c.redirect(`/?signin=${result}`, 303);
 
+/**
+ * A GET here is never Apple (it always POSTs): iOS/Safari preloading, or the
+ * back button onto a finished sign-in. Nothing to do; send them to the app.
+ * Query strings are ignored and never logged.
+ */
+auth.get('/callback', (c) => c.redirect('/', 303));
+
+/**
+ * Apple's form_post. Checks the state (exactly as before), then answers at
+ * once with the "signing you in…" page; the slow part runs on /auth/finish.
+ */
 auth.post('/callback', async (c) => {
   const form = await c.req.parseBody();
   const field = (name: string) => (typeof form[name] === 'string' ? form[name] : undefined);
@@ -66,38 +79,111 @@ auth.post('/callback', async (c) => {
 
   const error = field('error');
   if (error) return backTo(c, error === 'user_cancelled_authorize' ? 'cancelled' : 'failed');
+  const code = field('code');
+  if (!code) {
+    console.warn('sign in with apple failed', 'no authorization code');
+    return backTo(c, 'failed');
+  }
+
+  const pending = await sealPending(c.env, state, { code, user: field('user') });
+  setCookie(c, PENDING_COOKIE, pending.cookie, {
+    path: '/',
+    secure: true,
+    httpOnly: true,
+    sameSite: 'Lax',
+    maxAge: PENDING_MAX_AGE_S,
+  });
+  c.header('Content-Security-Policy', await signingInCsp());
+  const locale = localeFromAcceptLanguage(c.req.header('accept-language'));
+  return c.html(signingInPage(locale, pending.finish));
+});
+
+/**
+ * Only POST finishes a sign-in (the page's form, with `t` in the body). A GET
+ * here is a stale history entry or a preload: nothing to do, go home.
+ */
+auth.get('/finish', (c) => c.redirect('/', 303));
+
+/**
+ * The slow half of signing in, posted by the "signing you in…" page: needs
+ * the sealed hand-off cookie AND the matching `t` in the body (never in the
+ * URL, so never in history or logs). Then Apple's token exchange and its keys at the
+ * same time, the id_token check (signature, iss, aud, exp, nonce), then one D1
+ * batch that finds or creates the user and starts the session.
+ */
+auth.post('/finish', async (c) => {
+  const timing = c.var.timing;
+  // the form is on our own page: a browser that says otherwise isn't it. Without
+  // Sec-Fetch-Site, the Origin must be ours; with neither, no.
+  const site = c.req.header('sec-fetch-site');
+  const origin = c.req.header('origin');
+  const sameOrigin =
+    site !== undefined
+      ? site === 'same-origin'
+      : origin !== undefined && origin === publicOrigin(c.env, c.req.url);
+  const form = await c.req.parseBody();
+  const sent = typeof form.t === 'string' ? form.t : undefined;
+  const pending = sameOrigin ? await openPending(c.env, getCookie(c, PENDING_COOKIE), sent) : null;
+  if (!pending) {
+    // like the state: a request without the matching `t` leaves the cookie alone
+    console.warn('sign in with apple failed', 'missing, forged, expired or mismatched hand-off');
+    return backTo(c, 'failed');
+  }
+  deleteCookie(c, PENDING_COOKIE, { path: '/', secure: true, sameSite: 'Lax' });
 
   try {
-    const code = field('code');
-    if (!code) throw new SiwaError('code', 'no authorization code');
-
-    const tokens = await exchangeCode(c.env, code, redirectUri(c.env, c.req.url));
-    const identity = await verifyIdToken(tokens.id_token, {
-      clientId: c.env.APPLE_CLIENT_ID,
-      nonceHash: state.nonceHash,
-      keys: appleJwks(c.env),
-    });
-    const outcome = await signInWithApple(c.env, identity, {
-      displayName: nameFromUserField(field('user')),
-      refreshToken: tokens.refresh_token ?? null,
-    });
+    const [tokens, keys] = await Promise.all([
+      timing.measure('apple_token', () =>
+        exchangeCode(c.env, pending.code, redirectUri(c.env, c.req.url)),
+      ),
+      timing.measure('jwks', () => appleKeys(c.env)),
+    ]);
+    timing.note('jwks_source', keys.source);
+    const identity = await timing.measure('id_token_verify', () =>
+      verifyWithAppleKeys(
+        c.env,
+        tokens.id_token,
+        { clientId: c.env.APPLE_CLIENT_ID, nonceHash: pending.nonceHash },
+        keys,
+        timing,
+      ),
+    );
+    const session = await newSession(c.req.header('user-agent'));
+    const outcome = await timing.measure('signin_db', () =>
+      signInWithApple(c.env, identity, {
+        displayName: nameFromUserField(pending.user),
+        refreshToken: tokens.refresh_token ?? null,
+        session,
+        // the session this browser had when it set off to Apple (carried in the signed state)
+        ...(pending.prevSession ? { replaces: pending.prevSession } : {}),
+      }),
+    );
+    timing.note('signin_outcome', outcome.kind);
     if (outcome.kind === 'closed') return backTo(c, 'closed');
-
-    // the session this browser had when it set off to Apple (carried in the signed state)
-    if (state.prevSession) await deleteSession(c.env.DB, state.prevSession);
-    const { token } = await createSession(c.env.DB, outcome.userId, c.req.header('user-agent'));
-    setSessionCookie(c, token);
-    return c.redirect(state.returnTo, 303);
+    setSessionCookie(c, session.token);
+    return c.redirect(pending.returnTo, 303);
   } catch (e) {
     // reasons only: never the code, tokens or form body
     console.warn('sign in with apple failed', e instanceof SiwaError ? e.message : e);
+    // Apple's code is single use: invalid_grant on an otherwise valid hand-off
+    // most likely means a second submit lost the race to the first, which may
+    // already have signed this browser in. Go where that one went; if it
+    // didn't, the wall shows and a retry is one tap.
+    if (e instanceof SiwaError && e.appleError === 'invalid_grant') {
+      timing.note('signin_outcome', 'code_already_used');
+      return c.redirect(pending.returnTo, 303);
+    }
     return backTo(c, 'failed');
   }
 });
 
-auth.post('/logout', resolvePrincipal, csrf, async (c) => {
-  const p = c.var.principal;
-  if (p.kind === 'user') await deleteSession(c.env.DB, p.sessionId);
+/**
+ * Ends this browser's session: one DELETE by the cookie's hash, no lookup
+ * first (an already-dead session needs no proof). Same CSRF rules as any
+ * cookie-authenticated write.
+ */
+auth.post('/logout', csrfForCookie, async (c) => {
+  await revokeSessionToken(c.env.DB, readSessionCookie(c));
   clearSessionCookie(c);
   return c.body(null, 204);
 });

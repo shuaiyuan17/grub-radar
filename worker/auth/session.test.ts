@@ -2,7 +2,14 @@ import { env } from 'cloudflare:workers';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { sha256Hex } from '../lib/crypto';
 import { DAY, HOUR, MINUTE } from '../lib/time';
-import { createSession, loadSession, SESSION_MAX_AGE_MS, SESSION_TTL_MS, uaHint } from './session';
+import {
+  createSession,
+  loadSession,
+  SESSION_MAX_AGE_MS,
+  SESSION_TTL_MS,
+  sessionScope,
+  uaHint,
+} from './session';
 
 const T0 = Date.UTC(2026, 9, 14, 22, 0);
 const row = (id: string) =>
@@ -85,6 +92,57 @@ describe('sessions', () => {
       'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1';
     const { session } = await createSession(env.DB, 'u_s', ua, T0);
     expect((await row(session.id))?.ua_hint).toBe('Safari on iPhone');
+  });
+});
+
+describe('loadSession, one round trip', () => {
+  it('returns the profile with the session (joined, no second query)', async () => {
+    const { token } = await createSession(env.DB, 'u_s', undefined, T0);
+    expect(await loadSession(env.DB, token, T0 + MINUTE)).toMatchObject({
+      kind: 'ok',
+      user: { id: 'u_s', displayName: 'S', avatarEmoji: '🍜' },
+    });
+  });
+
+  it('runs `with` reads in the same batch, scoped to this live session', async () => {
+    const { token } = await createSession(env.DB, 'u_s', undefined, T0);
+    const r = await loadSession(env.DB, token, T0 + MINUTE, {
+      with: (scope) => [env.DB.prepare(`SELECT ${scope.sql} AS who`).bind(...scope.binds)],
+    });
+    expect(r.kind === 'ok' && r.extras[0]?.results).toEqual([{ who: 'u_s' }]);
+  });
+
+  it('the scope itself refuses an expired or too-old session', async () => {
+    const { session } = await createSession(env.DB, 'u_s', undefined, T0);
+    const who = async (now: number) => {
+      const scope = sessionScope(session.id, now);
+      return (
+        await env.DB.prepare(`SELECT ${scope.sql} AS who`)
+          .bind(...scope.binds)
+          .first<{ who: string | null }>()
+      )?.who;
+    };
+    expect(await who(T0 + DAY)).toBe('u_s');
+    expect(await who(T0 + SESSION_TTL_MS + 1)).toBeNull();
+    // however far expires_at was pushed, never past 90 days from sign-in
+    await env.DB.prepare('UPDATE sessions SET expires_at = ? WHERE id = ?')
+      .bind(new Date(T0 + 200 * DAY).toISOString(), session.id)
+      .run();
+    expect(await who(T0 + 89 * DAY)).toBe('u_s');
+    expect(await who(T0 + SESSION_MAX_AGE_MS + 1)).toBeNull();
+  });
+
+  it('hands housekeeping writes to `defer` instead of waiting on them', async () => {
+    const { token, session } = await createSession(env.DB, 'u_s', undefined, T0);
+    const deferred: Promise<unknown>[] = [];
+    await loadSession(env.DB, token, T0 + 2 * HOUR, {
+      defer: (p) => {
+        deferred.push(p);
+      },
+    });
+    expect(deferred).toHaveLength(1);
+    await Promise.all(deferred);
+    expect((await row(session.id))?.last_seen_at).toBe(new Date(T0 + 2 * HOUR).toISOString());
   });
 });
 

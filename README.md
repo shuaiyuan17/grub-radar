@@ -185,38 +185,55 @@ served by Cloudflare directly; only the paths in `assets.run_worker_first` (`/ap
 `/auth/*`, and the reserved agent paths) run `worker/index.ts` (Hono). D1 (`grub-radar`) holds
 accounts, sessions, places and everyone's own list.
 
-| endpoint                       | auth    | what                                                             |
-| ------------------------------ | ------- | ---------------------------------------------------------------- |
-| `GET /api/health`              | none    | `{ ok, version }`                                                |
-| `GET /auth/apple/start`        | none    | 302 to Apple (`?returnTo=/same/origin/path`)                     |
-| `POST /auth/callback`          | Apple   | Apple's form_post; 303 back with a session, or `/?signin=…`      |
-| `POST /auth/logout`            | session | 204, session deleted                                             |
-| `GET /api/me`, `PATCH /api/me` | session | `{ user, home, signupOpen }`; change name / avatar emoji         |
-| `PUT /api/me/home`, `DELETE`   | session | save / clear your home (body `{ lat, lng }`), 204                |
-| `GET /api/spots`               | read    | your list (`Spot[]`)                                             |
-| `GET /api/spots/:id`           | read    | one of your spots, or 404                                        |
-| `GET /api/spots/nearby`        | read    | `find_nearby`: `?origin=home\|lat,lng&maxMinutes&kinds&limit`    |
-| `POST /api/spots`              | write   | `add_spot` (manual: name, kind, location + optional fields), 201 |
-| `PATCH /api/spots/:id`         | write   | edit; `null` clears; stale `version` → 409; to been = visit      |
-| `POST /api/spots/:id/been`     | write   | `mark_been`: `{ rating?, on?, note? }`, records a visit          |
-| `POST /api/spots/:id/notes`    | write   | `add_note`: appends `— YYYY-MM-DD: …` to your notes              |
-| `DELETE /api/spots/:id`        | write   | 204; your entry and visits go (and a manual place only you had)  |
-| `POST /api/roll`               | read    | `roll`: `{ origin, maxMinutes?, kinds?, previousId? }`           |
-| `POST /api/spots/import-demo`  | write   | dev only: the fictional demo spots onto your list                |
-| `GET /api/mapkit-token`        | session | 10-minute MapKit JS token with our origin; 20/min per user       |
-| `POST /auth/dev-login`         | secret  | `ENVIRONMENT=development` + localhost + `DEV_LOGIN_SECRET` only  |
+| endpoint                       | auth     | what                                                             |
+| ------------------------------ | -------- | ---------------------------------------------------------------- |
+| `GET /api/health`              | none     | `{ ok, version }`                                                |
+| `GET /auth/apple/start`        | none     | 302 to Apple (`?returnTo=/same/origin/path`)                     |
+| `POST /auth/callback`          | Apple    | Apple's form_post; the "signing you in…" page, or `/?signin=…`   |
+| `POST /auth/finish`            | hand-off | the slow half of sign-in (`t` in the body); 303 with a session   |
+| `GET /auth/callback`           | none     | 303 to `/` (never Apple: iOS preloads it, or the back button)    |
+| `POST /auth/logout`            | session  | 204, session deleted                                             |
+| `GET /api/me`, `PATCH /api/me` | session  | `{ user, home, signupOpen }`; change name / avatar emoji         |
+| `PUT /api/me/home`, `DELETE`   | session  | save / clear your home (body `{ lat, lng }`), 204                |
+| `GET /api/spots`               | read     | your list (`Spot[]`)                                             |
+| `GET /api/spots/:id`           | read     | one of your spots, or 404                                        |
+| `GET /api/spots/nearby`        | read     | `find_nearby`: `?origin=home\|lat,lng&maxMinutes&kinds&limit`    |
+| `POST /api/spots`              | write    | `add_spot` (manual: name, kind, location + optional fields), 201 |
+| `PATCH /api/spots/:id`         | write    | edit; `null` clears; stale `version` → 409; to been = visit      |
+| `POST /api/spots/:id/been`     | write    | `mark_been`: `{ rating?, on?, note? }`, records a visit          |
+| `POST /api/spots/:id/notes`    | write    | `add_note`: appends `— YYYY-MM-DD: …` to your notes              |
+| `DELETE /api/spots/:id`        | write    | 204; your entry and visits go (and a manual place only you had)  |
+| `POST /api/roll`               | read     | `roll`: `{ origin, maxMinutes?, kinds?, previousId? }`           |
+| `POST /api/spots/import-demo`  | write    | dev only: the fictional demo spots onto your list                |
+| `GET /api/mapkit-token`        | session  | 10-minute MapKit JS token with our origin; 20/min per user       |
+| `POST /auth/dev-login`         | secret   | `ENVIRONMENT=development` + localhost + `DEV_LOGIN_SECRET` only  |
 
 **Sign in with Apple** (`worker/auth/siwa.ts`): web flow with `response_type=code` and
 `response_mode=form_post`. `state` and a hashed `nonce` ride in an HMAC-signed, 10-minute,
 single-use `__Host-grub_siwa` cookie (`SameSite=None`, because Apple's callback is a
-cross-site POST). The callback exchanges the code with a fresh 5-minute ES256 client secret,
-verifies the id_token (RS256 against Apple's JWKS; `iss`, `aud`, `exp`, nonce), then finds or
-creates the user by Apple `sub`. Apple sends the person's name only on the first
-authorization; it's stored then.
+cross-site POST). The callback checks the state, spends it, and answers at once with a tiny
+"signing you in…" page (en/中文). Its one-line inline script (allowed by CSP hash, like its
+CSS) submits a same-origin POST form to `/auth/finish` with the hand-off value `t` in the
+body, never in a URL; a "continue" button is the no-JS fallback. What crosses over (code, nonce hash, returnTo, previous
+session, Apple's one-time `user` field) is AES-GCM-sealed in a two-minute `__Host-grub_signin`
+cookie (HttpOnly, Secure, Lax) bound to that random `t`; `/auth/finish`
+refuses (and leaves alone) anything without the matching `t`, or not `Sec-Fetch-Site:
+same-origin` (without that header: an `Origin` equal to `PUBLIC_ORIGIN`; neither is a no), a GET there just goes home, and the cookie is cleared on first use (`worker/auth/pending.ts`). It then exchanges the code with a
+fresh 5-minute ES256 client secret **while** loading Apple's JWKS, verifies the id_token
+(RS256; `iss`, `aud`, `exp`, nonce), and finds or creates the user by Apple `sub` and starts
+the session in one D1 batch. Apple sends the person's name only on the first authorization;
+it's stored then. The JWKS is kept in isolate memory and the Cache API
+(`worker/auth/appleKeys.ts`): Apple's `max-age` if it sends one (clamped 5 min–24 h); it sends
+`no-store` today, so an hour. An unknown `kid` or a failing signature refetches once (even
+when the set came straight from Apple), at most once a minute.
 
 **Sessions** (`worker/auth/session.ts`): a random 32-byte token in `__Host-grub_session`
 (HttpOnly, Secure, SameSite=Lax, 30 days sliding, never more than 90 days after sign-in).
-D1 stores only its SHA-256. Signing in again ends the browser's previous session.
+D1 stores only its SHA-256. Signing in again ends the browser's previous session. A lookup is
+one D1 round trip: the session row joined with its user, plus the route's own reads for the
+two hot GETs (`/api/me`, `/api/spots`) in the same batch, scoped in SQL to that live session.
+The sliding-expiry / hourly `last_seen_at` write happens only when due, after the response
+(`waitUntil`). Logout is a single `DELETE` by the cookie's hash.
 **CSRF** (`worker/auth/csrf.ts`): cookie-authenticated writes need JSON, `X-Grub-Request: 1`
 and a same-origin `Sec-Fetch-Site`/`Origin`; no CORS headers anywhere. Only a resolved agent
 principal (bearer token, later) skips the header/origin checks.
@@ -265,6 +282,24 @@ user (`WRITE_LIMITER`, 429) across spot writes and home.
 **Secrets** (production, `wrangler secret put`): `APPLE_PRIVATE_KEY` (the ES256 `.p8` as
 PEM), `SESSION_HMAC_KEY` (32+ random bytes) and, optionally, `OWNER_APPLE_SUB`. Locally they live in `.dev.vars`
 (gitignored; see `.dev.vars.example`).
+
+**Timing** (`worker/lib/timing.ts`, `worker/lib/timedD1.ts`): every `/api/*` and `/auth/*`
+answer carries a `Server-Timing` header (`session`, `apple_token`, `jwks`, `id_token_verify`,
+`signin_db`, one `d1_N` per D1 round trip with its SQL shape, `d1;desc="N round trips"`,
+`total`) and logs one `request timing` record to Workers Logs with the same phases plus
+`d1_round_trips`, `d1_statements`, `d1_sql_ms` (time inside D1), `d1_wall_ms`, rows read and
+written, `d1_served_by` (D1's region/colo) and, for sign-in, `jwks_source`
+(`memory`/`cache`/`network`) and `signin_outcome`. Names and numbers only: no tokens, codes
+or user data. D1 round trips per request: callback 0, finish 1, `/api/me` 1, `/api/spots` 1,
+logout 1 (tests read them back from the header: `worker/routes/roundtrips.test.ts`).
+
+**Read replication** stays off. With it, a read can be served by a replica that hasn't seen
+the session row the sign-in just wrote (the first `/api/me` would say "signed out") or the
+`DELETE` a logout just did (a revoked session would keep working for a moment). Doing it
+right means carrying a D1 bookmark from every write to the next request (a cookie), and
+falling back to the primary for session checks; the owner is in Seattle and the primary is in
+WNAM, so a nearby replica would save little. Revisit if users far from WNAM show up in
+`d1_served_by`/`d1_wall_ms`.
 
 **Database**: migrations in `migrations/`, applied with Wrangler's D1 migrations
 (`db:migrate:*`); Worker tests apply the same files. Forward-only, additive.

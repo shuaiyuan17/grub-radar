@@ -6,16 +6,39 @@
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { AppEnv } from './app';
-import { resolvePrincipal } from './auth/principal';
+import { principalResolver } from './auth/principal';
 import { CorruptSpotError } from './db/spots';
 import { apiError } from './lib/http';
+import { timedD1 } from './lib/timedD1';
+import { Timing } from './lib/timing';
 import { auth } from './routes/auth';
 import { mapkit } from './routes/mapkit';
-import { me } from './routes/me';
-import { rollRoute, spots } from './routes/spots';
+import { me, mePrefetch } from './routes/me';
+import { rollRoute, spots, spotsPrefetch } from './routes/spots';
 import { VERSION } from './version';
 
 const app = new Hono<AppEnv>();
+
+const timed = (path: string) => path.startsWith('/api/') || path.startsWith('/auth/');
+
+/**
+ * Per request: a Timing, and a D1 binding that reports to it (a copy of env,
+ * never the shared one). API and auth answers carry `Server-Timing` and log
+ * one structured `request timing` line (phases, D1 round trips, rows, where
+ * D1 ran). Deferred work is awaited here only when there's no ctx.waitUntil.
+ */
+app.use(async (c, next) => {
+  const timing = new Timing();
+  c.set('timing', timing);
+  c.set('deferred', []);
+  c.env = { ...c.env, DB: timedD1(c.env.DB, timing) };
+  await next();
+  await Promise.all(c.var.deferred);
+  const path = c.req.path;
+  if (!timed(path)) return;
+  c.res.headers.set('Server-Timing', timing.header());
+  console.log(timing.record({ method: c.req.method, path, status: c.res.status }));
+});
 
 app.use(async (c, next) => {
   await next();
@@ -29,8 +52,7 @@ app.use(async (c, next) => {
   // JSON and redirects need nothing; static files keep the CSP from _headers
   if (!h.has('Content-Security-Policy'))
     h.set('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
-  const path = c.req.path;
-  if (path.startsWith('/api/') || path.startsWith('/auth/')) h.set('Cache-Control', 'no-store');
+  if (timed(c.req.path)) h.set('Cache-Control', 'no-store');
 });
 
 app.use(
@@ -44,7 +66,16 @@ app.use(
 app.get('/api/health', (c) => c.json({ ok: true, version: VERSION }));
 app.route('/auth', auth);
 
-app.use('/api/*', resolvePrincipal);
+// the two reads every page load makes ride along in the session lookup: one D1 round trip each
+app.use(
+  '/api/*',
+  principalResolver((c) => {
+    if (c.req.method !== 'GET') return null;
+    if (c.req.path === '/api/me') return mePrefetch(c.env);
+    if (c.req.path === '/api/spots') return spotsPrefetch(c.env);
+    return null;
+  }),
+);
 app.route('/api/mapkit-token', mapkit);
 app.route('/api/me', me);
 app.route('/api/spots', spots);

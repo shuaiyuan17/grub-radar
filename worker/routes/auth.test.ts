@@ -4,10 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Env } from '../env';
 import app from '../index';
 import { sha256Hex } from '../lib/crypto';
+import { resetAppleKeys } from '../auth/appleKeys';
 import {
   call,
   cookieFrom,
   fakeAppleKeys,
+  followHandoff,
   mockApple,
   postCallback,
   setCookieLine,
@@ -43,17 +45,19 @@ async function signIn(
   const apple = appleAnswers(opts.claims);
   const start = await startSignIn(opts.returnTo);
   apple.setNonce(start.nonce);
-  const res = await postCallback(
+  const handoff = await postCallback(
     { code: 'c.fictional', state: start.state, ...(opts.user ? { user: opts.user } : {}) },
     start.cookie,
   );
-  return { res, start, apple };
+  const res = await followHandoff(handoff);
+  return { res, handoff, start, apple };
 }
 
 const countRows = async (table: string) =>
   (await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>())?.n;
 
 beforeEach(async () => {
+  await resetAppleKeys(env);
   await env.DB.batch([
     env.DB.prepare('DELETE FROM sessions'),
     env.DB.prepare('DELETE FROM auth_identities'),
@@ -83,6 +87,7 @@ describe('POST /auth/callback', () => {
   it('first sign-in: exchanges the code, creates the user, starts a session, goes back', async () => {
     const {
       res,
+      handoff,
       start,
       apple: mock,
     } = await signIn({ returnTo: '/place/lucky-thread', user: FIRST_TIME_USER });
@@ -96,8 +101,10 @@ describe('POST /auth/callback', () => {
     expect(line).toMatch(/; HttpOnly/);
     expect(line).toMatch(/; Secure/);
     expect(line).toMatch(/; SameSite=Lax/);
-    // the state cookie is single use
-    expect(setCookieLine(res, '__Host-grub_siwa')).toMatch(/Max-Age=0/);
+    // the state cookie is single use: gone with the callback's answer
+    expect(setCookieLine(handoff, '__Host-grub_siwa')).toMatch(/Max-Age=0/);
+    // and so is the hand-off
+    expect(setCookieLine(res, '__Host-grub_signin')).toMatch(/Max-Age=0/);
 
     // what we sent Apple
     expect(mock.calls).toHaveLength(1);
@@ -198,7 +205,9 @@ describe('POST /auth/callback', () => {
     mockApple(apple, () => Response.json({ error: 'invalid_client' }, { status: 400 }));
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const start = await startSignIn();
-    const res = await postCallback({ code: 'c', state: start.state }, start.cookie);
+    const res = await followHandoff(
+      await postCallback({ code: 'c', state: start.state }, start.cookie),
+    );
     expect(res.headers.get('location')).toBe('/?signin=failed');
     expect(cookieFrom(res, '__Host-grub_session')).toBeNull();
     expect(await countRows('users')).toBe(0);
@@ -252,7 +261,9 @@ describe('POST /auth/callback', () => {
       expect(forged.headers.get('location')).toBe('/?signin=failed');
       expect(setCookieLine(forged, '__Host-grub_siwa')).toBeUndefined();
       // Apple's real answer still completes the sign-in
-      const real = await postCallback({ code: 'c.fictional', state: start.state }, start.cookie);
+      const real = await followHandoff(
+        await postCallback({ code: 'c.fictional', state: start.state }, start.cookie),
+      );
       expect(real.headers.get('location')).toBe('/');
       expect(cookieFrom(real, '__Host-grub_session')).not.toBeNull();
     },
@@ -265,7 +276,9 @@ describe('POST /auth/callback', () => {
     const start = await startSignIn('/', first);
     mock.setNonce(start.nonce);
     // ...but not on Apple's cross-site form_post (SameSite=Lax): only the state cookie
-    const again = await postCallback({ code: 'c', state: start.state }, start.cookie);
+    const again = await followHandoff(
+      await postCallback({ code: 'c', state: start.state }, start.cookie),
+    );
     expect(cookieFrom(again, '__Host-grub_session')).not.toBe(first);
     expect(await countRows('sessions')).toBe(1);
     expect((await call('/api/me', { cookie: first })).status).toBe(401);
@@ -283,7 +296,9 @@ describe('POST /auth/callback', () => {
     );
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const start = await startSignIn();
-    const res = await postCallback({ code: 'c', state: start.state }, start.cookie);
+    const res = await followHandoff(
+      await postCallback({ code: 'c', state: start.state }, start.cookie),
+    );
     expect(mock.calls).toHaveLength(1);
     expect(res.headers.get('location')).toBe('/?signin=failed');
     expect(await countRows('users')).toBe(0);
@@ -450,16 +465,29 @@ function appleBySub() {
   });
 }
 
-async function callbackWith(envOverride: Partial<Env>, sub: string) {
-  const start = await startSignIn();
-  return app.request(
+/** POST /auth/callback and the hand-off after it, both with `envOverride`. */
+async function callbackVia(envOverride: Partial<Env>, start: { cookie: string }, body: string) {
+  const config = { ...env, ...envOverride };
+  const handoff = await app.request(
     'https://grub.test/auth/callback',
     {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: start.cookie },
-      body: new URLSearchParams({ code: `${sub}|${start.nonce}`, state: start.state }).toString(),
+      body,
     },
-    { ...env, ...envOverride },
+    config,
+  );
+  return followHandoff(handoff, (init) =>
+    app.request('https://grub.test/auth/finish', init, config),
+  );
+}
+
+async function callbackWith(envOverride: Partial<Env>, sub: string) {
+  const start = await startSignIn();
+  return callbackVia(
+    envOverride,
+    start,
+    new URLSearchParams({ code: `${sub}|${start.nonce}`, state: start.state }).toString(),
   );
 }
 
@@ -514,14 +542,10 @@ describe('SIGNUP_OPEN=true', () => {
     );
     const start = await startSignIn();
     nonce = start.nonce;
-    const res = await app.request(
-      'https://grub.test/auth/callback',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: start.cookie },
-        body: new URLSearchParams({ code: 'c', state: start.state }).toString(),
-      },
-      { ...env, SIGNUP_OPEN: 'true' },
+    const res = await callbackVia(
+      { SIGNUP_OPEN: 'true' },
+      start,
+      new URLSearchParams({ code: 'c', state: start.state }).toString(),
     );
     expect(mock.calls).toHaveLength(1);
     expect(res.headers.get('location')).toBe('/');

@@ -43,6 +43,43 @@ describe('HttpSpotRepository', () => {
   });
 });
 
+describe('HttpSpotRepository.prime', () => {
+  it('starts the request now; the first list() gets that answer, later ones ask again', async () => {
+    const fetch = respond(200, SEED_SPOTS);
+    vi.stubGlobal('fetch', fetch);
+    const repo = new HttpSpotRepository();
+    repo.prime(1000);
+    repo.prime(1000); // once
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(await repo.list(2000)).toHaveLength(SEED_SPOTS.length);
+    expect(fetch).toHaveBeenCalledOnce();
+    await repo.list(3000);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('a primed answer older than 30 s is not used', async () => {
+    const fetch = respond(200, SEED_SPOTS);
+    vi.stubGlobal('fetch', fetch);
+    const repo = new HttpSpotRepository();
+    repo.prime(0);
+    await repo.list(30_001);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('signed out: the 401 tells the app, and nothing is left unhandled', async () => {
+    vi.stubGlobal(
+      'fetch',
+      respond(401, { error: { code: 'unauthorized', message: 'sign in first' } }),
+    );
+    const onUnauthorized = vi.fn();
+    const repo = new HttpSpotRepository(onUnauthorized);
+    repo.prime();
+    await vi.waitFor(() => {
+      expect(onUnauthorized).toHaveBeenCalledOnce();
+    });
+  });
+});
+
 describe('HttpSpotRepository writes', () => {
   const spot = SEED_SPOTS[0];
   const calls = () => {

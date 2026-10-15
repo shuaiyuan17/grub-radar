@@ -16,9 +16,15 @@ import {
 import { parseSpots } from '../../src/domain/spot';
 import type { AppEnv } from '../app';
 import { csrf } from '../auth/csrf';
-import { actingUser, limitWrites, requireScope } from '../auth/principal';
-import { D1SpotRepository } from '../db/spots';
-import { isDevelopment } from '../env';
+import {
+  actingUser,
+  limitWrites,
+  prefetched,
+  requireScope,
+  type Prefetch,
+} from '../auth/principal';
+import { D1SpotRepository, listStatement, spotsFromRows } from '../db/spots';
+import { isDevelopment, type Env } from '../env';
 import { apiError, readJson } from '../lib/http';
 import { nearby, resolveOrigin, rollSpot } from '../services/spots';
 
@@ -59,7 +65,18 @@ const read = requireScope('spots:read');
 // writes: scope, then CSRF, then the per-user brake (so refused requests don't count)
 const write = [requireScope('spots:write'), csrf, limitWrites] as const;
 
-spots.get('/', read, async (c) => c.json(await repoFor(c).list()));
+const LIST = 'GET /api/spots';
+
+/** The list, read in the session lookup's batch (see index.ts): one D1 round trip. */
+export const spotsPrefetch = (env: Env): Prefetch => ({
+  key: LIST,
+  statements: (scope) => [listStatement(env.DB, scope)],
+});
+
+spots.get('/', read, async (c) => {
+  const pre = prefetched(c, LIST);
+  return c.json(pre ? spotsFromRows(pre[0]) : await repoFor(c).list());
+});
 
 /** `find_nearby` */
 spots.get('/nearby', read, async (c) => {
