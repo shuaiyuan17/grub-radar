@@ -262,7 +262,7 @@ Apple ID. `"false"`: closed; others see "invite-only". While closed, exactly one
 still be created: if the `OWNER_APPLE_SUB` secret is set, only that Apple ID; if not, only the
 very first account. Admission is decided inside the `INSERT` (one D1 transaction with the
 identity row), so simultaneous first sign-ins can't both get in. To pin the owner, read his
-`sub` (`wrangler d1 execute grub-radar --remote --command "SELECT provider_sub FROM
+`sub` (`wrangler d1 execute DB --remote --command "SELECT provider_sub FROM
 auth_identities"`) and `wrangler secret put OWNER_APPLE_SUB`.
 
 Each person's data is scoped by their `user_id` on every query: the Worker builds a
