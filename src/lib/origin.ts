@@ -15,16 +15,16 @@ export interface OriginValue {
   chooseHere: () => void;
   dismissNotice: () => void;
 
-  /** The home origin in use: yours (saved on this device) or the demo one. */
+  /** The home origin in use: yours (saved to your account) or the demo one. */
   home: LatLng;
   homeIsDemo: boolean;
   homeEditorOpen: boolean;
   openHomeEditor: () => void;
   closeHomeEditor: () => void;
   /**
-   * Validates and uses `home`, saving it to this device. Returns false if it
-   * was invalid or couldn't be stored (then it's used for this visit only).
-   * Cancels any pending setHomeFromHere().
+   * Validates and uses `home` right away, saving it to your account in the
+   * background (a notice says how that went). Returns false if it isn't a
+   * valid point. Cancels any pending setHomeFromHere().
    */
   setHome: (home: LatLng) => boolean;
   /** Asks the browser where you are and saves that as home. */

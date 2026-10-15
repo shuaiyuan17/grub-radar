@@ -11,7 +11,7 @@ import { apiError } from './lib/http';
 import { auth } from './routes/auth';
 import { mapkit } from './routes/mapkit';
 import { me } from './routes/me';
-import { spots } from './routes/spots';
+import { rollRoute, spots } from './routes/spots';
 import { VERSION } from './version';
 
 const app = new Hono<AppEnv>();
@@ -47,6 +47,7 @@ app.use('/api/*', resolvePrincipal);
 app.route('/api/mapkit-token', mapkit);
 app.route('/api/me', me);
 app.route('/api/spots', spots);
+app.route('/api/roll', rollRoute);
 
 app.all('/api/*', (c) => apiError(c, 404, 'not_found', 'no such endpoint'));
 app.all('/auth/*', (c) => apiError(c, 404, 'not_found', 'no such endpoint'));

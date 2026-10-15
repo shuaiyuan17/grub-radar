@@ -1,0 +1,150 @@
+/* Form pieces in the sketch style: ink-framed inputs, radio pills, ink buttons. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.label {
+  font-weight: 700;
+  font-size: 15px;
+  padding: 0;
+}
+.optional {
+  font-weight: 400;
+  color: var(--pencil);
+  font-size: 13px;
+}
+.hint {
+  font-size: 13px;
+  color: var(--pencil);
+}
+.error {
+  font-size: 13.5px;
+  color: var(--note-red);
+  font-weight: 600;
+}
+
+.box {
+  --bw: 2px;
+  min-height: 44px;
+  border-radius: var(--r-tile);
+  display: flex;
+}
+.box:focus-within {
+  outline: 3px dashed var(--note-red);
+  outline-offset: 3px;
+}
+.tall {
+  min-height: 84px;
+}
+.input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 10px 12px;
+  font-size: 16px; /* 16px: iOS Safari doesn't zoom into the field */
+  resize: vertical;
+}
+.input:focus {
+  outline: none;
+}
+.input::placeholder {
+  color: var(--placeholder);
+}
+
+.choice {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.option {
+  --bw: 2px;
+  --fill: var(--card);
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: var(--r-seg-on);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--press-duration) var(--ease-out);
+}
+.option:active {
+  transform: scale(0.96);
+}
+.on {
+  --fill: var(--hl);
+  font-weight: 800;
+}
+.option:has(:focus-visible) {
+  outline: 3px dashed var(--note-red);
+  outline-offset: 3px;
+}
+.round {
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+/* ten across even on a 390px phone */
+.round .option {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 44px;
+  height: 42px;
+  padding: 0;
+  justify-content: center;
+  border-radius: var(--r-round);
+  font-variant-numeric: tabular-nums;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.btn {
+  --sx: 2px;
+  --sy: 3px;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: var(--r-btn);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--ink);
+}
+.btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.primary {
+  --fill: var(--ink);
+  --sh: var(--tomato);
+  color: var(--card);
+}
+.linkBtn {
+  min-height: 32px;
+  padding: 0 4px;
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: underline dashed;
+  text-underline-offset: 4px;
+}
+.linkBtn:hover {
+  color: var(--note-red);
+}

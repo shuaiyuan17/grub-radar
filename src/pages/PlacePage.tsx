@@ -9,6 +9,7 @@ import { Headline, SpotLabel } from '../components/bits';
 import { useOrigin } from '../lib/origin';
 import { useSpotViews } from '../lib/useSpotViews';
 import { FOOD_ICONS } from '../components/icons';
+import { NotesEditor, OrderEditor, SpotAdmin, StatusEditor } from '../components/placeEditors';
 import styles from './PlacePage.module.css';
 
 function backTarget(state: unknown): string {
@@ -23,30 +24,6 @@ function splitName(name: string): [string, string] {
   const words = name.split(' ');
   const n = words.length >= 3 ? 2 : 1;
   return [words.slice(0, -n).join(' '), words.slice(-n).join(' ')];
-}
-
-function CheckBox({ checked, variant }: { checked: boolean; variant: number }) {
-  const boxes = [
-    'M4 5.5c5-.8 11-1 17-.3.8 5 .6 10.5-.2 15.6-5.4.6-11 .5-16.3-.1C3.8 15.6 3.6 10.5 4 5.5z',
-    'M4.3 5c5.3-.5 11-.6 16.8.2.6 5.2.5 10.6-.3 15.5-5.3.7-10.8.6-16.2 0-.7-5.3-.8-10.6-.3-15.7z',
-    'M4 5.3c5.6-.6 11.3-.4 16.9.1.5 5.1.6 10.3-.1 15.4-5.5.6-11 .7-16.4.1C3.6 15.7 3.5 10.4 4 5.3z',
-  ];
-  return (
-    <svg
-      width="26"
-      height="26"
-      viewBox="0 0 26 26"
-      fill="none"
-      stroke="var(--ink)"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d={boxes[variant % boxes.length]} />
-      {checked && <path d="M8 13.5l3.6 4L22 4.5" stroke="var(--note-red)" strokeWidth="2.6" />}
-    </svg>
-  );
 }
 
 export function PlacePage() {
@@ -78,7 +55,7 @@ export function PlacePage() {
   // spot text is data in its own language; translated labels use the UI's
   const lang = dataLang(spot);
   const tags: { text: string; lang?: string }[] = [
-    { text: spot.cuisine, lang },
+    spot.cuisine ? { text: spot.cuisine, lang } : { text: t.kinds[spot.kind] },
     { text: spot.price },
     ...spot.tags
       .filter((tag) => tag !== spot.cuisine)
@@ -168,6 +145,11 @@ export function PlacePage() {
               {nameA && `${nameA} `}
               <span className="hl">{nameB}</span>
             </h1>
+            {spot.note && (
+              <p className={`note ${styles.oneLiner}`} lang={lang}>
+                {spot.note}
+              </p>
+            )}
             <ul className={styles.tags} aria-label={t.aboutSpot}>
               {tags.map((tag) => (
                 <li key={tag.text} lang={tag.lang}>
@@ -192,39 +174,13 @@ export function PlacePage() {
             </section>
           )}
 
-          {spot.order.length > 0 && (
-            <section aria-labelledby="order" className={styles.section}>
-              <h2 id="order">{t.orderThis}</h2>
-              <ul className={styles.orderList}>
-                {spot.order.map((o, i) => (
-                  <li key={o.dish}>
-                    <CheckBox checked={o.tried} variant={i} />
-                    <span>
-                      <span lang={lang}>{o.dish}</span>
-                      {o.tried ? (
-                        <span className="visually-hidden">{t.hadIt}</span>
-                      ) : (
-                        <>
-                          {' '}
-                          <span className={styles.nextTime}>{t.nextTime}</span>
-                        </>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+          <StatusEditor spot={spot} />
 
-          <section aria-labelledby="mine" className={styles.section}>
-            <h2 id="mine">{t.myNote}</h2>
-            <p
-              className={styles.myNote}
-              lang={spot.myNote || spot.status === 'been' ? lang : undefined}
-            >
-              {spot.myNote ?? (spot.status === 'been' ? spot.note : t.noNoteYet)}
-            </p>
-          </section>
+          <OrderEditor spot={spot} />
+
+          <NotesEditor spot={spot} />
+
+          <SpotAdmin spot={spot} />
 
           <div className={styles.bar}>
             <a

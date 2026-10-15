@@ -204,15 +204,50 @@ export async function signInWithApple(
 
 export const DEV_USER = { id: 'u_dev', displayName: 'dev', sub: 'dev-login' } as const;
 
-/** The fixed local test user behind POST /auth/dev-login. */
-export async function ensureDevUser(db: D1Database, now = Date.now()): Promise<string> {
+/**
+ * The local test user behind POST /auth/dev-login: the fixed one, or
+ * `u_dev-<label>` when a label is given (e2e tests that write get their own).
+ */
+export async function ensureDevUser(
+  db: D1Database,
+  label?: string,
+  now = Date.now(),
+): Promise<string> {
   const at = iso(now);
+  const id = label ? `${DEV_USER.id}-${label}` : DEV_USER.id;
+  const name = label ? `${DEV_USER.displayName} ${label}` : DEV_USER.displayName;
   await db
     .prepare(
       `INSERT INTO users (id, display_name, created_at, last_login_at) VALUES (?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET last_login_at = excluded.last_login_at`,
     )
-    .bind(DEV_USER.id, DEV_USER.displayName, at, at)
+    .bind(id, name, at, at)
     .run();
-  return DEV_USER.id;
+  return id;
+}
+
+/** Saves home (user_private, created lazily). Never logged. */
+export async function setHome(
+  db: D1Database,
+  userId: string,
+  home: { lat: number; lng: number },
+  now = Date.now(),
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO user_private (user_id, home_lat, home_lng, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET home_lat = excluded.home_lat, home_lng = excluded.home_lng,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(userId, home.lat, home.lng, iso(now))
+    .run();
+}
+
+export async function clearHome(db: D1Database, userId: string, now = Date.now()): Promise<void> {
+  await db
+    .prepare(
+      'UPDATE user_private SET home_lat = NULL, home_lng = NULL, updated_at = ? WHERE user_id = ?',
+    )
+    .bind(iso(now), userId)
+    .run();
 }

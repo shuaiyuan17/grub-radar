@@ -5,6 +5,7 @@ import { ListPage } from './pages/ListPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { PlacePage } from './pages/PlacePage';
 import { RadarPage } from './pages/RadarPage';
+import { AddSpotPage, EditSpotPage } from './pages/SpotFormPage';
 
 export const routes: RouteObject[] = [
   {
@@ -15,7 +16,9 @@ export const routes: RouteObject[] = [
         element: <Layout />,
         children: [
           { index: true, element: <ListPage /> },
+          { path: 'add', element: <AddSpotPage /> },
           { path: 'place/:id', element: <PlacePage /> },
+          { path: 'place/:id/edit', element: <EditSpotPage /> },
           { path: 'radar', element: <RadarPage /> },
           { path: '*', element: <NotFoundPage /> },
         ],

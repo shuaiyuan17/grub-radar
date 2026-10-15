@@ -51,3 +51,23 @@ export function sessionUser(p: Principal): { userId: string; sessionId: string }
   if (p.kind !== 'user') throw new Error('requireSession must run first');
   return { userId: p.userId, sessionId: p.sessionId };
 }
+
+/**
+ * 401 unless a signed-in human, or an agent holding `scope`; 403 for an agent
+ * without it. A person's session implicitly has every scope.
+ */
+export function requireScope(scope: Scope): MiddlewareHandler<AppEnv> {
+  return async (c, next) => {
+    const p = c.var.principal;
+    if (p.kind === 'anonymous') return apiError(c, 401, 'unauthorized', 'sign in first');
+    if (p.kind === 'agent' && !p.scopes.includes(scope))
+      return apiError(c, 403, 'forbidden', `needs the ${scope} scope`);
+    await next();
+  };
+}
+
+/** The user whose data this request acts on, and how to label what it adds. */
+export function actingUser(p: Principal): { userId: string; foundBy: string } {
+  if (p.kind === 'anonymous') throw new Error('requireScope must run first');
+  return { userId: p.userId, foundBy: p.kind === 'agent' ? p.clientName : 'me' };
+}

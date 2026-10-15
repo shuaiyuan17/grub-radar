@@ -1,0 +1,60 @@
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 720px;
+}
+.title {
+  font-size: 34px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.coords {
+  flex: 1 1 200px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pair,
+.status {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.noteInput {
+  font-family: var(--font-note);
+  font-size: 22px;
+  color: var(--note-red);
+  padding-block: 4px;
+}
+.actions {
+  gap: 18px;
+  padding-bottom: 8px;
+}
+.cancel {
+  font-weight: 700;
+}
+
+@media (min-width: 960px) {
+  .main {
+    gap: 28px;
+  }
+  .title {
+    font-size: 52px;
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+  }
+  .pair {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+  .pair > :first-child {
+    flex: 1 1 auto;
+  }
+}

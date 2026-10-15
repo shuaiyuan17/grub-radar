@@ -146,12 +146,18 @@ describe('PATCH /api/me', () => {
   });
 });
 
-describe('GET /api/spots (PR 1: the demo spots, signed-in only)', () => {
-  it('lists every spot, valid against SpotSchema', async () => {
-    const res = await call('/api/spots', { cookie });
-    expect(res.status).toBe(200);
-    const spots = parseSpots(await res.json());
-    expect(spots.map((s) => s.id)).toEqual(SEED_SPOTS.map((s) => s.id));
+describe('GET /api/spots (PR 2: your own list, from D1)', () => {
+  it('the dev user starts empty; the dev-only import puts the demo spots on the list', async () => {
+    expect(await (await call('/api/spots', { cookie })).json()).toEqual([]);
+    const imported = await call('/api/spots/import-demo', {
+      method: 'POST',
+      cookie,
+      headers: writeHeaders,
+      body: '{}',
+    });
+    expect(await imported.json()).toEqual({ added: SEED_SPOTS.length });
+    const spots = parseSpots(await (await call('/api/spots', { cookie })).json());
+    expect(spots.map((s) => s.id).sort()).toEqual(SEED_SPOTS.map((s) => s.id).sort());
   });
 
   it('gets one, or a JSON 404', async () => {

@@ -103,7 +103,7 @@ auth.post('/logout', resolvePrincipal, csrf, async (c) => {
 });
 
 /**
- * Local-only shortcut for tests: a session for a fixed user without Apple.
+ * Local-only shortcut for tests: a session for a fixed user (or one per `as` label) without Apple.
  * Exists only with ENVIRONMENT=development, on localhost, with DEV_LOGIN_SECRET set and sent.
  */
 auth.post('/dev-login', resolvePrincipal, csrf, async (c) => {
@@ -117,7 +117,15 @@ auth.post('/dev-login', resolvePrincipal, csrf, async (c) => {
   const b = enc.encode(secret);
   if (a.byteLength !== b.byteLength || !crypto.subtle.timingSafeEqual(a, b))
     return apiError(c, 403, 'forbidden', 'wrong dev login secret');
-  const userId = await ensureDevUser(c.env.DB);
+  // optional { "as": "label" }: a separate dev user per label, so parallel e2e tests don't share a list
+  const body: unknown = await c.req.json().catch(() => ({}));
+  const label =
+    body && typeof body === 'object' && 'as' in body && typeof body.as === 'string'
+      ? body.as
+      : undefined;
+  if (label !== undefined && !/^[a-z0-9-]{1,40}$/.test(label))
+    return apiError(c, 400, 'bad_request', 'as: lowercase letters, digits and dashes');
+  const userId = await ensureDevUser(c.env.DB, label);
   await revokeSessionToken(c.env.DB, readSessionCookie(c));
   const { token } = await createSession(c.env.DB, userId, c.req.header('user-agent'));
   setSessionCookie(c, token);

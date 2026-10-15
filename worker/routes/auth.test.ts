@@ -364,6 +364,29 @@ describe('POST /auth/dev-login', () => {
     expect(cookieFrom(res, '__Host-grub_session')).not.toBeNull();
   });
 
+  it('`as` gives a separate dev user per label; junk labels are refused', async () => {
+    const as = (body: string) =>
+      app.request(
+        'http://localhost/auth/dev-login',
+        {
+          method: 'POST',
+          headers: { ...writeHeaders, 'x-dev-login-secret': env.DEV_LOGIN_SECRET ?? '' },
+          body,
+        },
+        env,
+      );
+    const res = await as('{"as":"e2e-add"}');
+    expect(res.status).toBe(204);
+    const me = await app.request(
+      'http://localhost/api/me',
+      { headers: { cookie: cookieFrom(res, '__Host-grub_session')! } },
+      env,
+    );
+    expect((await me.json<{ user: { id: string } }>()).user.id).toBe('u_dev-e2e-add');
+    expect((await as('{"as":"Not OK!"}')).status).toBe(400);
+    expect((await as('{"as":""}')).status).toBe(400);
+  });
+
   it('is refused with a wrong or missing secret', async () => {
     expect((await devLogin('http://localhost/auth/dev-login', 'nope')).status).toBe(403);
     expect((await devLogin('http://localhost/auth/dev-login', undefined)).status).toBe(403);

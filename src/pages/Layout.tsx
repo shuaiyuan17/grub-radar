@@ -1,11 +1,22 @@
-import { Outlet, ScrollRestoration, useLocation, useNavigate, useSearchParams } from 'react-router';
+import {
+  Link,
+  Outlet,
+  ScrollRestoration,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from 'react-router';
 import { AccountMenu } from '../components/AccountMenu';
 import { Logo } from '../components/bits';
 import { FromToggle, LangToggle, OriginNotice, SearchBox } from '../components/controls';
 import { HomeEditor } from '../components/HomeControls';
+import { Icon } from '../components/Icon';
+import { Ink } from '../components/Ink';
 import { OriginProvider } from '../components/OriginProvider';
 import { SpotsProvider } from '../components/SpotsProvider';
 import { useT } from '../i18n/context';
+import { useAuth } from '../lib/auth';
+import { useHomeClient } from '../lib/homeClient';
 import { useSpotSource } from '../lib/spotSource';
 import styles from './Layout.module.css';
 
@@ -37,8 +48,12 @@ function HeaderSearch() {
 export function Layout() {
   const t = useT();
   const repository = useSpotSource();
+  const homeClient = useHomeClient();
+  const { state, setMeHome } = useAuth();
+  // AuthGate only renders this signed in
+  const initialHome = state.status === 'signed-in' ? state.me.home : null;
   return (
-    <OriginProvider>
+    <OriginProvider initialHome={initialHome} client={homeClient} onSaved={setMeHome}>
       <a className={styles.skip} href="#main">
         {t.skip}
       </a>
@@ -53,6 +68,11 @@ export function Layout() {
           </div>
           <HeaderSearch />
           <FromToggle compact />
+          <Link viewTransition to="/add" className={`sk press ${styles.add}`}>
+            <Ink />
+            <Icon name="plus" size={18} strokeWidth={2.6} />
+            {t.addSpot}
+          </Link>
           <LangToggle />
           <AccountMenu />
         </header>

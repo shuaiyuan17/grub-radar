@@ -237,7 +237,11 @@ export function RollResult({ view, onClear }: { view: SpotView | null; onClear: 
             </Link>
             <div className={styles.rollMeta}>
               {t.minutes(view.travel.minutes)} {t.travelMode[view.travel.mode]} ·{' '}
-              <span lang={dataLang(view.spot)}>{view.spot.cuisine}</span>
+              {view.spot.cuisine ? (
+                <span lang={dataLang(view.spot)}>{view.spot.cuisine}</span>
+              ) : (
+                t.kinds[view.spot.kind]
+              )}
             </div>
           </div>
           <GoLink spot={view.spot} travel={view.travel} />

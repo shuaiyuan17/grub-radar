@@ -77,7 +77,7 @@ export default defineConfig([
                 '**/src/*',
                 '!**/src/domain',
                 '!**/src/contracts',
-                // PR 1 only: the demo spots behind GET /api/spots; PR 2 moves spots to D1
+                // the fictional demo spots, for the dev-only POST /api/spots/import-demo
                 '!**/src/data',
                 '**/src/data/*',
                 '!**/src/data/seed',

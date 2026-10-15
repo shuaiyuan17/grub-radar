@@ -3,9 +3,12 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { AuthProvider } from '../components/AuthProvider';
 import type { MeResponse } from '../contracts/me';
-import { StaticSpotRepository } from '../data/staticRepository';
+import { MemorySpotRepository } from '../data/memoryRepository';
+import { SEED_SPOTS } from '../data/seed';
+import type { LatLng } from '../domain/geo';
 import type { SpotRepository } from '../domain/repository';
 import type { AuthClient, AuthState } from '../lib/auth';
+import { HomeClientContext, type HomeClient } from '../lib/homeClient';
 import { SpotSourceContext } from '../lib/spotSource';
 import { routes } from '../routes';
 
@@ -27,27 +30,55 @@ export function fakeAuthClient(me: MeResponse | null = TEST_ME) {
   return client;
 }
 
+/** A HomeClient that never touches the network. `fail` makes every call reject. */
+export function fakeHomeClient({ fail = false }: { fail?: boolean } = {}) {
+  const answer = () => (fail ? Promise.reject(new Error('offline')) : Promise.resolve());
+  return {
+    save: vi.fn<(home: LatLng) => Promise<void>>(answer),
+    clear: vi.fn<() => Promise<void>>(answer),
+  } satisfies HomeClient;
+}
+
+/** The demo spots, writable in memory (same domain edits as the Worker). */
+export const demoRepository = () =>
+  new MemorySpotRepository(SEED_SPOTS, { today: () => '2026-10-14' });
+
 /**
- * Renders the real app routes at `path`, signed in by default, with the
- * demo spots as the data source.
+ * Renders the real app routes at `path`, signed in by default (with `home`
+ * on the account, if given), with the demo spots as a writable in-memory list.
  */
 export function renderAt(
   path: string,
-  opts: { auth?: AuthState; client?: AuthClient; repository?: SpotRepository } = {},
+  opts: {
+    auth?: AuthState;
+    client?: AuthClient;
+    repository?: SpotRepository;
+    homeClient?: HomeClient;
+    home?: LatLng | null;
+  } = {},
 ) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   const user = userEvent.setup();
   const client = opts.client ?? fakeAuthClient();
-  const auth = 'auth' in opts ? opts.auth : { status: 'signed-in' as const, me: TEST_ME };
+  const homeClient = opts.homeClient ?? fakeHomeClient();
+  const repository = opts.repository ?? demoRepository();
+  const auth =
+    'auth' in opts
+      ? opts.auth
+      : { status: 'signed-in' as const, me: { ...TEST_ME, home: opts.home ?? null } };
   return {
     user,
     router,
     client,
+    homeClient,
+    repository,
     ...render(
       <AuthProvider client={client} initial={auth}>
-        <SpotSourceContext value={opts.repository ?? new StaticSpotRepository()}>
-          <RouterProvider router={router} />
-        </SpotSourceContext>
+        <HomeClientContext value={homeClient}>
+          <SpotSourceContext value={repository}>
+            <RouterProvider router={router} />
+          </SpotSourceContext>
+        </HomeClientContext>
       </AuthProvider>,
     ),
   };

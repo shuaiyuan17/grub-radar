@@ -114,6 +114,10 @@
   letter-spacing: -0.025em;
   text-wrap: balance;
 }
+.oneLiner {
+  font-size: 23px;
+  line-height: 1.1;
+}
 .tags {
   display: flex;
   flex-wrap: wrap;

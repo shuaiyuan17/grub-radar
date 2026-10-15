@@ -107,7 +107,9 @@ test.describe('Sign in with Apple (against the local Apple stub)', () => {
       .filter({ visible: true });
     await expect(account).toBeVisible();
     if (!phone) await expect(account).toContainText('Tess');
-    await expect(page.getByRole('article').first()).toBeVisible();
+    // a brand-new account starts with an empty list, not the demo
+    await expect(page.getByRole('heading', { name: 'nothing on your radar yet.' })).toBeVisible();
+    await expect(page.getByRole('article')).toHaveCount(0);
 
     await page.reload();
     await expect(account).toBeVisible();

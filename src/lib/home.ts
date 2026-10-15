@@ -1,8 +1,9 @@
 import { isLatLng, type LatLng } from '../domain/geo';
 
 /**
- * Home location, stored on this device only (localStorage). Never sent
- * anywhere and never part of the build, so the public site can't leak it.
+ * v0 kept home on the device (localStorage). Since v1 it lives in your
+ * account; this is only read once, to move an old device home there
+ * (OriginProvider), and cleared afterwards.
  */
 export const HOME_KEY = 'grub-radar:home';
 

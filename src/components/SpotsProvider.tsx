@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { SpotRepository } from '../domain/repository';
+import { isWritable, type SpotRepository } from '../domain/repository';
 import type { Spot } from '../domain/spot';
 import { useT } from '../i18n/context';
-import { SpotsContext } from '../lib/spots';
+import { SpotsContext, type SpotActions } from '../lib/spots';
 
 type Load =
   { state: 'loading' } | { state: 'ready'; spots: Spot[] } | { state: 'error'; error: Error };
@@ -59,8 +59,42 @@ export function SpotsProvider({
     };
   }, [repository]);
 
+  // writes go to the repository; its answer replaces (or adds, or drops) the spot here
+  const actions = useMemo<SpotActions | null>(() => {
+    if (!isWritable(repository)) return null;
+    const apply = (change: (spots: Spot[]) => Spot[]) => {
+      setCurrent((c) =>
+        c.repository === repository && c.load.state === 'ready'
+          ? { repository, load: { state: 'ready', spots: change(c.load.spots) } }
+          : c,
+      );
+    };
+    const upsert = async (write: Promise<Spot>) => {
+      const spot = await write;
+      apply((spots) =>
+        spots.some((s) => s.id === spot.id)
+          ? spots.map((s) => (s.id === spot.id ? spot : s))
+          : [...spots, spot],
+      );
+      return spot;
+    };
+    return {
+      add: (input) => upsert(repository.add(input)),
+      update: (id, patch) => upsert(repository.update(id, patch)),
+      markBeen: (id, input) => upsert(repository.markBeen(id, input)),
+      addNote: (id, input) => upsert(repository.addNote(id, input)),
+      remove: async (id) => {
+        await repository.remove(id);
+        apply((spots) => spots.filter((s) => s.id !== id));
+      },
+    };
+  }, [repository]);
+
   const spots = load.state === 'ready' ? load.spots : null;
-  const value = useMemo(() => (spots ? { repository, spots } : null), [repository, spots]);
+  const value = useMemo(
+    () => (spots ? { repository, spots, actions } : null),
+    [repository, spots, actions],
+  );
 
   if (load.state === 'error') {
     return (
