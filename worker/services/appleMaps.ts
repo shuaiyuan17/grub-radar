@@ -31,6 +31,7 @@ import { isLatLng, type LatLng } from '../../src/domain/geo';
 import { ApplePlaceIdSchema, LIMITS, type DataLang } from '../../src/domain/spot';
 import { signingKey } from '../auth/siwa';
 import { isDevelopment, type Env } from '../env';
+import type { Timing } from '../lib/timing';
 
 export const MAPS_API = 'https://maps-api.apple.com';
 /** Not a real host: only ever a Cache API key, never fetched. */
@@ -133,6 +134,8 @@ export interface PlaceSearch {
 interface Deps {
   /** Defaults to caches.default. */
   cache?: Cache;
+  /** The request's Server-Timing: each Apple call is a phase, cache hits are noted. */
+  timing?: Timing;
   now?: () => number;
   /** Lets cache writes finish after the response (ctx.waitUntil). */
   waitUntil?: (p: Promise<unknown>) => void;
@@ -157,8 +160,10 @@ export class AppleMaps {
   readonly #cache: Cache;
   readonly #now: () => number;
   readonly #waitUntil: (p: Promise<unknown>) => void;
+  readonly #timing: Timing | undefined;
 
   constructor(env: Env, deps: Deps = {}) {
+    this.#timing = deps.timing;
     this.#env = env;
     this.#base = mapsBase(env);
     this.#cache = deps.cache ?? caches.default;
@@ -234,11 +239,15 @@ export class AppleMaps {
 
   async #fetch(url: string, bearer: string): Promise<Response> {
     await this.#refuseIfOverQuota();
-    try {
-      return await fetch(url, {
+    const call = () =>
+      fetch(url, {
         headers: { authorization: `Bearer ${bearer}`, accept: 'application/json' },
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
+    try {
+      // the path only (no query: that's the search text)
+      const what = new URL(url).pathname.replace(/^\/v1\/place\/.*/, '/v1/place');
+      return await (this.#timing ? this.#timing.measure('apple_maps', call, what) : call());
     } catch (e) {
       throw new AppleMapsError(
         'unavailable',
@@ -384,8 +393,12 @@ export class AppleMaps {
     const hit = await this.#cache.match(key);
     if (hit) {
       const cached = CachedPlaces.safeParse(await hit.json().catch(() => null));
-      if (cached.success) return cached.data;
+      if (cached.success) {
+        this.#timing?.note('apple_cache', 'hit');
+        return cached.data;
+      }
     }
+    this.#timing?.note('apple_cache', 'miss');
     const value = await load();
     this.#put(key, value, ttl);
     return value;

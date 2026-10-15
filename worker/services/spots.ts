@@ -166,8 +166,11 @@ export async function resolveSearchCentre(
   db: D1Database,
   userId: string,
   near: Origin | undefined,
+  /** Your home if it was already read (prefetched with the session); undefined: not read yet. */
+  knownHome?: LatLng | null,
 ): Promise<{ ok: true; near: LatLng | undefined } | { ok: false }> {
-  if (near === undefined) return { ok: true, near: (await getHome(db, userId)) ?? undefined };
-  const origin = await resolveOrigin(db, userId, near);
-  return origin.ok ? { ok: true, near: origin.origin } : { ok: false };
+  if (near !== undefined && near !== 'home') return { ok: true, near };
+  const home = knownHome === undefined ? await getHome(db, userId) : knownHome;
+  if (near === 'home' && !home) return { ok: false };
+  return { ok: true, near: home ?? undefined };
 }

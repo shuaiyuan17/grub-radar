@@ -9,7 +9,7 @@ import { SpotSchema } from '../../src/domain/spot';
 import { D1SpotRepository } from '../db/spots';
 import { AppleMaps, forgetAccessTokens } from '../services/appleMaps';
 import { fakeAppleMaps, type FakeAppleMaps } from '../test/appleMaps';
-import { call, send, userSession } from '../test/helpers';
+import { call, d1RoundTrips, send, timingNames, userSession } from '../test/helpers';
 
 // fictional homes
 const A_HOME = { lat: 47.618421, lng: -122.321937 };
@@ -513,5 +513,38 @@ describe('a want and a been add of the same new place, racing', () => {
     expect(await count('SELECT COUNT(*) AS n FROM visits WHERE user_id = ?', 'u_visit_race')).toBe(
       0,
     );
+  });
+});
+
+describe('D1 round trips (Server-Timing)', () => {
+  it('search: 1, even around "home" (home rides along with the session lookup)', async () => {
+    const cookie = await userSession('u_rt_search');
+    await send('PUT', '/api/me/home', cookie, A_HOME);
+    // a query nothing else here searched, so Apple is really called (and timed)
+    const viaGet = await call('/api/places/search?q=kite&near=home', { cookie });
+    expect(viaGet.status).toBe(200);
+    expect(d1RoundTrips(viaGet)).toBe(1);
+    expect(timingNames(viaGet)).toContain('apple_maps');
+    const viaPost = await send('POST', '/api/places/search', cookie, { q: 'coffee', near: 'home' });
+    expect(viaPost.status).toBe(200);
+    expect(d1RoundTrips(viaPost)).toBe(1);
+    const point = await send('POST', '/api/places/search', cookie, {
+      q: 'croissant',
+      near: { lat: 47.61, lng: -122.33 },
+    });
+    expect(d1RoundTrips(point)).toBe(1);
+  });
+
+  it('add from Apple: 3 for a new place (session, look-up, write + read back); 2 if already yours', async () => {
+    const cookie = await userSession('u_rt_add');
+    const id = 'IF0000000000000C1';
+    await env.DB.prepare('DELETE FROM places WHERE apple_place_id = ?').bind(id).run();
+    const first = await send('POST', '/api/spots', cookie, { applePlaceId: id, kind: 'bakery' });
+    expect(first.status).toBe(201);
+    expect(d1RoundTrips(first)).toBe(3);
+    const again = await send('POST', '/api/spots', cookie, { applePlaceId: id });
+    expect(again.status).toBe(200);
+    expect(d1RoundTrips(again)).toBe(2);
+    expect(timingNames(again)).not.toContain('apple_maps');
   });
 });

@@ -16,20 +16,23 @@ import {
   type PlaceSearchQuery,
 } from '../../src/contracts/places';
 import { ApplePlaceIdSchema, DATA_LANGS, type DataLang } from '../../src/domain/spot';
-import type { AppEnv } from '../app';
+import { defer, type AppEnv } from '../app';
 import { csrf } from '../auth/csrf';
-import { actingUser, requireScope } from '../auth/principal';
+import { actingUser, prefetched, requireScope, type Prefetch } from '../auth/principal';
+import { homeFromResult, homeStatement } from '../db/users';
+import type { Env } from '../env';
 import { apiError, readBody } from '../lib/http';
 import { AppleMaps, AppleMapsError } from '../services/appleMaps';
 import { resolveSearchCentre } from '../services/spots';
 
 type Ctx = Context<AppEnv>;
 
-/** AppleMaps for this request: cache writes finish after the response. */
+/** AppleMaps for this request: timed in Server-Timing, cache writes finish after the response. */
 export function appleMapsFor(c: Ctx): AppleMaps {
   return new AppleMaps(c.env, {
+    timing: c.var.timing,
     waitUntil: (p) => {
-      c.executionCtx.waitUntil(p);
+      defer(c, p);
     },
   });
 }
@@ -63,6 +66,17 @@ const limitSearch: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next();
 };
 
+const SEARCH = 'search /api/places/search';
+
+/**
+ * Your home, read in the session lookup's batch (see index.ts), so a search
+ * around "home" (or with no centre) costs no extra D1 round trip.
+ */
+export const placesSearchPrefetch = (env: Env): Prefetch => ({
+  key: SEARCH,
+  statements: (scope) => [homeStatement(env.DB, scope)],
+});
+
 export const places = new Hono<AppEnv>();
 
 places.use(requireScope('spots:read'), limitSearch);
@@ -71,7 +85,13 @@ places.use(requireScope('spots:read'), limitSearch);
 async function search(c: Ctx, q: PlaceSearchQuery | { error: string }): Promise<Response> {
   if ('error' in q) return apiError(c, 400, 'bad_request', q.error);
   const { userId } = actingUser(c.var.principal);
-  const centre = await resolveSearchCentre(c.env.DB, userId, q.near);
+  const pre = prefetched(c, SEARCH);
+  const centre = await resolveSearchCentre(
+    c.env.DB,
+    userId,
+    q.near,
+    pre ? homeFromResult(pre[0]) : undefined,
+  );
   if (!centre.ok)
     return apiError(c, 400, 'no_home', 'no home saved: set one, or pass near=lat,lng');
   try {

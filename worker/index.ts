@@ -14,7 +14,7 @@ import { Timing } from './lib/timing';
 import { auth } from './routes/auth';
 import { mapkit } from './routes/mapkit';
 import { me, mePrefetch } from './routes/me';
-import { places } from './routes/places';
+import { places, placesSearchPrefetch } from './routes/places';
 import { rollRoute, spots, spotsPrefetch } from './routes/spots';
 import { VERSION } from './version';
 
@@ -67,10 +67,12 @@ app.use(
 app.get('/api/health', (c) => c.json({ ok: true, version: VERSION }));
 app.route('/auth', auth);
 
-// the two reads every page load makes ride along in the session lookup: one D1 round trip each
+// the reads these requests need ride along in the session lookup: one D1 round trip each
 app.use(
   '/api/*',
   principalResolver((c) => {
+    // an Apple search may need your home: read it with the session (GET or the app's POST)
+    if (c.req.path === '/api/places/search') return placesSearchPrefetch(c.env);
     if (c.req.method !== 'GET') return null;
     if (c.req.path === '/api/me') return mePrefetch(c.env);
     if (c.req.path === '/api/spots') return spotsPrefetch(c.env);

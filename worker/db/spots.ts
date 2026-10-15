@@ -223,6 +223,8 @@ export class D1SpotRepository implements WritableSpotRepository {
    *   - otherwise `resolve()` says what the place is, and it goes into `places`.
    * Two adds racing for the same place both end on one `places` row and one
    * entry (the inserts are ON CONFLICT DO NOTHING, read back by Apple id).
+   * D1: two round trips (the look-up batch, then the write batch that also
+   * reads the entry back); one if it's already on your list.
    * `input.kind` wins; else what Apple says the place is; else food.
    */
   async addApplePlace(
@@ -231,25 +233,22 @@ export class D1SpotRepository implements WritableSpotRepository {
     resolve: () => Promise<ApplePlace>,
   ): Promise<{ spot: Spot; created: boolean }> {
     const db = this.#db;
-    const known = await db
-      .prepare(
-        `SELECT p.id, p.name, p.lat, p.lng, p.address,
-           EXISTS (SELECT 1 FROM user_places WHERE user_id = ? AND place_id = p.id) AS mine
-         FROM places p WHERE p.apple_place_id = ?`,
-      )
-      .bind(this.#userId, applePlaceId)
-      .first<{
-        id: string;
-        name: string;
-        lat: number;
-        lng: number;
-        address: string | null;
-        mine: number;
-      }>();
-    if (known?.mine) {
-      const spot = await this.get(known.id);
-      if (spot) return { spot, created: false };
-    }
+    // one round trip: is it on your list (the whole row), and is the place known at all?
+    const mineStmt = db
+      .prepare(`${SELECT} AND p.apple_place_id = ?`)
+      .bind(this.#userId, applePlaceId);
+    const [mineRes, knownRes] = await db.batch([
+      mineStmt,
+      db
+        .prepare('SELECT id, name, lat, lng, address FROM places WHERE apple_place_id = ?')
+        .bind(applePlaceId),
+    ]);
+    const mine = (mineRes?.results as Row[] | undefined)?.[0];
+    if (mine) return { spot: toSpot(mine), created: false };
+    const known = (
+      knownRes?.results as
+        { id: string; name: string; lat: number; lng: number; address: string | null }[] | undefined
+    )?.[0];
     const place: ApplePlace = known
       ? {
           applePlaceId,
@@ -331,11 +330,10 @@ export class D1SpotRepository implements WritableSpotRepository {
             applePlaceId,
           ),
       );
-    const [, entry] = await db.batch(stmts);
-    const row = await db
-      .prepare(`${SELECT} AND p.apple_place_id = ?`)
-      .bind(this.#userId, applePlaceId)
-      .first<Row>();
+    // …and the entry as it now reads, in the same round trip
+    const results = await db.batch([...stmts, mineStmt]);
+    const entry = results[1];
+    const row = (results.at(-1)?.results as Row[] | undefined)?.[0];
     if (!row)
       throw new SpotOpError('list_full', `a list holds at most ${String(LIMITS.spots)} spots`);
     return { spot: toSpot(row), created: Boolean(entry?.meta.changes) };
