@@ -2,18 +2,10 @@ import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DEMO_HOME } from '../config';
 import { isLatLng, type LatLng } from '../domain/geo';
 import { clearHome, loadHome, saveHome } from '../lib/home';
+import type { NoticeKey } from '../i18n/messages';
 import { OriginContext, type From, type LocateStatus, type OriginValue } from '../lib/origin';
 
 const GEO_TIMEOUT_MS = 10_000;
-
-const messages = {
-  denied: "location is blocked for this site, so we're measuring from home.",
-  unavailable: "couldn't find you just now, so we're measuring from home.",
-  homeDenied: "location is blocked, so we couldn't set home from it. try typing it in.",
-  homeUnavailable: "couldn't find you just now. try again, or type it in.",
-  homeSaved: 'home saved on this device.',
-  homeVisitOnly: "this browser won't store it, so home is saved for this visit only.",
-} as const;
 
 function locate(
   onOk: (p: LatLng) => void,
@@ -39,7 +31,7 @@ export function OriginProvider({ children }: { children: ReactNode }) {
   const [from, setFrom] = useState<From>('home');
   const [here, setHere] = useState<LatLng | null>(null);
   const [status, setStatus] = useState<LocateStatus>('idle');
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<NoticeKey | null>(null);
   const [homeEditorOpen, setHomeEditorOpen] = useState(false);
   const request = useRef(0);
   // separate counter for "set home from where i am": anything that sets or
@@ -76,7 +68,7 @@ export function OriginProvider({ children }: { children: ReactNode }) {
         if (id !== request.current) return;
         setFrom('home');
         setStatus(reason);
-        setNotice(messages[reason]);
+        setNotice(reason);
       },
     );
   }, []);
@@ -86,7 +78,7 @@ export function OriginProvider({ children }: { children: ReactNode }) {
     if (!isLatLng(home)) return false;
     const stored = saveHome(home);
     setSaved(home);
-    setNotice(stored ? messages.homeSaved : messages.homeVisitOnly);
+    setNotice(stored ? 'homeSaved' : 'homeVisitOnly');
     setHomeEditorOpen(false);
     return stored;
   }, []);
@@ -114,7 +106,7 @@ export function OriginProvider({ children }: { children: ReactNode }) {
         if (id !== homeRequest.current) return;
         homeLocating.current = false;
         setStatus('idle');
-        setNotice(reason === 'denied' ? messages.homeDenied : messages.homeUnavailable);
+        setNotice(reason === 'denied' ? 'homeDenied' : 'homeUnavailable');
       },
     );
   }, [applyHome]);

@@ -131,6 +131,7 @@ describe('time-of-day headline', () => {
   it('opens weekend daytime in weekend mode with weekend copy', async () => {
     resetPageHeadline();
     getPageHeadline(
+      'en',
       () => new Date(2026, 9, 17, 11), // Saturday 11:00
       () => 0,
     );
@@ -151,6 +152,7 @@ describe('time-of-day headline', () => {
   it('uses the slot copy, highlighting the marked words', async () => {
     resetPageHeadline();
     getPageHeadline(
+      'en',
       () => new Date(2026, 9, 14, 23), // Wednesday 23:00
       () => 0,
     );

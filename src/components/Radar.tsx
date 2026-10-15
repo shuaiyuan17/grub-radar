@@ -12,8 +12,9 @@ import {
 
 /** Non-interactive dots (desktop mini radar) only need to not overlap visually. */
 const STATIC_DOT_PX = 16;
-import { byTravelTime, describeDot, type SpotView } from '../domain/spotView';
-import { RING_LABELS, type Ring } from '../domain/travel';
+import { byTravelTime, type SpotView } from '../domain/spotView';
+import { useT } from '../i18n/context';
+import type { Ring } from '../domain/travel';
 import { Icon } from './Icon';
 import styles from './Radar.module.css';
 
@@ -51,6 +52,7 @@ export function Radar({
   onSelect,
   className = '',
 }: RadarProps) {
+  const t = useT();
   const interactive = Boolean(onSelect);
   const ref = useRef<HTMLDivElement>(null);
   // spacing depends on the rendered size: 40px tap targets must not overlap
@@ -81,18 +83,13 @@ export function Radar({
       ),
     [sorted, size, interactive],
   );
-  const where = from === 'home' ? 'home' : 'you';
 
   return (
     <div
       ref={ref}
       className={`${styles.radar} ${className}`}
       role={interactive ? 'group' : 'img'}
-      aria-label={
-        interactive
-          ? `Places around ${where} by travel time`
-          : `Radar of saved places around ${where}, in 10 minute, 30 minute, 1 hour and road trip rings`
-      }
+      aria-label={interactive ? t.radarGroup(from) : t.radarImg(from)}
     >
       {[3, 2, 1, 0].map((i) => (
         <span
@@ -109,7 +106,7 @@ export function Radar({
         </span>
       ))}
       {interactive &&
-        RING_LABELS.map((label, i) => (
+        t.ringLabels.map((label, i) => (
           <span
             key={label}
             aria-hidden="true"
@@ -127,7 +124,7 @@ export function Radar({
         className={`sk flat ${styles.home}`}
         style={{ width: `clamp(32px, ${HUB_DIAMETER * 100}%, 52px)` }}
         role="img"
-        aria-label={from === 'home' ? 'Home' : 'You are here'}
+        aria-label={t.hub[from]}
       >
         <Ink />
         <Icon name={from === 'home' ? 'home' : 'pin'} size={22} />
@@ -157,7 +154,13 @@ export function Radar({
             type="button"
             className={`${styles.dot} ${inReach ? '' : styles.out}`}
             style={pos}
-            aria-label={describeDot(v, inReach)}
+            aria-label={t.dotLabel(
+              v.spot.name,
+              t.kinds[v.spot.kind],
+              t.minutes(v.travel.minutes),
+              t.travelMode[v.travel.mode],
+              inReach,
+            )}
             aria-pressed={selected}
             onClick={() => {
               onSelect(v.spot.id);

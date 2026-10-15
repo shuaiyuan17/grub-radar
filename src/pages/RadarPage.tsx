@@ -8,15 +8,11 @@ import { KINDS, type Kind } from '../domain/spot';
 import { useOrigin } from '../lib/origin';
 import { roll } from '../domain/roll';
 import { findNearby } from '../domain/nearby';
-import {
-  formatMinutes,
-  isRing,
-  MAX_RING,
-  RING_LABELS,
-  maxMinutesForRing,
-  type Ring,
-} from '../domain/travel';
+import { isRing, MAX_RING, maxMinutesForRing, type Ring } from '../domain/travel';
 import { useSpots } from '../lib/spots';
+import { parseHeadline } from '../domain/headlines';
+import { useT } from '../i18n/context';
+import { Headline } from '../components/bits';
 import { useSpotViews } from '../lib/useSpotViews';
 import styles from './RadarPage.module.css';
 
@@ -82,20 +78,18 @@ export function RadarPage() {
     if (pick) update({ sel: pick.id });
   };
 
-  const where = from === 'home' ? 'home' : 'you';
+  const t = useT();
 
   return (
     <main id="main" className={styles.main}>
       <div className={styles.layout}>
         <div className={styles.panel}>
           <Link viewTransition to="/" className={`desktop-only ${styles.backLink}`}>
-            ← back to the list
+            {t.backToListArrow}
           </Link>
-          <h1 className={styles.title}>
-            how far will you <span className="hl">go</span>?
-          </h1>
+          <Headline className={styles.title} parts={parseHeadline(t.radarHeadline)} />
           <label className={styles.reachRow} htmlFor="reach">
-            <span>up to</span>
+            <span>{t.upTo}</span>
             <input
               id="reach"
               className={styles.reach}
@@ -104,18 +98,18 @@ export function RadarPage() {
               max={MAX_RING}
               step={1}
               value={reach}
-              aria-valuetext={RING_LABELS[reach]}
+              aria-valuetext={t.ringLabels[reach]}
               onChange={(e) => {
                 const n = Number(e.target.value);
                 update({ reach: isRing(n) && n !== MAX_RING ? String(n) : null });
               }}
             />
             <span className={styles.reachValue} aria-hidden="true">
-              {RING_LABELS[reach]}
+              {t.ringLabels[reach]}
             </span>
           </label>
 
-          <div className={styles.legend} role="group" aria-label="Show kinds">
+          <div className={styles.legend} role="group" aria-label={t.kindsGroup}>
             {KINDS.map((k) => (
               <button
                 key={k}
@@ -127,11 +121,11 @@ export function RadarPage() {
                 }}
               >
                 <KindMark kind={k} size="tiny" />
-                {k}
+                {t.kinds[k]}
               </button>
             ))}
             <span className={styles.inReach} aria-live="polite">
-              {inReach.length} in reach
+              {t.inReach(inReach.length)}
             </span>
           </div>
 
@@ -150,15 +144,15 @@ export function RadarPage() {
                     {selected.spot.name}
                   </Link>
                   <div className={styles.cardMeta}>
-                    {selected.spot.cuisine} · {formatMinutes(selected.travel.minutes)}{' '}
-                    {selected.travel.mode}
+                    {selected.spot.cuisine} · {t.minutes(selected.travel.minutes)}{' '}
+                    {t.travelMode[selected.travel.mode]}
                   </div>
                   <div className={`note ${styles.cardNote}`}>{selected.spot.note}</div>
                 </div>
                 <GoLink spot={selected.spot} travel={selected.travel} />
               </article>
             ) : (
-              <p className={styles.hint}>tap a dot to see the spot, or let the dice pick.</p>
+              <p className={styles.hint}>{t.radarHint}</p>
             )}
           </div>
 
@@ -177,9 +171,7 @@ export function RadarPage() {
               update({ sel: id });
             }}
           />
-          <p className="visually-hidden">
-            {`Rings around ${where}: 10 minutes, 30 minutes, 1 hour, and road trip.`}
-          </p>
+          <p className="visually-hidden">{t.radarRingsSr(from)}</p>
         </div>
       </div>
       <BottomNav />

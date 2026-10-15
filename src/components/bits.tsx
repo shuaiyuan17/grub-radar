@@ -1,14 +1,17 @@
 import { Ink } from './Ink';
+import type { CSSProperties } from 'react';
 import { Link } from 'react-router';
 import type { Spot } from '../domain/spot';
-import { appleMapsUrl, mapsLabel } from '../domain/maps';
+import { appleMapsUrl } from '../domain/maps';
+import { useT } from '../i18n/context';
 import type { TravelEstimate } from '../domain/travel';
 import styles from './bits.module.css';
 import { Icon } from './Icon';
 
 export function Logo() {
+  const t = useT();
   return (
-    <Link viewTransition to="/" className={styles.logo} aria-label="grub radar, home">
+    <Link viewTransition to="/" className={styles.logo} aria-label={t.logoLabel}>
       <span className={`sk flat boil ${styles.logoBlob}`} aria-hidden="true">
         <Ink boil />
         <Icon name="radar" size={24} strokeWidth={2} />
@@ -21,15 +24,16 @@ export function Logo() {
 }
 
 export function StatusBadge({ status }: { status: Spot['status'] }) {
+  const t = useT();
   return status === 'been' ? (
     <span className={`${styles.badge} ${styles.been}`}>
       <Icon name="check" size={13} strokeWidth={3} />
-      been
+      {t.been}
     </span>
   ) : (
     <span className={`${styles.badge} ${styles.want}`}>
       <Icon name="star" size={13} strokeWidth={2.4} />
-      want to try
+      {t.wantToTry}
     </span>
   );
 }
@@ -39,7 +43,7 @@ export function GoLink({
   spot,
   travel,
   className = '',
-  label = 'Apple Maps',
+  label,
   labelClassName,
 }: {
   spot: Spot;
@@ -48,17 +52,18 @@ export function GoLink({
   label?: string;
   labelClassName?: string;
 }) {
+  const t = useT();
   return (
     <a
       className={`sk press ${styles.go} ${className}`}
       href={appleMapsUrl(spot.name, spot.location, travel.mode)}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={mapsLabel(spot, travel)}
+      aria-label={t.mapsLabel(spot.name, travel.mode)}
     >
       <Ink />
       <Icon name="go" size={20} />
-      <span className={labelClassName ?? 'visually-hidden'}>{label}</span>
+      <span className={labelClassName ?? 'visually-hidden'}>{label ?? t.appleMaps}</span>
     </a>
   );
 }
@@ -69,16 +74,18 @@ export function Headline({
   className,
   id,
   draw = false,
+  style,
 }: {
   parts: readonly [string, string, string];
   className?: string;
+  style?: CSSProperties;
   id?: string;
   /** Animate the highlighter in. */
   draw?: boolean;
 }) {
   const [pre, hl, post] = parts;
   return (
-    <h1 className={className} id={id}>
+    <h1 className={className} id={id} style={style}>
       {pre}
       <span className={draw ? 'hl hl-draw' : 'hl'}>{hl}</span>
       {post}

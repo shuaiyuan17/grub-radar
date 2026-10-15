@@ -1,5 +1,6 @@
 import { useId, useState, type SyntheticEvent } from 'react';
 import { parseLatLng } from '../domain/geo';
+import { useT } from '../i18n/context';
 import { useOrigin } from '../lib/origin';
 import styles from './HomeControls.module.css';
 import { Icon } from './Icon';
@@ -17,6 +18,7 @@ export function HomeEditor() {
     home,
     status,
   } = useOrigin();
+  const t = useT();
   const id = useId();
   const [text, setText] = useState('');
   const [error, setError] = useState(false);
@@ -38,19 +40,19 @@ export function HomeEditor() {
     <section className={`sk ${styles.panel}`} aria-labelledby={`${id}-title`}>
       <Ink />
       <div className={styles.head}>
-        <h2 id={`${id}-title`}>where&apos;s home?</h2>
+        <h2 id={`${id}-title`}>{t.homeTitle}</h2>
         <button
           type="button"
           className={`tap ${styles.dismiss}`}
-          aria-label="Close"
+          aria-label={t.close}
           onClick={closeHomeEditor}
         >
           <Icon name="close" size={16} strokeWidth={2.4} />
         </button>
       </div>
       <p className={styles.small}>
-        saved on this device only. it never leaves your browser and isn&apos;t part of the site.
-        {!homeIsDemo && ` now: ${home.lat.toFixed(4)}, ${home.lng.toFixed(4)}.`}
+        {t.homePrivacy}
+        {!homeIsDemo && t.homeNow(home.lat.toFixed(4), home.lng.toFixed(4))}
       </p>
       <div className={styles.row}>
         <button
@@ -61,12 +63,12 @@ export function HomeEditor() {
         >
           <Ink />
           <Icon name="locate" size={18} strokeWidth={2} />
-          {status === 'locating' ? 'finding you…' : 'use where i am now'}
+          {status === 'locating' ? t.findingYou : t.useWhereIAmNow}
         </button>
       </div>
       <form className={styles.form} onSubmit={submit} noValidate>
         <label htmlFor={`${id}-coords`} className={styles.small}>
-          or type it as lat, lng
+          {t.typeLatLng}
         </label>
         <div className={styles.row}>
           <span className={`sk flat ${styles.field}`}>
@@ -88,19 +90,19 @@ export function HomeEditor() {
           </span>
           <button type="submit" className={`sk press ${styles.btn}`}>
             <Ink />
-            save
+            {t.save}
           </button>
         </div>
         {error && (
           <p id={`${id}-error`} role="alert" className={styles.error}>
-            that doesn&apos;t look like lat, lng (e.g. 47.61, -122.33).
+            {t.latLngError}
           </p>
         )}
       </form>
       {!homeIsDemo && (
         <div>
           <button type="button" className={`tap ${styles.linkBtn}`} onClick={forgetHome}>
-            forget my home (back to the demo)
+            {t.forgetHome}
           </button>
         </div>
       )}

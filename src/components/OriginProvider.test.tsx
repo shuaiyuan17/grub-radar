@@ -38,7 +38,7 @@ describe('OriginProvider.setHome contract', () => {
       ok = ref.current!.setHome({ lat: 1, lng: 2 });
     });
     expect(ok).toBe(true);
-    expect(ref.current!.notice).toBe('home saved on this device.');
+    expect(ref.current!.notice).toBe('homeSaved');
   });
 
   it('returns false (but still uses it) when storage fails', () => {
@@ -53,7 +53,7 @@ describe('OriginProvider.setHome contract', () => {
     expect(ok).toBe(false);
     expect(ref.current!.home).toEqual({ lat: 1, lng: 2 });
     expect(ref.current!.homeIsDemo).toBe(false);
-    expect(ref.current!.notice).toMatch(/for this visit only/);
+    expect(ref.current!.notice).toBe('homeVisitOnly');
   });
 
   it('returns false for an invalid home and changes nothing', () => {

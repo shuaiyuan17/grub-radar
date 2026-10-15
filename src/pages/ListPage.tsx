@@ -14,7 +14,16 @@ import {
 import { Icon } from '../components/Icon';
 import { Radar } from '../components/Radar';
 import { SpotCard } from '../components/SpotCard';
-import { ALL, isMode, listSpots, MODE_DEFS, type Mode } from '../domain/modes';
+import { parseHeadline } from '../domain/headlines';
+import {
+  ALL,
+  COFFEE_MAX_MINUTES,
+  isMode,
+  listSpots,
+  NEAR_MAX_MINUTES,
+  type Mode,
+} from '../domain/modes';
+import { useI18n } from '../i18n/context';
 import { useOrigin } from '../lib/origin';
 import { roll } from '../domain/roll';
 import { getPageHeadline } from '../lib/pageHeadline';
@@ -28,10 +37,11 @@ type ParamPatch = Partial<Record<'mode' | 'tag' | 'q' | 'roll', string | null>>;
 export function ListPage() {
   const [params, setParams] = useSearchParams();
   const { from, origin, chooseHere } = useOrigin();
+  const { t, locale } = useI18n();
   const views = useSpotViews();
 
   // picked once per page load from the local time (see domain/headlines.ts)
-  const opening = getPageHeadline();
+  const opening = getPageHeadline(locale);
   const modeParam = params.get('mode');
   const mode: Mode = isMode(modeParam) ? modeParam : opening.defaultMode;
   const q = params.get('q') ?? '';
@@ -39,7 +49,6 @@ export function ListPage() {
   const result = listSpots(views, { mode, tag: params.get('tag') ?? ALL, q });
   // an unknown or stale ?roll= id simply shows no roll
   const rolled = rollId ? (result.items.find((v) => v.spot.id === rollId) ?? null) : null;
-  const def = MODE_DEFS[mode];
 
   const [searchOpen, setSearchOpen] = useState(q !== '');
   // the highlighter draws in on the first list render of this page load only
@@ -94,9 +103,8 @@ export function ListPage() {
   };
 
   const n = result.items.length;
-  const countLabel = result.searching
-    ? `${n} ${n === 1 ? 'match' : 'matches'} · closest first`
-    : `${n} ${n === 1 ? 'spot' : 'spots'} · ${def.sortLabel}`;
+  const countLabel = result.searching ? t.matchCount(n) : t.spotCount(n);
+  const emptyMinutes = mode === 'coffee' ? COFFEE_MAX_MINUTES : NEAR_MAX_MINUTES;
 
   return (
     <main id="main" className={styles.main}>
@@ -106,7 +114,7 @@ export function ListPage() {
           <button
             type="button"
             className={`sk press ${styles.iconBtn}`}
-            aria-label="Search my spots"
+            aria-label={t.searchLabel}
             aria-expanded={searchOpen}
             aria-controls="search-phone-row"
             onClick={() => {
@@ -120,7 +128,7 @@ export function ListPage() {
           <button
             type="button"
             className={`sk press ${styles.iconBtn}`}
-            aria-label="Use my current location"
+            aria-label={t.useMyLocation}
             onClick={chooseHere}
           >
             <Ink />
@@ -148,7 +156,9 @@ export function ListPage() {
 
       <div className={styles.titleRow}>
         <Headline
-          parts={mode === opening.defaultMode ? opening.parts : def.headline}
+          parts={
+            mode === opening.defaultMode ? opening.parts : parseHeadline(t.modeHeadlines[mode])
+          }
           className={styles.title}
           draw={drawHeadline}
         />
@@ -169,7 +179,7 @@ export function ListPage() {
       />
 
       <div className={styles.columns}>
-        <section aria-label="Places" className={styles.listCol}>
+        <section aria-label={t.placesLabel} className={styles.listCol}>
           <div className={styles.countRow}>
             <span className={styles.count} aria-live="polite">
               {countLabel}
@@ -185,7 +195,7 @@ export function ListPage() {
 
           {n === 0 ? (
             <p className={`note ${styles.empty}`}>
-              {result.searching ? `nothing matches “${q.trim()}”.` : def.emptyHint}
+              {result.searching ? t.noMatch(q.trim()) : t.empty[mode](emptyMinutes)}
             </p>
           ) : (
             // keyed by mode + chip so the cards stagger in again when they change
@@ -199,18 +209,18 @@ export function ListPage() {
           )}
         </section>
 
-        <aside aria-label="Radar and dice" className={`desktop-only ${styles.aside}`}>
+        <aside aria-label={t.asideLabel} className={`desktop-only ${styles.aside}`}>
           {/* top of the aside so the pick is on screen right after rolling */}
           <RollResult view={rolled} onClear={clearRoll} />
           <div className={`sk ${styles.radarCard}`}>
             <Ink />
             <div className={styles.radarCardHead}>
-              <h2>around {from === 'home' ? 'home' : 'you'}</h2>
-              <span className="note">rings = travel time</span>
+              <h2>{t.around[from]}</h2>
+              <span className="note">{t.ringsNote}</span>
             </div>
             <Radar views={views} from={from} className={styles.miniRadar} />
             <Link viewTransition to="/radar" className={styles.radarLink}>
-              open the full radar
+              {t.openRadar}
             </Link>
           </div>
           <div className={styles.diceWrap}>

@@ -1,9 +1,11 @@
 import { Outlet, ScrollRestoration, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { Logo } from '../components/bits';
-import { FromToggle, OriginNotice, SearchBox } from '../components/controls';
+import { FromToggle, LangToggle, OriginNotice, SearchBox } from '../components/controls';
 import { HomeEditor } from '../components/HomeControls';
 import { OriginProvider } from '../components/OriginProvider';
 import { SpotsProvider } from '../components/SpotsProvider';
+import { useT } from '../i18n/context';
+import { I18nProvider } from '../i18n/I18nProvider';
 import styles from './Layout.module.css';
 
 /** Desktop header search drives the list's ?q= param from any page. */
@@ -32,17 +34,31 @@ function HeaderSearch() {
 
 export function Layout() {
   return (
+    <I18nProvider>
+      <Shell />
+    </I18nProvider>
+  );
+}
+
+function Shell() {
+  const t = useT();
+  return (
     <OriginProvider>
       <a className={styles.skip} href="#main">
-        skip to content
+        {t.skip}
       </a>
       <div className={styles.shell}>
+        {/* phones: the language switch gets its own slim row at the very top */}
+        <div className={`phone-only ${styles.langRow}`}>
+          <LangToggle />
+        </div>
         <header className={`desktop-only ${styles.header}`}>
           <div className={styles.brand}>
             <Logo />
           </div>
           <HeaderSearch />
           <FromToggle compact />
+          <LangToggle />
         </header>
         <OriginNotice />
         <HomeEditor />

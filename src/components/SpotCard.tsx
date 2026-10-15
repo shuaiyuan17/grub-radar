@@ -1,7 +1,7 @@
 import { Ink } from './Ink';
 import { Link, useLocation } from 'react-router';
 import type { SpotView } from '../domain/spotView';
-import { formatMinutes } from '../domain/travel';
+import { useT } from '../i18n/context';
 import { GoLink, StatusBadge } from './bits';
 import { FoodTile } from './Icon';
 import styles from './SpotCard.module.css';
@@ -9,6 +9,7 @@ import styles from './SpotCard.module.css';
 export function SpotCard({ view, index }: { view: SpotView; index: number }) {
   const { spot, travel } = view;
   const location = useLocation();
+  const t = useT();
   return (
     <article className={`sk lift ${styles.card}`} aria-labelledby={`card-${spot.id}`}>
       <Ink />
@@ -30,8 +31,8 @@ export function SpotCard({ view, index }: { view: SpotView; index: number }) {
         </div>
       </div>
       <div className={styles.time}>
-        <span className={styles.minutes}>{formatMinutes(travel.minutes)}</span>
-        <span className={styles.how}>{travel.mode}</span>
+        <span className={styles.minutes}>{t.minutes(travel.minutes)}</span>
+        <span className={styles.how}>{t.travelMode[travel.mode]}</span>
       </div>
       <p className={`note ${styles.note}`}>{spot.note}</p>
       <span className={styles.rule} aria-hidden="true" />
