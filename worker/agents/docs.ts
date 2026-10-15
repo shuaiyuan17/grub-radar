@@ -227,7 +227,7 @@ How to connect (and the rules for doing it): ${origin}/agent-setup.md
 
 - Remote MCP server (streamable HTTP): ${origin}/mcp
 - OAuth 2.1 (discovery from the 401; dynamic client registration and client ID metadata documents). The person approves in a browser.
-- Tools: list_spots, find_nearby, roll, search_places, add_spot, mark_been, add_note
+- Tools: list_spots, find_nearby, roll, search_places, add_spot, mark_been, add_note, add_dish, remove_dish
 
 ## REST
 
@@ -330,8 +330,10 @@ curl -H "Authorization: Bearer $GRUB_TOKEN" "${origin}/api/spots/nearby?origin=h
 | \`add_spot\` | add a place, by \`applePlaceId\` from search_places (best) or by \`query\` + \`near\`; it's labelled "found by" you |
 | \`mark_been\` | they went: optional verdict good / meh / bad and a note |
 | \`add_note\` | add a dated line to a spot's notes, in their words |
+| \`add_dish\` | add a dish they named to a spot's "dishes to order" (a dish already there changes nothing) |
+| \`remove_dish\` | take a dish off that list, when they ask |
 
-Only mark visits, give verdicts or write notes when the person told you to. Never invent places, verdicts or opening hours.
+Only mark visits, give verdicts, write notes or change dishes to order when the person told you to. Never invent places, verdicts or opening hours.
 
 ## Privacy and terms
 

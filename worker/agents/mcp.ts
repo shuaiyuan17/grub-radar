@@ -22,7 +22,12 @@ import * as z from 'zod';
 import { foundByAgent } from '../../src/contracts/agents';
 import { AddApplePlaceSchema, AddByQuerySchema } from '../../src/contracts/places';
 import { NEARBY_DEFAULT_LIMIT, NEARBY_MAX_LIMIT } from '../../src/contracts/spots';
-import { AddNoteSchema, MarkBeenSchema, SpotOpError } from '../../src/domain/edits';
+import {
+  AddNoteSchema,
+  DishInputSchema,
+  MarkBeenSchema,
+  SpotOpError,
+} from '../../src/domain/edits';
 import { KINDS, LIMITS, PRICES, VERDICTS, type Spot } from '../../src/domain/spot';
 import { executionCtx, type AppEnv } from '../app';
 import { agentAllowed, type AgentPrincipal } from '../auth/principal';
@@ -46,14 +51,20 @@ import { agentFromToken, agentOrigin, REQUIRED_SCOPES, resourcesFor } from './oa
 type McpEnv = Env & { hono: Context<AppEnv> };
 
 /** Tools that change your list (need spots:write). */
-export const WRITE_TOOLS = new Set(['add_spot', 'mark_been', 'add_note']);
+export const WRITE_TOOLS = new Set([
+  'add_spot',
+  'mark_been',
+  'add_note',
+  'add_dish',
+  'remove_dish',
+]);
 
 export const INSTRUCTIONS = `grub radar is one person's list of places to eat: restaurants, coffee and bakeries they have been to or want to try, with their own one-line notes and a good/meh/bad verdict. You act for that person, with the access they approved.
 
 - Spots are identified by "id" (e.g. "p-01j..."). Get ids from list_spots, find_nearby or roll.
 - To add a place, prefer search_places then add_spot with the applePlaceId of the right result. add_spot with a free-text "query" adds only a clear match; otherwise it returns candidates for you to pick from.
 - "home" as an origin means the person's saved home. You never see where home is: for you, home is the centre of its ~1 km grid cell, so distances from it are approximate (up to ~700 m off). Use explicit coordinates when the person tells you where they are.
-- Only mark a spot as been, give a verdict or write notes when the person told you so; write notes in their words. Say "found by" is you: every spot you add is labelled with your name.
+- Only mark a spot as been, give a verdict, write notes or add or remove dishes to order when the person told you so; write notes and dishes in their words. Say "found by" is you: every spot you add is labelled with your name.
 - Never invent places, verdicts or opening hours.`;
 
 const LatLng = z
@@ -258,7 +269,7 @@ export function buildServer(c: Context<AppEnv>, agent: AgentPrincipal): McpServe
           .array(z.string().max(LIMITS.dish))
           .max(LIMITS.dishes)
           .optional()
-          .describe('dishes to order'),
+          .describe('dishes to order, only ones the person named, in their words'),
         cuisine: z.string().max(LIMITS.cuisine).optional().describe('e.g. "hand-pulled noodles"'),
         price: z.enum(PRICES).optional().describe('only if known; never guess'),
       }),
@@ -352,6 +363,55 @@ export function buildServer(c: Context<AppEnv>, agent: AgentPrincipal): McpServe
       if (braked) return braked;
       try {
         return text({ spot: await repo().addNote(id, input.data) });
+      } catch (e) {
+        return toolError(e);
+      }
+    },
+  );
+
+  const Dish = z
+    .string()
+    .min(1)
+    .max(LIMITS.dish)
+    .describe('the dish, e.g. "cumin lamb noodles"; case and spacing don\'t matter for matching');
+
+  server.registerTool(
+    'add_dish',
+    {
+      title: 'Add a dish to order',
+      description: `Adds a dish to a spot's "dishes to order" list (as not tried yet). Only a dish the person named, in their words. A dish already on the list (ignoring case and spacing) changes nothing: added is false. A spot holds at most ${String(LIMITS.dishes)} dishes.`,
+      inputSchema: z.object({ id: z.string().max(100).describe('the spot id'), dish: Dish }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    async ({ id, ...rest }) => {
+      const input = DishInputSchema.safeParse(rest);
+      if (!input.success) return failure('bad_request', describeIssue(input.error));
+      const braked = await writeBrake();
+      if (braked) return braked;
+      try {
+        return text(await repo().addDish(id, input.data));
+      } catch (e) {
+        return toolError(e);
+      }
+    },
+  );
+
+  server.registerTool(
+    'remove_dish',
+    {
+      title: 'Remove a dish to order',
+      description:
+        'Takes a dish off a spot\'s "dishes to order" list, matched by name ignoring case and spacing (see list_spots for the names). Only when the person asked. A dish that isn\'t there is an error (no_dish).',
+      inputSchema: z.object({ id: z.string().max(100).describe('the spot id'), dish: Dish }),
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+    },
+    async ({ id, ...rest }) => {
+      const input = DishInputSchema.safeParse(rest);
+      if (!input.success) return failure('bad_request', describeIssue(input.error));
+      const braked = await writeBrake();
+      if (braked) return braked;
+      try {
+        return text({ spot: await repo().removeDish(id, input.data) });
       } catch (e) {
         return toolError(e);
       }

@@ -30,6 +30,10 @@ export const ERROR_CODES = [
   'maps_unavailable',
   /** An Apple Maps search (add_spot with `query`) found nothing to add. */
   'no_match',
+  /** A spot's dishes to order already hold LIMITS.dishes. */
+  'dishes_full',
+  /** remove_dish: no dish by that name on the spot. */
+  'no_dish',
   /** add_spot with `query` found several plausible places; nothing was added. Pick one. */
   'ambiguous',
   /** add_spot with `query` needs `near`, or a saved home, to search around. */

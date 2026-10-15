@@ -3,10 +3,13 @@ import {
   AddNoteSchema,
   AddSpotSchema,
   appendNote,
+  applyAddDish,
   applyAddNote,
   applyMarkBeen,
   applyPatch,
+  applyRemoveDish,
   changesPlace,
+  DishInputSchema,
   guessLang,
   MarkBeenSchema,
   withLegacyRating,
@@ -189,6 +192,66 @@ describe('mark been and notes', () => {
       { on: TODAY, text: 'so good' },
     ]);
     expect(parseNoteEntries(undefined)).toEqual([]);
+  });
+});
+
+describe('dishes to order', () => {
+  const base = { ...lucky, order: [{ id: 'd4', dish: 'Cumin Lamb', tried: true }] };
+  const dish = (d: string) => DishInputSchema.parse({ dish: d });
+
+  it('folds whitespace and caps a dish at LIMITS.dish', () => {
+    expect(dish('  chili   oil\nwontons ').dish).toBe('chili oil wontons');
+    expect(DishInputSchema.safeParse({ dish: '   ' }).success).toBe(false);
+    expect(DishInputSchema.safeParse({ dish: 'x'.repeat(LIMITS.dish + 1) }).success).toBe(false);
+  });
+
+  it('adds a new dish untried, with a fresh id', () => {
+    const next = applyAddDish(base, dish('mapo tofu'));
+    expect(next.order).toEqual([
+      { id: 'd4', dish: 'Cumin Lamb', tried: true },
+      { id: 'd5', dish: 'mapo tofu', tried: false },
+    ]);
+  });
+
+  it('a dish already there in any case or spacing changes nothing', () => {
+    expect(applyAddDish(base, dish('cumin   LAMB'))).toBe(base);
+  });
+
+  it('refuses a dish past LIMITS.dishes', () => {
+    const full = {
+      ...lucky,
+      order: Array.from({ length: LIMITS.dishes }, (_, i) => ({
+        id: `d${String(i + 1)}`,
+        dish: `dish ${String(i)}`,
+        tried: false,
+      })),
+    };
+    expect(() => applyAddDish(full, dish('one more'))).toThrow(
+      expect.objectContaining({ code: 'dishes_full' }),
+    );
+    // …but a duplicate is still a quiet no-op
+    expect(applyAddDish(full, dish('DISH 3'))).toBe(full);
+  });
+
+  it('removes a dish matched ignoring case and spacing; a missing one is no_dish', () => {
+    expect(applyRemoveDish(base, dish(' cumin lamb ')).order).toEqual([]);
+    expect(() => applyRemoveDish(base, dish('mapo tofu'))).toThrow(
+      expect.objectContaining({ code: 'no_dish' }),
+    );
+  });
+
+  it('add_spot drops dishes that differ only in case or spacing', () => {
+    const spot = spotFromInput(
+      'p-x',
+      AddSpotSchema.parse({
+        name: 'Pho',
+        kind: 'food',
+        location: { lat: 47.6, lng: -122.3 },
+        order: ['Pho Tai', 'pho  tai', 'banh mi'],
+      }),
+      TODAY,
+    );
+    expect(spot.order.map((d) => d.dish)).toEqual(['Pho Tai', 'banh mi']);
   });
 });
 

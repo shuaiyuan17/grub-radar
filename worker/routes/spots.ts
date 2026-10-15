@@ -83,6 +83,11 @@ function opError(c: Ctx, e: unknown): Response {
       return apiError(c, 409, 'list_full', e.message);
     case 'no_match':
       return apiError(c, 404, 'no_match', e.message);
+    // MCP only today (add_dish / remove_dish); REST edits the whole list with PATCH
+    case 'dishes_full':
+      return apiError(c, 409, 'dishes_full', e.message);
+    case 'no_dish':
+      return apiError(c, 404, 'no_dish', e.message);
   }
 }
 
