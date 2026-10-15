@@ -10,6 +10,10 @@
  * published at /auth/keys. The `user` JSON is sent only on a person's first
  * authorization, like Apple.
  *
+ * It also stands in for maps-api.apple.com (APPLE_MAPS_BASE): /v1/token
+ * checks our ES256 server_api JWT and hands out an access token, /v1/search
+ * and /v1/place/:id answer from a few fictional places, in Apple's shape.
+ *
  *   node e2e/apple-stub.ts            (port 4599, or APPLE_STUB_PORT)
  */
 import { createPublicKey } from 'node:crypto';
@@ -90,6 +94,128 @@ function postBack(res: ServerResponse, redirectUri: string, fields: Record<strin
   );
 }
 
+// ---------------------------------------------------------------------------
+// Apple Maps Server API (fictional places only)
+
+interface MapsPlace {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  lines: string[];
+  category: 'Restaurant' | 'Cafe' | 'Bakery';
+  words: string[];
+}
+const MAPS_PLACES: MapsPlace[] = [
+  {
+    id: 'IE2E00000000000A1',
+    name: 'Night Owl Pho',
+    lat: 47.6152,
+    lng: -122.3201,
+    lines: ['101 Lantern St', 'Seattle, WA  98101', 'United States'],
+    category: 'Restaurant',
+    words: ['pho', 'noodles'],
+  },
+  {
+    id: 'IE2E00000000000A2',
+    name: 'Pho Real',
+    lat: 47.6101,
+    lng: -122.3352,
+    lines: ['22 Kettle Ave', 'Seattle, WA 98104', 'United States'],
+    category: 'Restaurant',
+    words: ['pho'],
+  },
+  {
+    id: 'IE2E00000000000A3',
+    name: 'Lantern Pho House',
+    lat: 47.5987,
+    lng: -122.3239,
+    lines: ['415 Paper Lantern Way', 'Seattle, WA 98104', 'United States'],
+    category: 'Restaurant',
+    words: ['pho', 'noodles'],
+  },
+  {
+    id: 'IE2E00000000000B1',
+    name: 'Paper Kite Coffee',
+    lat: 47.6123,
+    lng: -122.3311,
+    lines: ['9 Kite Ln', 'Unit 2', 'Seattle, WA 98101', 'United States'],
+    category: 'Cafe',
+    words: ['coffee', 'espresso'],
+  },
+  {
+    id: 'IE2E00000000000C1',
+    name: 'Little Ember Bakery',
+    lat: 47.6188,
+    lng: -122.3277,
+    lines: ['300 Crumb Way', 'Seattle, WA 98102', 'United States'],
+    category: 'Bakery',
+    words: ['croissant', 'bakery'],
+  },
+];
+const mapsTokens = new Set<string>();
+
+function mapsWire(p: MapsPlace, withCategory: boolean) {
+  return {
+    id: p.id,
+    name: p.name,
+    coordinate: { latitude: p.lat, longitude: p.lng },
+    formattedAddressLines: p.lines,
+    country: 'United States',
+    countryCode: 'US',
+    ...(withCategory ? { poiCategory: p.category } : {}),
+  };
+}
+
+async function verifyMapsJwt(jwt: string) {
+  const header = decodeProtectedHeader(jwt);
+  if (header.alg !== 'ES256' || header.kid !== KEY_ID || header.typ !== 'JWT')
+    throw new Error('bad header');
+  const { payload } = await jwtVerify(jwt, clientSecretKey, {
+    issuer: TEAM_ID,
+    algorithms: ['ES256'],
+    requiredClaims: ['iat', 'exp'],
+  });
+  if (payload.scope !== 'server_api') throw new Error('bad scope');
+}
+
+/** Apple Maps Server API routes; null when the path isn't one. */
+async function maps(req: IncomingMessage, res: ServerResponse, url: URL) {
+  if (req.method !== 'GET' || !url.pathname.startsWith('/v1/')) return null;
+  const bearer = (req.headers.authorization ?? '').replace(/^Bearer /, '');
+  const unauthorized = () => json(res, 401, { error: { message: 'Not Authorized', details: [] } });
+  if (url.pathname === '/v1/token') {
+    try {
+      await verifyMapsJwt(bearer);
+    } catch {
+      return unauthorized();
+    }
+    const token = `stub-maps-${crypto.randomUUID()}`;
+    mapsTokens.add(token);
+    return json(res, 200, { accessToken: token, expiresInSeconds: 1800 });
+  }
+  if (!mapsTokens.has(bearer)) return unauthorized();
+  if (url.pathname === '/v1/search') {
+    const p = url.searchParams;
+    if (p.has('searchLocation') && p.has('searchRegion'))
+      return json(res, 400, {
+        error: { message: 'Cannot specify both searchRegion and searchLocation', details: [] },
+      });
+    const q = (p.get('q') ?? '').toLowerCase();
+    const cats = (p.get('includePoiCategories') ?? '').split(',');
+    const results = MAPS_PLACES.filter(
+      (pl) =>
+        cats.includes(pl.category) &&
+        [pl.name.toLowerCase(), ...pl.words].some((w) => w.includes(q)),
+    ).map((pl) => mapsWire(pl, true));
+    return json(res, 200, { displayMapRegion: {}, results });
+  }
+  const id = /^\/v1\/place\/([^/]+)$/.exec(url.pathname)?.[1];
+  const place = id ? MAPS_PLACES.find((pl) => pl.id === decodeURIComponent(id)) : undefined;
+  if (place) return json(res, 200, mapsWire(place, false));
+  return json(res, 404, { error: { message: 'Not Found', details: [] } });
+}
+
 async function verifyClientSecret(secret: string) {
   const header = decodeProtectedHeader(secret);
   if (header.alg !== 'ES256' || header.kid !== KEY_ID) throw new Error('bad header');
@@ -108,6 +234,7 @@ const server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', `http://localhost:${PORT}`);
     if (req.method === 'GET' && url.pathname === '/health') return json(res, 200, { ok: true });
     if (req.method === 'GET' && url.pathname === '/auth/keys') return json(res, 200, jwks);
+    if (await maps(req, res, url)) return;
 
     if (req.method === 'GET' && url.pathname === '/auth/authorize') {
       const p = Object.fromEntries(url.searchParams);

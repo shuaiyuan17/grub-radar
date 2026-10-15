@@ -14,6 +14,7 @@ import { Timing } from './lib/timing';
 import { auth } from './routes/auth';
 import { mapkit } from './routes/mapkit';
 import { me, mePrefetch } from './routes/me';
+import { places } from './routes/places';
 import { rollRoute, spots, spotsPrefetch } from './routes/spots';
 import { VERSION } from './version';
 
@@ -78,6 +79,7 @@ app.use(
 );
 app.route('/api/mapkit-token', mapkit);
 app.route('/api/me', me);
+app.route('/api/places', places);
 app.route('/api/spots', spots);
 app.route('/api/roll', rollRoute);
 

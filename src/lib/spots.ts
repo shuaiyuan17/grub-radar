@@ -1,4 +1,5 @@
 import { createContext, use } from 'react';
+import type { AddApplePlaceInput } from '../contracts/places';
 import type { AddNote, AddSpot, MarkBeen, SpotPatch } from '../domain/edits';
 import type { SpotRepository } from '../domain/repository';
 import type { Spot } from '../domain/spot';
@@ -14,6 +15,20 @@ export interface SpotActions {
   markBeen(id: string, input?: MarkBeen): Promise<Spot>;
   addNote(id: string, input: AddNote): Promise<Spot>;
   remove(id: string): Promise<void>;
+  /**
+   * Puts a place from Apple Maps on your list (or, if it's already there,
+   * hands back your entry). null when the source can't reach Apple Maps.
+   */
+  addApplePlace: ((input: AddApplePlaceInput) => Promise<Spot>) | null;
+}
+
+/** A spot source that can add places from Apple Maps (the server; test doubles). */
+export interface ApplePlaceAdder {
+  addApplePlace(input: AddApplePlaceInput): Promise<Spot>;
+}
+
+export function canAddApplePlaces<T extends object>(repo: T): repo is T & ApplePlaceAdder {
+  return typeof (repo as Partial<ApplePlaceAdder>).addApplePlace === 'function';
 }
 
 export interface SpotsValue {

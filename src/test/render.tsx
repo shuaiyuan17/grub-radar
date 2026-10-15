@@ -3,12 +3,14 @@ import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { AuthProvider } from '../components/AuthProvider';
 import type { MeResponse } from '../contracts/me';
+import type { ApplePlace } from '../contracts/places';
 import { MemorySpotRepository } from '../data/memoryRepository';
 import { SEED_SPOTS } from '../data/seed';
 import type { LatLng } from '../domain/geo';
 import type { SpotRepository } from '../domain/repository';
 import type { AuthClient, AuthState } from '../lib/auth';
 import { HomeClientContext, type HomeClient } from '../lib/homeClient';
+import { PlaceSearchClientContext, type PlaceSearchClient } from '../lib/placeSearch';
 import { SpotSourceContext } from '../lib/spotSource';
 import { routes } from '../routes';
 
@@ -39,6 +41,15 @@ export function fakeHomeClient({ fail = false }: { fail?: boolean } = {}) {
   } satisfies HomeClient;
 }
 
+/** A PlaceSearchClient answering from `places` (names matched on the query); records calls. */
+export function fakePlaceSearch(places: readonly ApplePlace[] = []) {
+  return {
+    search: vi.fn<PlaceSearchClient['search']>((q) =>
+      Promise.resolve(places.filter((p) => p.name.toLowerCase().includes(q.q.toLowerCase()))),
+    ),
+  } satisfies PlaceSearchClient;
+}
+
 /** The demo spots, writable in memory (same domain edits as the Worker). */
 export const demoRepository = () =>
   new MemorySpotRepository(SEED_SPOTS, { today: () => '2026-10-14' });
@@ -55,6 +66,7 @@ export function renderAt(
     repository?: SpotRepository;
     homeClient?: HomeClient;
     home?: LatLng | null;
+    placeSearch?: PlaceSearchClient;
   } = {},
 ) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -75,9 +87,11 @@ export function renderAt(
     ...render(
       <AuthProvider client={client} initial={auth}>
         <HomeClientContext value={homeClient}>
-          <SpotSourceContext value={repository}>
-            <RouterProvider router={router} />
-          </SpotSourceContext>
+          <PlaceSearchClientContext value={opts.placeSearch ?? fakePlaceSearch()}>
+            <SpotSourceContext value={repository}>
+              <RouterProvider router={router} />
+            </SpotSourceContext>
+          </PlaceSearchClientContext>
         </HomeClientContext>
       </AuthProvider>,
     ),

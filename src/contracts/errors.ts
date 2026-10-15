@@ -26,6 +26,10 @@ export const ERROR_CODES = [
   'future_date',
   /** The list already holds LIMITS.spots spots. */
   'list_full',
+  /** Apple Maps didn't answer (down, slow, out of daily quota). Try again later. */
+  'maps_unavailable',
+  /** An Apple Maps search (add_spot with `query`) found nothing to add. */
+  'no_match',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

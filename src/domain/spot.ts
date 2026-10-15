@@ -45,6 +45,8 @@ export const LIMITS = {
   myNote: 2000,
   /** Spots on one person's list. */
   spots: 1000,
+  /** A place's one-line street address (from Apple Maps). */
+  address: 200,
 } as const;
 
 export const PRICES = ['$', '$$', '$$$', '$$$$'] as const;
@@ -100,6 +102,14 @@ export const OrderSchema = z.pipe(
   z.array(DishSchema).check(z.maxLength(LIMITS.dishes)),
   z.transform((order) => withDishIds(order)),
 );
+/**
+ * An Apple Maps Place ID ("IED91EBDD61F8ADEC"). Opaque to us; kept to a
+ * conservative alphabet because it travels in URL paths.
+ */
+export const ApplePlaceIdSchema = z
+  .string()
+  .check(z.regex(/^[A-Za-z0-9._-]{1,100}$/, 'not an Apple Maps place id'));
+
 export const WhySchema = z.strictObject({ text: text(LIMITS.why), foundOn: z.iso.date() });
 
 export const HoursSchema = z.strictObject({
@@ -139,6 +149,13 @@ export const SpotSchema = z
     lang: z.optional(z.enum(DATA_LANGS)),
     icon: z.enum(ICONS),
     location: LatLngSchema,
+    /**
+     * Set when the place came from Apple Maps. Such a place's name, location
+     * and address are Apple's (shared by everyone who saved it), not editable.
+     */
+    applePlaceId: z.optional(ApplePlaceIdSchema),
+    /** One-line street address, for places from Apple Maps. */
+    address: z.optional(text(LIMITS.address)),
     /**
      * Bumped by the server on every write to this spot. Send it back with an
      * edit and a stale copy gets a 409 instead of overwriting newer data.

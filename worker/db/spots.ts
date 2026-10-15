@@ -10,6 +10,7 @@
  * one: the loser retries from fresh data, or gets a 409 if the caller said
  * which version it edited.
  */
+import type { ApplePlace } from '../../src/contracts/places';
 import {
   applyAddNote,
   applyMarkBeen,
@@ -18,13 +19,14 @@ import {
   spotFromInput,
   SpotOpError,
   withoutUndefined,
+  type AddExtras,
   type AddNote,
   type AddSpot,
   type MarkBeen,
   type SpotPatch,
 } from '../../src/domain/edits';
 import type { WritableSpotRepository } from '../../src/domain/repository';
-import { LIMITS, SpotSchema, type Spot } from '../../src/domain/spot';
+import { LIMITS, SpotSchema, type Kind, type Spot } from '../../src/domain/spot';
 import { newPlaceId, newVisitId } from '../lib/ids';
 import { userIdRef, type UserRef } from './users';
 import { iso, isoDate } from '../lib/time';
@@ -36,6 +38,7 @@ interface Row {
   lng: number;
   created_by: string | null;
   apple_place_id: string | null;
+  address: string | null;
   kind: string;
   cuisine: string;
   price: string;
@@ -54,7 +57,7 @@ interface Row {
 }
 
 // explicit columns, always joined through user_places for this user
-const SELECT = `SELECT p.id, p.name, p.lat, p.lng, p.created_by, p.apple_place_id,
+const SELECT = `SELECT p.id, p.name, p.lat, p.lng, p.created_by, p.apple_place_id, p.address,
   up.kind, up.cuisine, up.price, up.icon, up.hours_json, up.status, up.rating, up.note, up.my_note,
   up.order_json, up.tags_json, up.why_text, up.why_found_on, up.lang, up.version
   FROM user_places up JOIN places p ON p.id = up.place_id
@@ -115,6 +118,8 @@ function toSpot(r: Row): Spot {
         lang: r.lang ?? undefined,
         icon: r.icon,
         location: { lat: r.lat, lng: r.lng },
+        applePlaceId: r.apple_place_id ?? undefined,
+        address: r.address ?? undefined,
         version: r.version,
       }),
     );
@@ -207,6 +212,131 @@ export class D1SpotRepository implements WritableSpotRepository {
     if (!place?.meta.changes)
       throw new SpotOpError('list_full', `a list holds at most ${String(LIMITS.spots)} spots`);
     return spot;
+  }
+
+  /**
+   * Adds a place from Apple Maps (`add_spot` with an Apple Place ID).
+   * Places are global and deduped by `apple_place_id`:
+   *   - already on your list: nothing is written; that spot comes back (created: false);
+   *   - already in `places` (someone saved it before): that row is reused, and
+   *     `resolve` (an Apple Maps call) isn't needed;
+   *   - otherwise `resolve()` says what the place is, and it goes into `places`.
+   * Two adds racing for the same place both end on one `places` row and one
+   * entry (the inserts are ON CONFLICT DO NOTHING, read back by Apple id).
+   * `input.kind` wins; else what Apple says the place is; else food.
+   */
+  async addApplePlace(
+    applePlaceId: string,
+    input: AddExtras & { kind?: Kind },
+    resolve: () => Promise<ApplePlace>,
+  ): Promise<{ spot: Spot; created: boolean }> {
+    const db = this.#db;
+    const known = await db
+      .prepare(
+        `SELECT p.id, p.name, p.lat, p.lng, p.address,
+           EXISTS (SELECT 1 FROM user_places WHERE user_id = ? AND place_id = p.id) AS mine
+         FROM places p WHERE p.apple_place_id = ?`,
+      )
+      .bind(this.#userId, applePlaceId)
+      .first<{
+        id: string;
+        name: string;
+        lat: number;
+        lng: number;
+        address: string | null;
+        mine: number;
+      }>();
+    if (known?.mine) {
+      const spot = await this.get(known.id);
+      if (spot) return { spot, created: false };
+    }
+    const place: ApplePlace = known
+      ? {
+          applePlaceId,
+          name: known.name,
+          location: { lat: known.lat, lng: known.lng },
+          ...(known.address ? { address: known.address } : {}),
+        }
+      : await resolve();
+    const draft = spotFromInput(
+      known?.id ?? newPlaceId(),
+      {
+        ...input,
+        name: place.name,
+        location: place.location,
+        kind: input.kind ?? place.kind ?? 'food',
+      },
+      this.#today(),
+      { applePlaceId, ...(place.address ? { address: place.address } : {}) },
+    );
+    const at = iso(this.#now());
+    const cap = this.#underCap();
+    const placeId = '(SELECT id FROM places WHERE apple_place_id = ?)';
+    const stmts = [
+      db
+        .prepare(
+          `INSERT INTO places (id, apple_place_id, name, lat, lng, address, created_by, created_at, updated_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${cap.sql}
+           ON CONFLICT (apple_place_id) DO NOTHING`,
+        )
+        .bind(
+          draft.id,
+          applePlaceId,
+          draft.name,
+          draft.location.lat,
+          draft.location.lng,
+          draft.address ?? null,
+          this.#userId,
+          at,
+          at,
+          ...cap.bind,
+        ),
+      db
+        .prepare(
+          `INSERT INTO user_places (user_id, place_id, ${LIST_COLUMNS}, found_by, version, created_at, updated_at)
+           SELECT ?, ${placeId}, ${LIST_MARKS}, ?, 1, ?, ?
+           WHERE ${placeId} IS NOT NULL AND ${cap.sql}
+           ON CONFLICT (user_id, place_id) DO NOTHING`,
+        )
+        .bind(
+          this.#userId,
+          applePlaceId,
+          ...listValues(draft),
+          this.#foundBy,
+          at,
+          at,
+          applePlaceId,
+          ...cap.bind,
+        ),
+    ];
+    if (draft.status === 'been')
+      // the first visit, only alongside a new entry (a racing twin finds one already there)
+      stmts.push(
+        db
+          .prepare(
+            `INSERT INTO visits (id, user_id, place_id, visited_on, rating, note, created_at)
+             SELECT ?, ?, up.place_id, ?, ?, NULL, ? FROM user_places up
+             WHERE up.user_id = ? AND up.place_id = ${placeId} AND up.version = 1
+               AND NOT EXISTS (SELECT 1 FROM visits v WHERE v.user_id = up.user_id AND v.place_id = up.place_id)`,
+          )
+          .bind(
+            newVisitId(),
+            this.#userId,
+            this.#today(),
+            draft.rating ?? null,
+            at,
+            this.#userId,
+            applePlaceId,
+          ),
+      );
+    const [, entry] = await db.batch(stmts);
+    const row = await db
+      .prepare(`${SELECT} AND p.apple_place_id = ?`)
+      .bind(this.#userId, applePlaceId)
+      .first<Row>();
+    if (!row)
+      throw new SpotOpError('list_full', `a list holds at most ${String(LIMITS.spots)} spots`);
+    return { spot: toSpot(row), created: Boolean(entry?.meta.changes) };
   }
 
   /**

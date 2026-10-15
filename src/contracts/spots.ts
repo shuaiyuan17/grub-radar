@@ -13,7 +13,7 @@ export const HomeSchema = LatLngSchema;
 
 /** Where to measure from: your saved home (resolved server-side) or explicit coordinates. */
 export type Origin = 'home' | LatLng;
-const OriginSchema = z.union([z.literal('home'), LatLngSchema]);
+export const OriginSchema = z.union([z.literal('home'), LatLngSchema]);
 
 export const NEARBY_DEFAULT_LIMIT = 10;
 export const NEARBY_MAX_LIMIT = 50;

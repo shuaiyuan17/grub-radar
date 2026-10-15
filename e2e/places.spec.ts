@@ -41,7 +41,9 @@ test('a new account: empty list, add a spot, been + rating, a note, edit, delete
   await page.getByRole('link', { name: 'add your first spot' }).click();
   await expect(page).toHaveURL(/\/add$/);
 
-  // add by hand
+  // add by hand (the fallback under the Apple Maps search)
+  await page.getByRole('link', { name: /add it by hand/ }).click();
+  await expect(page).toHaveURL(/\/add\/manual$/);
   await page.getByLabel('name').fill('Night Owl Pho');
   await page.getByRole('radio', { name: 'food' }).check({ force: true });
   await page.getByLabel('where is it?').fill('47.6152, -122.3201');
@@ -154,7 +156,7 @@ test('"keep it on this device only" sends nothing to the account', async ({ page
 test("one account can't see another's spots", async ({ browser }) => {
   const a = await browser.newPage();
   await devLogin(a, { as: freshUser('iso-a'), demo: false });
-  await a.goto('/add');
+  await a.goto('/add/manual');
   await a.getByLabel('name').fill('Alice’s Secret Spot');
   await a.getByLabel('where is it?').fill('47.61, -122.33');
   await a.getByRole('button', { name: 'add it' }).click();

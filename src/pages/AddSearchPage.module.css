@@ -1,0 +1,215 @@
+/* "add a spot": search Apple Maps, one tap to add. */
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 720px;
+}
+.title {
+  font-size: 34px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.searchRow {
+  display: flex;
+  flex-direction: column;
+}
+.searchRow > span {
+  min-height: 54px;
+  align-items: center;
+}
+.searchIcon {
+  display: flex;
+  padding-left: 14px;
+  color: var(--pencil);
+}
+.input {
+  font-size: 18px;
+  padding-left: 10px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+/* the field's own focus ring is on the frame (fields.module.css) */
+.input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
+.around {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 14px;
+  font-size: 14px;
+  color: var(--pencil);
+}
+
+.status {
+  min-height: 1.4em;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--pencil);
+}
+.failed {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--note-red);
+}
+
+.results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: opacity var(--fade-duration) var(--ease-out);
+}
+/* the previous answer while the next one loads */
+.stale {
+  opacity: 0.55;
+}
+
+.result {
+  border-radius: var(--r-card);
+  padding: 12px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'tile what far'
+    'tile what action';
+  column-gap: 12px;
+  row-gap: 8px;
+  align-items: center;
+  position: relative;
+}
+.onList {
+  background: var(--tint-sand);
+}
+.tile {
+  grid-area: tile;
+  align-self: start;
+}
+.what {
+  grid-area: what;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.name {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.meta {
+  font-size: 13.5px;
+  color: var(--pencil);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.far {
+  grid-area: far;
+  text-align: right;
+  line-height: 1.15;
+  white-space: nowrap;
+  align-self: start;
+}
+.distance {
+  display: block;
+  font-size: 16px;
+  font-weight: 800;
+}
+.how {
+  display: block;
+  font-size: 12.5px;
+  color: var(--pencil);
+}
+
+.action {
+  grid-area: action;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: var(--r-btn);
+  font: inherit;
+  font-weight: 700;
+  font-size: 15px;
+  text-decoration: none;
+  color: inherit;
+  background: var(--hl);
+  cursor: pointer;
+}
+.action[disabled] {
+  cursor: progress;
+  opacity: 0.7;
+}
+.action[aria-busy='true'] {
+  opacity: 1;
+}
+/* one tap anywhere on the card adds (or opens) it */
+.action::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-card);
+}
+.mine {
+  background: var(--card);
+}
+/* phones: a tighter pill, so the address keeps its width */
+@media (max-width: 959px) {
+  .mine {
+    font-size: 13.5px;
+    padding: 0 10px;
+    gap: 4px;
+  }
+}
+
+.foot {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 8px;
+}
+.credit {
+  font-size: 12.5px;
+  color: var(--pencil);
+}
+.manual {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  align-self: flex-start;
+}
+
+@media (min-width: 960px) {
+  .main {
+    gap: 18px;
+  }
+  .title {
+    font-size: 52px;
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+  }
+  .result {
+    padding: 14px 16px;
+    grid-template-areas: 'tile what far action';
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    column-gap: 16px;
+  }
+  .far,
+  .tile {
+    align-self: center;
+  }
+  .name {
+    font-size: 18px;
+  }
+}

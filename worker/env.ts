@@ -5,6 +5,8 @@ export interface Env {
   MAPKIT_TOKEN_LIMITER: RateLimit;
   /** 60 writes/min per user (spots + home). */
   WRITE_LIMITER: RateLimit;
+  /** 30 Apple Maps searches/lookups a minute per user (protects Apple's daily quota). */
+  SEARCH_LIMITER: RateLimit;
 
   /**
    * "production" on Cloudflare. Dev-only features (dev login, the Apple stub,
@@ -35,6 +37,8 @@ export interface Env {
   DEV_LOGIN_SECRET?: string;
   /** Dev only: base URL of the Apple stub. Ignored in production. */
   APPLE_ENDPOINT_BASE?: string;
+  /** Dev only: base URL of an Apple Maps Server API stub. Ignored in production. */
+  APPLE_MAPS_BASE?: string;
 }
 
 /** Fail closed: only an explicit "development" turns on dev-only behaviour. */

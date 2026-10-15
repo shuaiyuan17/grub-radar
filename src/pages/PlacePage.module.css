@@ -114,6 +114,16 @@
   letter-spacing: -0.025em;
   text-wrap: balance;
 }
+.address {
+  font-size: 14px;
+  color: var(--pencil);
+  margin-top: -4px;
+}
+.added {
+  font-size: 21px;
+  line-height: 1.1;
+  color: var(--note-red);
+}
 .oneLiner {
   font-size: 23px;
   line-height: 1.1;

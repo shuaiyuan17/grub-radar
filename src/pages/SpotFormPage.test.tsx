@@ -23,7 +23,7 @@ describe('a brand-new list', () => {
 describe('add a spot', () => {
   it('adds one by hand and opens it', async () => {
     const repository = new MemorySpotRepository([]);
-    const { user, router } = renderAt('/add', { repository });
+    const { user, router } = renderAt('/add/manual', { repository });
     await user.type(await screen.findByLabelText('name'), 'Night Owl Pho');
     await user.click(screen.getByRole('radio', { name: 'coffee' }));
     await user.click(screen.getByRole('radio', { name: 'food' }));
@@ -55,7 +55,7 @@ describe('add a spot', () => {
   });
 
   it('needs a name and a place; says what is missing', async () => {
-    const { user } = renderAt('/add');
+    const { user } = renderAt('/add/manual');
     await user.click(await screen.findByRole('button', { name: 'add it' }));
     expect(screen.getByText('give it a name.')).toBeInTheDocument();
     expect(screen.getByText(/where is it\? use where you are/)).toBeInTheDocument();
@@ -67,7 +67,7 @@ describe('add a spot', () => {
 
   it('"use where i am" pins the spot where you are', async () => {
     const geo = fakeGeolocation();
-    const { user } = renderAt('/add');
+    const { user } = renderAt('/add/manual');
     await user.click(await screen.findByRole('button', { name: 'use where i am' }));
     act(() => {
       geo.succeed(47.6062, -122.3245);
@@ -78,7 +78,7 @@ describe('add a spot', () => {
 
   it('a blocked location says to type it instead', async () => {
     const geo = fakeGeolocation();
-    const { user } = renderAt('/add');
+    const { user } = renderAt('/add/manual');
     await user.click(await screen.findByRole('button', { name: 'use where i am' }));
     act(() => {
       geo.deny();
@@ -157,7 +157,7 @@ describe('edit a spot', () => {
 
   it('shows a server refusal in words', async () => {
     const repository = new MemorySpotRepository([]);
-    const { user } = renderAt('/add', { repository });
+    const { user } = renderAt('/add/manual', { repository });
     vi.spyOn(repository, 'add').mockRejectedValue(
       Object.assign(new Error('x'), { name: 'ApiRequestError' }),
     );
