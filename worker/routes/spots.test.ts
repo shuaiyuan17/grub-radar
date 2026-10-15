@@ -501,3 +501,17 @@ describe('versions, dates and brakes over HTTP', () => {
     expect((await send('POST', '/api/spots', other, NEW_SPOT)).status).toBe(201);
   });
 });
+
+describe('a corrupt saved spot', () => {
+  it('fails the list loudly (500) instead of quietly hiding it', async () => {
+    const cookie = await userSession('u_broken', 'Bro');
+    const spot = await spotOf(await send('POST', '/api/spots', cookie, NEW_SPOT));
+    await env.DB.prepare("UPDATE user_places SET order_json = '[{}]' WHERE place_id = ?")
+      .bind(spot.id)
+      .run();
+    const res = await call('/api/spots', { cookie });
+    expect(res.status).toBe(500);
+    expect((await errorOf(res)).message).toMatch(/couldn't be read/);
+    expect((await call(`/api/spots/${spot.id}`, { cookie })).status).toBe(500);
+  });
+});

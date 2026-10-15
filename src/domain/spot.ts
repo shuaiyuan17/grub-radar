@@ -56,6 +56,8 @@ export const TagSchema = z
   .string()
   .check(z.trim(), z.toLowerCase(), z.minLength(1), z.maxLength(LIMITS.tag));
 export const TagsSchema = z.array(TagSchema).check(z.maxLength(LIMITS.tags));
+/** Dish ids: "d1" … "d999999". Generation below stays inside this range. */
+export const MAX_DISH_ID = 999_999;
 const DISH_ID = /^d[1-9]\d{0,5}$/;
 /** A dish to order. `id` is stable across edits ("d1", "d2", …); new dishes may omit it. */
 export const DishSchema = z.strictObject({
@@ -64,15 +66,31 @@ export const DishSchema = z.strictObject({
   tried: z.boolean(),
 });
 
-/** Gives every dish without an id the next free "d<n>", keeping existing ids. */
+/**
+ * Gives every dish without an id (or with a duplicate one) a free "d<n>",
+ * keeping existing ids. Prefers max + 1 (so a removed dish's id isn't reused
+ * soon); past MAX_DISH_ID it takes the smallest free number instead, so a
+ * generated id always passes DishSchema. (A list holds at most LIMITS.dishes,
+ * so there is always one free.)
+ */
 export function withDishIds<T extends { id?: string }>(
   order: readonly T[],
 ): (T & { id: string })[] {
-  let next = 1 + Math.max(0, ...order.map((o) => (o.id ? Number(o.id.slice(1)) : 0)));
+  const taken = new Set(order.map((o) => o.id).filter((id): id is string => id !== undefined));
+  let next = 1 + Math.max(0, ...[...taken].map((id) => Number(id.slice(1))));
+  const fresh = (): string => {
+    while (next <= MAX_DISH_ID && taken.has(`d${String(next)}`)) next++;
+    if (next > MAX_DISH_ID) {
+      next = 1;
+      while (taken.has(`d${String(next)}`)) next++;
+    }
+    const id = `d${String(next)}`;
+    taken.add(id);
+    return id;
+  };
   const seen = new Set<string>();
   return order.map((o) => {
-    let id = o.id;
-    if (!id || seen.has(id)) id = `d${String(next++)}`;
+    const id = !o.id || seen.has(o.id) ? fresh() : o.id;
     seen.add(id);
     return { ...o, id };
   });

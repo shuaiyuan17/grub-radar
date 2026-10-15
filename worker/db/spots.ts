@@ -61,8 +61,22 @@ const SELECT = `SELECT p.id, p.name, p.lat, p.lng, p.created_by, p.apple_place_i
 
 const json = (s: string | null): unknown => (s === null ? undefined : JSON.parse(s));
 
-/** A row as a Spot, or null (logged) if it doesn't pass SpotSchema. */
-function toSpot(r: Row): Spot | null {
+/**
+ * A saved spot that no longer passes SpotSchema. Never dropped quietly (the
+ * app would treat a missing spot as deleted): logged by id, and the request
+ * fails with a 500 so it gets noticed and fixed.
+ */
+export class CorruptSpotError extends Error {
+  readonly spotId: string;
+  constructor(spotId: string) {
+    super(`saved spot ${spotId} failed validation`);
+    this.spotId = spotId;
+    this.name = 'CorruptSpotError';
+  }
+}
+
+/** A row as a Spot. Throws CorruptSpotError (after logging the id) if it doesn't pass SpotSchema. */
+function toSpot(r: Row): Spot {
   try {
     const parsed = SpotSchema.safeParse(
       withoutUndefined({
@@ -92,7 +106,7 @@ function toSpot(r: Row): Spot | null {
   }
   // ids only: never log notes or coordinates
   console.error('spot row failed SpotSchema', r.id);
-  return null;
+  throw new CorruptSpotError(r.id);
 }
 
 interface Loaded {
@@ -124,7 +138,7 @@ export class D1SpotRepository implements WritableSpotRepository {
       .prepare(`${SELECT} ORDER BY up.created_at, p.id`)
       .bind(this.#userId)
       .all<Row>();
-    return results.map(toSpot).filter((s): s is Spot => s !== null);
+    return results.map(toSpot);
   }
 
   async get(id: string): Promise<Spot | null> {
@@ -137,8 +151,7 @@ export class D1SpotRepository implements WritableSpotRepository {
       .bind(this.#userId, id)
       .first<Row>();
     if (!row) return null;
-    const spot = toSpot(row);
-    return spot ? { spot, version: row.version } : null;
+    return { spot: toSpot(row), version: row.version };
   }
 
   #today() {

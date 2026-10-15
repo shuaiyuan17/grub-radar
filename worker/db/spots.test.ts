@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { SEED_SPOTS } from '../../src/data/seed';
 import { SpotOpError, type AddSpot } from '../../src/domain/edits';
 import { LIMITS, parseSpots, SpotSchema } from '../../src/domain/spot';
-import { D1SpotRepository } from './spots';
+import { CorruptSpotError, D1SpotRepository } from './spots';
 
 const SEED = parseSpots(SEED_SPOTS);
 const byId = <T extends { id: string }>(a: T, b: T) => a.id.localeCompare(b.id);
@@ -154,15 +154,30 @@ describe('D1SpotRepository', () => {
       await expect(op()).rejects.toMatchObject({ code: 'not_found' });
   });
 
-  it('skips (and logs) a row that no longer passes the schema instead of failing the list', async () => {
-    const repo = new D1SpotRepository(env.DB, 'u_b');
+  it('a row that no longer passes the schema is an error, never silently left out', async () => {
+    const repo = new D1SpotRepository(env.DB, 'u_corrupt');
+    await addUser('u_corrupt');
     const { id } = await repo.add(MANUAL);
     await env.DB.prepare("UPDATE user_places SET tags_json = 'not json' WHERE place_id = ?")
       .bind(id)
       .run();
-    const listed = await repo.list();
-    expect(listed.find((s) => s.id === id)).toBeUndefined();
-    expect(await repo.get(id)).toBeNull();
+    await expect(repo.list()).rejects.toBeInstanceOf(CorruptSpotError);
+    // not null: the app treats a missing spot as deleted
+    await expect(repo.get(id)).rejects.toMatchObject({ spotId: id });
+  });
+
+  it('dish ids stay valid at the top of the range (no spot ever becomes unreadable)', async () => {
+    const repo = new D1SpotRepository(env.DB, 'u_b');
+    const spot = await repo.add({ ...MANUAL, order: ['pho'] });
+    const next = await repo.update(spot.id, {
+      order: [
+        { id: 'd999999', dish: 'pho', tried: false },
+        { dish: 'egg rolls', tried: false },
+      ],
+    });
+    expect(next.order.map((o) => o.id)).toEqual(['d999999', 'd1']);
+    expect(await repo.get(spot.id)).toEqual(next);
+    expect((await repo.list()).some((s) => s.id === spot.id)).toBe(true);
   });
 
   it('every write bumps the integer version; a pinned stale version is a conflict', async () => {

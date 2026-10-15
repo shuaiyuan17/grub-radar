@@ -33,6 +33,11 @@
   color: var(--note-red);
   padding-block: 4px;
 }
+.elsewhere {
+  font-size: 14px;
+  color: var(--pencil);
+  font-weight: 600;
+}
 .actions {
   gap: 18px;
   padding-bottom: 8px;

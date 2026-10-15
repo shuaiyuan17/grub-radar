@@ -1,7 +1,7 @@
 import { act, screen, within } from '@testing-library/react';
 import { MemorySpotRepository } from '../data/memoryRepository';
 import { parseTags } from '../lib/tags';
-import { fakeGeolocation, renderAt } from '../test/render';
+import { demoRepository, fakeGeolocation, renderAt } from '../test/render';
 
 describe('a brand-new list', () => {
   it('shows a friendly empty state that leads to "add"', async () => {
@@ -117,6 +117,41 @@ describe('edit a spot', () => {
       price: '$$$',
       rating: 9, // untouched
       location: { lat: 47.6135, lng: -122.3302 },
+    });
+  });
+
+  it('after a 409, a retry never resends stale fields: the other tab’s change survives', async () => {
+    const repository = demoRepository();
+    const { user } = renderAt('/place/lucky-thread/edit', { repository });
+    const name = await screen.findByLabelText('name');
+    // another tab changes the price while this form is open
+    await repository.update('lucky-thread', { price: '$$$$' });
+    await user.clear(name);
+    await user.type(name, 'Lucky Thread');
+    await user.click(screen.getByRole('button', { name: 'save' }));
+    // refused (stale version); the form catches up and says what moved
+    expect(await screen.findByRole('alert')).toHaveTextContent('updated somewhere else');
+    expect(await screen.findByText(/updated somewhere else just now: price/)).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: '$$$$' })).toBeChecked();
+    expect(screen.getByLabelText('name')).toHaveValue('Lucky Thread'); // your edit is kept
+    await user.click(screen.getByRole('button', { name: 'save' }));
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Lucky Thread' }),
+    ).toBeInTheDocument();
+    expect(await repository.get('lucky-thread')).toMatchObject({
+      name: 'Lucky Thread',
+      price: '$$$$',
+    });
+  });
+
+  it('an edit sends only the fields you changed', async () => {
+    const repository = demoRepository();
+    const update = vi.spyOn(repository, 'update');
+    const { user } = renderAt('/place/lucky-thread/edit', { repository });
+    await user.click(await screen.findByRole('radio', { name: '$' }));
+    await user.click(screen.getByRole('button', { name: 'save' }));
+    await vi.waitFor(() => {
+      expect(update).toHaveBeenCalledWith('lucky-thread', { price: '$', version: 1 });
     });
   });
 

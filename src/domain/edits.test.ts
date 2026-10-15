@@ -180,4 +180,13 @@ describe('guards', () => {
     ]);
     expect(lucky.order.map((o) => o.id)).toEqual(['d1', 'd2', 'd3']);
   });
+
+  it('generated dish ids never leave the valid range', () => {
+    const order = withDishIds([{ id: 'd999999', dish: 'a' }, { dish: 'b' }, { dish: 'c' }]);
+    expect(order.map((o) => o.id)).toEqual(['d999999', 'd1', 'd2']);
+    const spot = SpotSchema.parse({ ...lucky, order: order.map((o) => ({ ...o, tried: false })) });
+    expect(spot.order).toHaveLength(3);
+    // and a full range still finds a free one
+    expect(withDishIds([{ id: 'd1' }, { id: 'd999999' }, {}])[2]?.id).toBe('d2');
+  });
 });

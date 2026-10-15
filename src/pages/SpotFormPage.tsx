@@ -61,19 +61,49 @@ function initialValues(spot: Spot | undefined): Values {
 
 type Errors = Partial<Record<'name' | 'where' | 'save', string>>;
 
+const FIELDS = [
+  'name',
+  'kind',
+  'where',
+  'cuisine',
+  'price',
+  'tags',
+  'status',
+  'rating',
+  'note',
+  'icon',
+] as const satisfies readonly (keyof Values)[];
+type FieldKey = (typeof FIELDS)[number];
+
 /** Add a spot (`/add`) or edit one (`/place/:id/edit`): one form, two submits. */
 function SpotForm({ spot }: { spot?: Spot }) {
   const t = useT();
   const navigate = useNavigate();
   const { actions } = useSpots();
   const [v, setV] = useState<Values>(() => initialValues(spot));
+  // what the form started from (the spot at `version`) and which fields you've changed
+  const [base, setBase] = useState(() => ({ version: spot?.version, values: initialValues(spot) }));
+  const [touched, setTouched] = useState<ReadonlySet<FieldKey>>(() => new Set());
+  const [changedElsewhere, setChangedElsewhere] = useState<FieldKey[]>([]);
   const [errors, setErrors] = useState<Errors>({});
+
+  // A newer copy arrived (e.g. after a 409, the provider refetched it): fields
+  // you haven't touched follow it, yours are kept, and we say what changed.
+  if (spot && spot.version !== base.version) {
+    const fresh = initialValues(spot);
+    setBase({ version: spot.version, values: fresh });
+    setChangedElsewhere(FIELDS.filter((k) => fresh[k] !== base.values[k]));
+    const merged: Values = { ...fresh };
+    for (const k of touched) (merged as Record<FieldKey, unknown>)[k] = v[k];
+    setV(merged);
+  }
   const [locating, setLocating] = useState(false);
   const [saving, setSaving] = useState(false);
   const editing = spot !== undefined;
 
-  const set = <K extends keyof Values>(k: K, value: Values[K]) => {
+  const set = <K extends FieldKey>(k: K, value: Values[K]) => {
     setV((prev) => ({ ...prev, [k]: value }));
+    setTouched((prev) => new Set(prev).add(k));
     if (k === 'name' || k === 'where') setErrors((e) => ({ ...e, [k]: undefined }));
   };
 
@@ -111,19 +141,18 @@ function SpotForm({ spot }: { spot?: Spot }) {
       const tags = parseTags(v.tags);
       let saved: Spot;
       if (spot) {
-        const patch: SpotPatch = {
-          name: v.name.trim(),
-          kind: v.kind,
-          location: point,
-          cuisine: v.cuisine.trim() || null,
-          price: v.price,
-          icon,
-          tags,
-          note: v.note.trim() || null,
-          // edited from this copy: if it changed elsewhere meanwhile, the server says 409
-          version: spot.version,
-        };
-        saved = await actions.update(spot.id, patch);
+        // only what you changed: an untouched field never resends an old value.
+        // `version`: if the spot changed elsewhere meanwhile, the server says 409.
+        const patch: SpotPatch = { version: spot.version };
+        if (touched.has('name')) patch.name = v.name.trim();
+        if (touched.has('kind')) patch.kind = v.kind;
+        if (touched.has('where')) patch.location = point;
+        if (touched.has('cuisine')) patch.cuisine = v.cuisine.trim() || null;
+        if (touched.has('price')) patch.price = v.price;
+        if (touched.has('icon')) patch.icon = icon;
+        if (touched.has('tags')) patch.tags = tags;
+        if (touched.has('note')) patch.note = v.note.trim() || null;
+        saved = Object.keys(patch).length > 1 ? await actions.update(spot.id, patch) : spot;
       } else {
         const input: AddSpot = {
           name: v.name.trim(),
@@ -330,6 +359,11 @@ function SpotForm({ spot }: { spot?: Spot }) {
         }}
       />
 
+      {changedElsewhere.length > 0 && (
+        <p role="status" className={styles.elsewhere}>
+          {t.form.changedElsewhere(changedElsewhere.map((k) => t.form.fieldNames[k]).join(', '))}
+        </p>
+      )}
       {errors.save && (
         <p role="alert" className={formErrorClass}>
           {errors.save}

@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { AppEnv } from './app';
 import { resolvePrincipal } from './auth/principal';
+import { CorruptSpotError } from './db/spots';
 import { apiError } from './lib/http';
 import { auth } from './routes/auth';
 import { mapkit } from './routes/mapkit';
@@ -56,6 +57,8 @@ app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));
 
 app.onError((err, c) => {
   console.error('unhandled', err instanceof Error ? `${err.name}: ${err.message}` : err);
+  if (err instanceof CorruptSpotError)
+    return apiError(c, 500, 'internal', "one of your saved spots couldn't be read");
   return apiError(c, 500, 'internal', 'something broke');
 });
 
