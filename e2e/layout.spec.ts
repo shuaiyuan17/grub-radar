@@ -10,7 +10,8 @@ import { devLogin } from './session';
 // would hide it from scrollWidth.
 test.use({ isMobile: false });
 
-const WIDTHS = [320, 402] as const;
+// 320/430: the ends of the phone range; 365/375: around the header's container-query steps
+const WIDTHS = [320, 365, 375, 402, 430] as const;
 const LANGS = [
   { lang: 'en', home: /^(set your home|Set your home location|Change your home location)$/ },
   { lang: 'zh-Hans', home: /^(设置你的家|设置家的位置|修改家的位置)$/ },
@@ -53,7 +54,37 @@ async function noSidewaysScroll(page: Page, width: number) {
   expect(m.sw).toBeLessThanOrEqual(width);
 }
 
-test.beforeEach(async ({ page }) => {
+/**
+ * Measure with the real fonts, not fallback metrics: wait for every face in
+ * flight, and in zh until the headline's ZCOOL KuaiLe and (when a note on the
+ * page has Han text) Long Cang slices are actually loaded.
+ */
+async function fontsSettled(page: Page, lang: string) {
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  if (lang !== 'zh-Hans') return;
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const han = (el: Element | null) =>
+          (el?.textContent ?? '').match(/\p{Script=Han}+/gu)?.join('') ?? '';
+        const head = han(document.querySelector('h1'));
+        const notes = [...document.querySelectorAll('.note')].map(han).join('');
+        const faces: [string, string][] = [];
+        if (head) faces.push(['ZCOOL KuaiLe', head]);
+        if (notes) faces.push(['Long Cang', notes]);
+        for (const [family, text] of faces) await document.fonts.load(`16px "${family}"`, text);
+        await document.fonts.ready;
+        return faces.every(([family, text]) => document.fonts.check(`16px "${family}"`, text));
+      }),
+    )
+    .toBe(true);
+}
+
+// each test runs in one project only: skip the other one before signing in
+const PROJECT_OF = (title: string) => (title.startsWith('desktop') ? 'desktop' : 'phone');
+test.beforeEach(async ({ page }, info) => {
+  test.skip(info.project.name !== PROJECT_OF(info.title), `${PROJECT_OF(info.title)} only`);
   await devLogin(page);
 });
 
@@ -61,13 +92,13 @@ for (const { lang, home } of LANGS) {
   for (const width of WIDTHS) {
     test(`${lang} @ ${width}px: no sideways overflow, home panel + list toolbar fit`, async ({
       page,
-    }, info) => {
-      test.skip(info.project.name !== 'phone', 'phone widths only');
+    }) => {
       await page.setViewportSize({ width, height: 844 });
       await page.addInitScript((l) => {
         localStorage.setItem('grub-radar:lang', l);
       }, lang);
       await page.goto('/');
+      await fontsSettled(page, lang);
 
       // list toolbar: count and roll button inside their row, not on top of each other
       const roll = page.getByRole('button', { name: /can't decide\? roll|选不出来？摇一个/ });
@@ -86,6 +117,7 @@ for (const { lang, home } of LANGS) {
       await page.getByRole('button', { name: home }).filter({ visible: true }).first().click();
       const input = page.locator('input[inputmode="decimal"]');
       await expect(input).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
       const panel = page.locator('section').filter({ has: input });
       const field = input.locator('xpath=..');
       const save = panel.locator('button[type="submit"]');
@@ -103,9 +135,9 @@ for (const { lang, home } of LANGS) {
 
 test('desktop: the home panel field and save button share a row inside the panel', async ({
   page,
-}, info) => {
-  test.skip(info.project.name !== 'desktop', 'desktop only');
+}) => {
   await page.goto('/');
+  await fontsSettled(page, 'en');
   await page
     .getByRole('button', {
       name: /^(set your home|Set your home location|Change your home location)$/,
