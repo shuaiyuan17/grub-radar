@@ -40,6 +40,8 @@ interface RadarProps {
   /** Dots beyond this ring are faded. */
   reach?: Ring;
   selectedId?: string | null;
+  /** A dot to call out (the rolled spot, or the card you're pointing at). */
+  highlightId?: string | null;
   /** Makes dots tappable. Without it the radar is a picture (role="img"). */
   onSelect?: (id: string) => void;
   className?: string;
@@ -50,6 +52,7 @@ export function Radar({
   from,
   reach = 3,
   selectedId = null,
+  highlightId = null,
   onSelect,
   className = '',
 }: RadarProps) {
@@ -142,9 +145,22 @@ export function Radar({
           '--dy': `${(0.5 - p.y) * 100}cqw`,
         };
         const inReach = v.ring <= reach;
+        const highlighted = v.spot.id === highlightId;
         if (!onSelect) {
           return (
-            <span key={v.spot.id} className={styles.staticDot} style={pos}>
+            <span
+              key={v.spot.id}
+              className={`${styles.staticDot} ${highlighted ? styles.hiDot : ''}`}
+              style={pos}
+              data-spot={v.spot.id}
+              aria-current={highlighted ? 'true' : undefined}
+            >
+              {highlighted && (
+                // keyed by spot so the pop replays when the highlight moves
+                <span key={v.spot.id} aria-hidden="true" className={`sk flat ${styles.hiRing}`}>
+                  <Ink />
+                </span>
+              )}
               <KindMark kind={v.spot.kind} size="small" />
             </span>
           );
@@ -158,6 +174,7 @@ export function Radar({
             style={pos}
             aria-labelledby={`${uid}-${v.spot.id}`}
             aria-pressed={selected}
+            aria-current={highlighted ? 'true' : undefined}
             onClick={() => {
               onSelect(v.spot.id);
             }}

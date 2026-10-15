@@ -7,14 +7,32 @@ import { GoLink, StatusBadge } from './bits';
 import { FoodTile } from './Icon';
 import styles from './SpotCard.module.css';
 
-export function SpotCard({ view, index }: { view: SpotView; index: number }) {
+export function SpotCard({
+  view,
+  index,
+  onPoint,
+}: {
+  view: SpotView;
+  index: number;
+  /** Called with the spot id while the card is hovered or has focus, null after. */
+  onPoint?: (id: string | null) => void;
+}) {
   const { spot, travel } = view;
   const location = useLocation();
   const t = useT();
   // spot text is data in its own language, not the UI's
   const lang = dataLang(spot);
   return (
-    <article className={`sk lift ${styles.card}`} aria-labelledby={`card-${spot.id}`}>
+    <article
+      className={`sk lift ${styles.card}`}
+      aria-labelledby={`card-${spot.id}`}
+      onMouseEnter={() => onPoint?.(spot.id)}
+      onMouseLeave={() => onPoint?.(null)}
+      onFocus={() => onPoint?.(spot.id)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) onPoint?.(null);
+      }}
+    >
       <Ink />
       <span className={styles.tile}>
         <FoodTile icon={spot.icon} index={index} />

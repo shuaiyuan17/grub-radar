@@ -51,6 +51,9 @@ export function ListPage() {
   const rolled = rollId ? (result.items.find((v) => v.spot.id === rollId) ?? null) : null;
 
   const [searchOpen, setSearchOpen] = useState(q !== '');
+  // the card you're hovering/focusing; its dot lights up on the mini radar
+  // (otherwise the rolled spot's does)
+  const [pointedId, setPointedId] = useState<string | null>(null);
   // the highlighter draws in on the first list render of this page load only
   const [drawHeadline] = useState(() => !headlineDrawn);
   useEffect(() => {
@@ -202,7 +205,7 @@ export function ListPage() {
             <ul className={styles.cards} key={`${mode}|${result.tag}|${String(result.searching)}`}>
               {result.items.map((v, i) => (
                 <li key={v.spot.id} className="enter" style={{ '--i': i }}>
-                  <SpotCard view={v} index={i} />
+                  <SpotCard view={v} index={i} onPoint={setPointedId} />
                 </li>
               ))}
             </ul>
@@ -218,7 +221,12 @@ export function ListPage() {
               <h2>{t.around[from]}</h2>
               <span className="note">{t.ringsNote}</span>
             </div>
-            <Radar views={views} from={from} className={styles.miniRadar} />
+            <Radar
+              views={views}
+              from={from}
+              className={styles.miniRadar}
+              highlightId={pointedId ?? rolled?.spot.id ?? null}
+            />
             <Link viewTransition to="/radar" className={styles.radarLink}>
               {t.openRadar}
             </Link>
