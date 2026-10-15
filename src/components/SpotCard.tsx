@@ -3,7 +3,9 @@ import { Link, useLocation } from 'react-router';
 import type { SpotView } from '../domain/spotView';
 import { dataLang } from '../domain/spot';
 import { useT } from '../i18n/context';
+import { takesFor, useFriendTakes } from '../lib/friends';
 import { CuisineOrKind, GoLink, PriceText, StatusBadge } from './bits';
+import { FriendAvatars } from './FriendAvatars';
 import { FoodTile } from './Icon';
 import styles from './SpotCard.module.css';
 
@@ -20,6 +22,8 @@ export function SpotCard({
   const { spot, travel } = view;
   const location = useLocation();
   const t = useT();
+  // friends who've been here too (their friends-visible entries only; see the Worker)
+  const friendsBeen = takesFor(useFriendTakes().takes, spot.id).been.map((take) => take.friend);
   // spot text is data in its own language, not the UI's
   const lang = dataLang(spot);
   return (
@@ -67,6 +71,7 @@ export function SpotCard({
       <div className={styles.foot}>
         <span className={styles.badge}>
           <StatusBadge status={spot.status} verdict={spot.verdict} />
+          <FriendAvatars people={friendsBeen} />
         </span>
         <GoLink spot={spot} travel={travel} className={styles.go} labelClassName={styles.goLabel} />
       </div>

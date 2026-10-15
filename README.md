@@ -64,6 +64,11 @@ The first `test:e2e` run needs `npx playwright install chromium`.
   price (or "?", not sure), cravings, status/verdict, one-liner, doodle); `?name=` prefills it.
   `/place/:id/edit` the same form (a place from Apple Maps keeps Apple's name and location).
 - `/radar` `?reach=0..3` (10 min … road trip), `?kinds=food,coffee`, `?sel=<spot id>`.
+- `/friends` invite a friend (a single-use link, offered to the share sheet or copied), your
+  links still waiting (revocable), your friends (unfriend), and how friends see you (name +
+  emoji). `/friends/:id` a friend's shared list. `/invite/:token` an invite link: sign in,
+  see who sent it, accept.
+- `/admin` owner only (see **Admin** below); to everyone else, the ordinary not-found page.
 
 **The headline changes with the time of day.** When the page opens it looks at the local
 clock, picks a slot (breakfast 5–11, lunch 11–14, afternoon 14–17, dinner 17–21, late night
@@ -218,6 +223,16 @@ accounts, sessions, places and everyone's own list.
 | `POST /api/spots/import-demo`   | write    | dev only: the fictional demo spots onto your list               |
 | `GET /api/mapkit-token`         | session  | 10-minute MapKit JS token with our origin; 20/min per user      |
 | `POST /auth/dev-login`          | secret   | `ENVIRONMENT=development` + localhost + `DEV_LOGIN_SECRET` only |
+| `GET /api/friends`              | session  | your friends `{ friends, limit }`                               |
+| `GET /api/friends/places`       | session  | friends' takes on places on your list, by place id              |
+| `GET /api/friends/:id/spots`    | session  | a friend's shared list; 404 unless you're friends               |
+| `DELETE /api/friends/:id`       | session  | unfriend, for both of you; 204                                  |
+| `GET /api/invites`              | session  | your invite links that still work                               |
+| `POST /api/invites`             | session  | a new link (201, token shown once); 20 a day                    |
+| `DELETE /api/invites/:id`       | session  | revoke an unused link; 204                                      |
+| `POST /api/invites/preview`     | session  | `{ token }` → who sent it, `open`/`own`/`friends`; 410 if spent |
+| `POST /api/invites/accept`      | session  | `{ token }` → friends both ways now (201), already (200)        |
+| `GET /api/admin/stats`          | admin    | users, sign-ups per day, per-person counts; else a plain 404    |
 
 **Sign in with Apple** (`worker/auth/siwa.ts`): web flow with `response_type=code` and
 `response_mode=form_post`. `state` and a hashed `nonce` ride in an HMAC-signed, 10-minute,
@@ -272,6 +287,33 @@ home through any endpoint (404s, unchanged rows, no visits recorded). "read"/"wr
 mean a signed-in person today, or an agent with `spots:read`/`spots:write` once the agent
 door ships; home is session-only.
 
+**Friends** (`worker/db/friends.ts`, migration `0004`): the only way to become friends is an
+invite link. Sending one is consent: whoever opens it, signs in and taps accept is your friend,
+both ways, at once (two `friendships` rows, written in one batch). No search, no friend codes,
+no one-way follow. Either side can unfriend, which ends it for both. A link carries 32 random
+bytes; D1 keeps only their SHA-256. It works once, for 7 days, and its creator can revoke it
+while unused. Accepting is one D1 batch: claim the link (only if unused, unrevoked, unexpired,
+not your own, not already friends, both under 200 friends), then the friendship only if that
+claim was this request's, so two people racing for one link can't both get it. Tokens travel
+in request bodies, never in API URLs (they'd end up in logs). Limits: 20 links per person per
+24 h (counted inside the `INSERT`), 200 friends. **What a friend sees** is decided in SQL:
+every read of someone else's data joins through `friendships` from the viewer's own id and
+keeps only `user_places.visibility = 'friends'` (the default; any spot can be set to "just
+me" on its page), selecting named columns: name and emoji; the place, kind, cuisine, price,
+been/want, verdict and one-liner. Never home, `myNote`, why, dishes or tags. Friends
+endpoints are session-only; the agent scope `friends:read` is reserved, not wired.
+
+**Admin** (`worker/routes/admin.ts`): `/admin` shows total users, sign-ups per day for 30
+days, and per person: name, joined, last seen (newest session activity, never before the
+last sign-in), spots and friends. No emails, Apple subs or ids. Admins are the Apple `sub`s
+in the `ADMIN_APPLE_SUBS` secret (comma-separated; unset = nobody), matched against the
+caller's Apple identity. To anyone else `/api/admin/*` answers, for any method, exactly what
+an unknown endpoint does, and `/admin` renders the ordinary not-found page (the SPA shell is
+the same for every unknown URL, so the page's existence doesn't show; its code and strings
+are a lazily loaded chunk, not in the main bundle). To set it: read the owner's `sub`
+(`wrangler d1 execute DB --remote --command "SELECT provider_sub FROM
+auth_identities"`), then `wrangler secret put ADMIN_APPLE_SUBS`.
+
 **Places vs your list**: `places` is global and holds only what a place _is_: name,
 location, address, Apple Place ID, who created it. Apple places are shared and deduped by
 Apple Place ID: adding one someone already saved reuses that row (no Apple call); adding one
@@ -307,7 +349,8 @@ API with the keychain key.
 user (`WRITE_LIMITER`, 429) across spot writes and home.
 
 **Secrets** (production, `wrangler secret put`): `APPLE_PRIVATE_KEY` (the ES256 `.p8` as
-PEM), `SESSION_HMAC_KEY` (32+ random bytes) and, optionally, `OWNER_APPLE_SUB`. Locally they live in `.dev.vars`
+PEM), `SESSION_HMAC_KEY` (32+ random bytes) and, optionally, `OWNER_APPLE_SUB` and
+`ADMIN_APPLE_SUBS` (who may open `/admin`). Locally they live in `.dev.vars`
 (gitignored; see `.dev.vars.example`).
 
 **Timing** (`worker/lib/timing.ts`, `worker/lib/timedD1.ts`): every `/api/*` and `/auth/*`
@@ -334,7 +377,10 @@ allows; a column whose type, nullability or CHECK changes needs a table rebuild 
 new table, copy, drop, rename, recreate indexes), as in `0003`, which made `price` nullable
 (unknown) and turned the 1-10 rating into a good/meh/bad verdict. Data migrations get a
 Worker test that applies the earlier files, writes old-shape rows, then the rest
-(`worker/db/migrations.test.ts`).
+(`worker/db/migrations.test.ts`). `0004` (friends, invite links) only adds two tables; its
+test (`worker/db/migration0004.test.ts`) checks a production-shaped database comes through
+unchanged. `users.friend_code` from `0001` is unused (friends are by invite link only) and
+stays: SQLite can't drop a `UNIQUE` column in place.
 
 **Deploying**: always `npm run deploy` (or `deploy:built` after a build, e.g. in Workers
 Builds). It builds, applies migrations, then deploys `dist/grub_radar/wrangler.json`, the

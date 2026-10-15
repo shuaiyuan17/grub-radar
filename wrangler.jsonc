@@ -64,7 +64,9 @@
     // when the OWNER_APPLE_SUB secret is set, only that Apple ID. Admission is atomic in SQL.
     "SIGNUP_OPEN": "true",
   },
-  // Secrets (wrangler secret put): APPLE_PRIVATE_KEY, SESSION_HMAC_KEY, optionally OWNER_APPLE_SUB.
+  // Secrets (wrangler secret put): APPLE_PRIVATE_KEY, SESSION_HMAC_KEY, optionally OWNER_APPLE_SUB,
+  // and ADMIN_APPLE_SUBS (comma-separated Apple subs allowed on /admin; unset = nobody).
+  // A secret, not a var: it names the owner's Apple ID, which stays out of the repo.
   // APPLE_PRIVATE_KEY (key BQY23WRKNY) signs Sign in with Apple client secrets, MapKit JS tokens
   // and the Maps Server API token (place search): the key has both services enabled.
   "routes": [{ "pattern": "grub.shuaiyuan.me", "custom_domain": true }],

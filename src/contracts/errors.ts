@@ -34,6 +34,17 @@ export const ERROR_CODES = [
   'ambiguous',
   /** add_spot with `query` needs `near`, or a saved home, to search around. */
   'need_location',
+  /**
+   * An invite link that can't be used: unknown, already used, revoked or
+   * expired (deliberately one code: which one is nobody's business).
+   */
+  'invite_gone',
+  /** That's your own invite link: send it to someone else. */
+  'own_invite',
+  /** You (or the person who invited you) already have the most friends allowed. */
+  'friend_limit',
+  /** You've made the most invite links allowed for one day. */
+  'invite_limit',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

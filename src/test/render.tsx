@@ -9,6 +9,8 @@ import { SEED_SPOTS } from '../data/seed';
 import type { LatLng } from '../domain/geo';
 import type { SpotRepository } from '../domain/repository';
 import type { AuthClient, AuthState } from '../lib/auth';
+import type { FriendTake } from '../contracts/friends';
+import { FriendsClientContext, type FriendsClient } from '../lib/friends';
 import { HomeClientContext, type HomeClient } from '../lib/homeClient';
 import { PlaceSearchClientContext, type PlaceSearchClient } from '../lib/placeSearch';
 import { SpotSourceContext } from '../lib/spotSource';
@@ -50,6 +52,35 @@ export function fakePlaceSearch(places: readonly ApplePlace[] = []) {
   } satisfies PlaceSearchClient;
 }
 
+/**
+ * A FriendsClient that never touches the network: `takes` answers
+ * GET /api/friends/places; everything else is a spy you can re-stub.
+ */
+export function fakeFriendsClient(takes: Record<string, FriendTake[]> = {}) {
+  return {
+    places: vi.fn<FriendsClient['places']>(() => Promise.resolve(takes)),
+    list: vi.fn<FriendsClient['list']>(() => Promise.resolve({ friends: [], limit: 200 })),
+    invites: vi.fn<FriendsClient['invites']>(() => Promise.resolve([])),
+    createInvite: vi.fn<FriendsClient['createInvite']>(() =>
+      Promise.resolve({
+        id: 'inv_1',
+        token: 'T'.repeat(43),
+        path: `/invite/${'T'.repeat(43)}`,
+        createdAt: '2026-10-15T12:00:00.000Z',
+        expiresAt: '2026-10-22T12:00:00.000Z',
+      }),
+    ),
+    revokeInvite: vi.fn<FriendsClient['revokeInvite']>(() => Promise.resolve()),
+    unfriend: vi.fn<FriendsClient['unfriend']>(() => Promise.resolve()),
+    friendSpots: vi.fn<FriendsClient['friendSpots']>(() => Promise.reject(new Error('unset'))),
+    preview: vi.fn<FriendsClient['preview']>(() => Promise.reject(new Error('unset'))),
+    accept: vi.fn<FriendsClient['accept']>(() => Promise.reject(new Error('unset'))),
+    updateProfile: vi.fn<FriendsClient['updateProfile']>((patch) =>
+      Promise.resolve({ ...TEST_ME.user, ...patch }),
+    ),
+  } satisfies FriendsClient;
+}
+
 /** The demo spots, writable in memory (same domain edits as the Worker). */
 export const demoRepository = () =>
   new MemorySpotRepository(SEED_SPOTS, { today: () => '2026-10-14' });
@@ -67,6 +98,7 @@ export function renderAt(
     homeClient?: HomeClient;
     home?: LatLng | null;
     placeSearch?: PlaceSearchClient;
+    friends?: FriendsClient;
   } = {},
 ) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -74,6 +106,7 @@ export function renderAt(
   const client = opts.client ?? fakeAuthClient();
   const homeClient = opts.homeClient ?? fakeHomeClient();
   const repository = opts.repository ?? demoRepository();
+  const friends = opts.friends ?? fakeFriendsClient();
   const auth =
     'auth' in opts
       ? opts.auth
@@ -84,12 +117,15 @@ export function renderAt(
     client,
     homeClient,
     repository,
+    friends,
     ...render(
       <AuthProvider client={client} initial={auth}>
         <HomeClientContext value={homeClient}>
           <PlaceSearchClientContext value={opts.placeSearch ?? fakePlaceSearch()}>
             <SpotSourceContext value={repository}>
-              <RouterProvider router={router} />
+              <FriendsClientContext value={friends}>
+                <RouterProvider router={router} />
+              </FriendsClientContext>
             </SpotSourceContext>
           </PlaceSearchClientContext>
         </HomeClientContext>

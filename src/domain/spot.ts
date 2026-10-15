@@ -56,9 +56,16 @@ export const STATUSES = ['been', 'want'] as const;
  * the index is the sort rank (see compareVerdicts).
  */
 export const VERDICTS = ['good', 'meh', 'bad'] as const;
+/**
+ * Who else sees a spot on your list. 'friends' (the default): your friends see
+ * the place, your verdict and your one-liner (never `myNote`, never home).
+ * 'private': nobody but you.
+ */
+export const VISIBILITIES = ['friends', 'private'] as const;
 
 export const LatLngSchema = z.strictObject({ lat: between(-90, 90), lng: between(-180, 180) });
 export const VerdictSchema = z.enum(VERDICTS);
+export const VisibilitySchema = z.enum(VISIBILITIES);
 export const TagSchema = z
   .string()
   .check(z.trim(), z.toLowerCase(), z.minLength(1), z.maxLength(LIMITS.tag));
@@ -162,6 +169,8 @@ export const SpotSchema = z
     applePlaceId: z.optional(ApplePlaceIdSchema),
     /** One-line street address, for places from Apple Maps. */
     address: z.optional(text(LIMITS.address)),
+    /** Who else sees it (see VISIBILITIES). Absent means the default, 'friends'. */
+    visibility: z.optional(VisibilitySchema),
     /**
      * Bumped by the server on every write to this spot. Send it back with an
      * edit and a stale copy gets a 409 instead of overwriting newer data.
@@ -183,6 +192,7 @@ export type Hours = NonNullable<Spot['hours']>;
 export type Day = (typeof DAYS)[number];
 export type Price = (typeof PRICES)[number];
 export type Verdict = (typeof VERDICTS)[number];
+export type Visibility = (typeof VISIBILITIES)[number];
 export type Status = Spot['status'];
 export type Dish = Spot['order'][number];
 export type DataLang = (typeof DATA_LANGS)[number];

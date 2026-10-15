@@ -1,5 +1,6 @@
 import {
   Link,
+  NavLink,
   Outlet,
   ScrollRestoration,
   useLocation,
@@ -9,6 +10,7 @@ import {
 import { AccountMenu } from '../components/AccountMenu';
 import { Logo } from '../components/bits';
 import { FromToggle, LangToggle, OriginNotice, SearchBox } from '../components/controls';
+import { FriendsProvider } from '../components/FriendsProvider';
 import { HomeConsent, HomeEditor } from '../components/HomeControls';
 import { Icon } from '../components/Icon';
 import { Ink } from '../components/Ink';
@@ -68,6 +70,11 @@ export function Layout() {
           </div>
           <HeaderSearch />
           <FromToggle compact />
+          <NavLink viewTransition to="/friends" className={`sk press ${styles.friends}`}>
+            <Ink />
+            <Icon name="friends" size={19} strokeWidth={2.2} />
+            <span className={styles.friendsLabel}>{t.navFriends}</span>
+          </NavLink>
           <Link viewTransition to="/add" className={`sk press ${styles.add}`}>
             <Ink />
             <Icon name="plus" size={18} strokeWidth={2.6} />
@@ -80,7 +87,9 @@ export function Layout() {
         <HomeConsent />
         <HomeEditor />
         <SpotsProvider repository={repository}>
-          <Outlet />
+          <FriendsProvider>
+            <Outlet />
+          </FriendsProvider>
         </SpotsProvider>
       </div>
       <ScrollRestoration />

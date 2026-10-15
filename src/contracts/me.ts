@@ -4,6 +4,8 @@ const segmenter = new Intl.Segmenter();
 const graphemes = (s: string) => [...segmenter.segment(s)].length;
 
 export const DISPLAY_NAME_MAX = 40;
+/** The name an account gets when Apple doesn't send one (it only does on the first sign-in). */
+export const DEFAULT_DISPLAY_NAME = 'you';
 
 // control characters and the bidi overrides/isolates/marks that can make a
 // name render as something else ("Trojan Source" style)

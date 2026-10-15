@@ -11,7 +11,9 @@ import { CorruptSpotError } from './db/spots';
 import { apiError } from './lib/http';
 import { timedD1 } from './lib/timedD1';
 import { Timing } from './lib/timing';
+import { admin, noSuchEndpoint } from './routes/admin';
 import { auth } from './routes/auth';
+import { friendPlacesPrefetch, friends, friendsPrefetch, invites } from './routes/friends';
 import { mapkit } from './routes/mapkit';
 import { me, mePrefetch } from './routes/me';
 import { places, placesSearchPrefetch } from './routes/places';
@@ -78,6 +80,8 @@ app.use(
     if (c.req.method !== 'GET') return null;
     if (c.req.path === '/api/me') return mePrefetch(c.env);
     if (c.req.path === '/api/spots') return spotsPrefetch(c.env);
+    if (c.req.path === '/api/friends') return friendsPrefetch(c.env);
+    if (c.req.path === '/api/friends/places') return friendPlacesPrefetch(c.env);
     return null;
   }),
 );
@@ -86,8 +90,12 @@ app.route('/api/me', me);
 app.route('/api/places', places);
 app.route('/api/spots', spots);
 app.route('/api/roll', rollRoute);
+app.route('/api/friends', friends);
+app.route('/api/invites', invites);
+// owner-only; to everyone else, the same 404 as the line below
+app.route('/api/admin', admin);
 
-app.all('/api/*', (c) => apiError(c, 404, 'not_found', 'no such endpoint'));
+app.all('/api/*', noSuchEndpoint);
 app.all('/auth/*', (c) => apiError(c, 404, 'not_found', 'no such endpoint'));
 // the rest of run_worker_first (agent door, PR 5/6) isn't built yet: plain static handling
 app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));

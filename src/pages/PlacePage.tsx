@@ -9,7 +9,14 @@ import { Headline, SpotLabel, Unknown } from '../components/bits';
 import { useOrigin } from '../lib/origin';
 import { useSpotViews } from '../lib/useSpotViews';
 import { FOOD_ICONS } from '../components/icons';
-import { NotesEditor, OrderEditor, SpotAdmin, StatusEditor } from '../components/placeEditors';
+import { FriendTakes } from '../components/FriendTakes';
+import {
+  NotesEditor,
+  OrderEditor,
+  SpotAdmin,
+  StatusEditor,
+  VisibilityEditor,
+} from '../components/placeEditors';
 import styles from './PlacePage.module.css';
 
 /** Just added from the search (`state.added`): say so once, on arrival. */
@@ -190,9 +197,13 @@ export function PlacePage() {
 
           <StatusEditor spot={spot} />
 
+          <FriendTakes placeId={spot.id} />
+
           <OrderEditor spot={spot} />
 
           <NotesEditor spot={spot} />
+
+          <VisibilityEditor spot={spot} />
 
           <SpotAdmin spot={spot} />
 

@@ -1,0 +1,77 @@
+.box {
+  --fill: var(--sticky);
+  border-radius: var(--r-panel);
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 560px;
+  transform: rotate(-0.4deg);
+}
+.title {
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--pencil);
+}
+.list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.take {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+.face {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--ink);
+  border-radius: var(--r-round);
+  background: var(--card);
+  font-size: 20px;
+  line-height: 1;
+}
+.body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.verdict {
+  font-family: var(--font-note);
+  font-size: 22px;
+  line-height: 1;
+  color: var(--note-red);
+}
+.note {
+  font-size: 21px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+.want {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 15px;
+  color: var(--pencil);
+}

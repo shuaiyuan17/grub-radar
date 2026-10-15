@@ -1,11 +1,18 @@
 import { useId, useState, type SyntheticEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { LIMITS, dataLang, type Spot, type Verdict } from '../domain/spot';
+import {
+  LIMITS,
+  VISIBILITIES,
+  dataLang,
+  type Spot,
+  type Verdict,
+  type Visibility,
+} from '../domain/spot';
 import { parseNoteEntries, type SpotPatch } from '../domain/edits';
 import { useT } from '../i18n/context';
 import { saveErrorMessage } from '../lib/errors';
 import { localDate, useSpots, type SpotActions } from '../lib/spots';
-import { InkBox, InkButton, VerdictPicker } from './fields';
+import { Choice, InkBox, InkButton, VerdictPicker } from './fields';
 import { formErrorClass, inputClass, linkButtonClass } from './fieldClasses';
 import { Icon } from './Icon';
 import { Ink } from './Ink';
@@ -467,5 +474,38 @@ export function SpotAdmin({ spot }: { spot: Spot }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Who else sees this spot: friends (the default) or just you. Friends only
+ * ever see the place, your verdict and your one-liner; the Worker enforces
+ * that and this setting in SQL.
+ */
+export function VisibilityEditor({ spot }: { spot: Spot }) {
+  const t = useT();
+  const { busy, error, run, canWrite } = useSave();
+  // the tap shows at once; the saved spot takes over when the server answers (or it reverts)
+  const [chosen, setChosen] = useState<Visibility | null>(null);
+  if (!canWrite) return null;
+  const saved = spot.visibility ?? 'friends';
+  const value = chosen ?? saved;
+  return (
+    <section className={styles.block} aria-busy={busy}>
+      <Choice
+        legend={t.friends.visibilityGroup}
+        options={VISIBILITIES.map((v) => ({ value: v, label: t.friends.visibility[v] }))}
+        value={value}
+        onChange={(visibility) => {
+          if (busy || visibility === value) return;
+          setChosen(visibility);
+          void run((a) => a.update(spot.id, { visibility, version: spot.version })).finally(() => {
+            setChosen(null);
+          });
+        }}
+      />
+      <p className={styles.muted}>{t.friends.visibilityHint[value]}</p>
+      <SaveError error={error} />
+    </section>
   );
 }

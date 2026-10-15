@@ -14,6 +14,8 @@ export interface AuthValue {
   markSignedOut: () => void;
   /** Home was saved or cleared on the server: keep `me.home` in step. */
   setMeHome: (home: MeResponse['home']) => void;
+  /** Your name or emoji changed on the server (PATCH /api/me): show it everywhere. */
+  setMeUser: (user: MeResponse['user']) => void;
 }
 
 export const AuthContext = createContext<AuthValue | null>(null);

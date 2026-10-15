@@ -265,6 +265,7 @@ export function BottomNav() {
   const items = [
     { to: '/', label: t.navList, icon: 'list' as const, end: true },
     { to: '/radar', label: t.navRadar, icon: 'radar' as const, end: false },
+    { to: '/friends', label: t.navFriends, icon: 'friends' as const, end: false },
   ];
   return (
     <nav aria-label={t.viewNav} className={`phone-only ${styles.bottomNav}`}>

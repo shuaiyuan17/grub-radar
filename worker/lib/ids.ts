@@ -18,3 +18,5 @@ export const newUserId = () => `u_${ulid()}`;
 /** Place ids double as URL slugs (/place/p-01j…), so they fit SpotSchema's id rule. */
 export const newPlaceId = () => `p-${ulid()}`;
 export const newVisitId = () => `v_${ulid()}`;
+/** Names an invite link (for listing and revoking). Not the secret: that's the token. */
+export const newInviteId = () => `inv_${ulid()}`;

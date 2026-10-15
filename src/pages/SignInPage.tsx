@@ -73,6 +73,9 @@ export function SignInPage({ backdrop }: { backdrop?: ReactNode }) {
             className={styles.tagline}
             parts={parseHeadline(t.wallTagline)}
           />
+          {pathname.startsWith('/invite/') && (
+            <p className={`note ${styles.inviteNote}`}>{t.friends.inviteWall}</p>
+          )}
           <div role="status" className={styles.status}>
             {isSigninResult(result) && (
               <div className={`sk ${styles.notice}`}>

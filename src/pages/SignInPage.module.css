@@ -87,3 +87,10 @@
     font-size: 38px;
   }
 }
+
+.inviteNote {
+  font-size: 22px;
+  line-height: 1.15;
+  text-align: center;
+  transform: rotate(-1.5deg);
+}

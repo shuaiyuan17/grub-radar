@@ -60,3 +60,28 @@
   text-decoration: none;
   white-space: nowrap;
 }
+
+/* icon-only, round: the header has no room for another word; the label is for screen readers */
+.friends {
+  --fill: var(--card);
+  --sx: 2px;
+  --sy: 3px;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-round);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink);
+}
+.friends[aria-current='page'] {
+  --fill: var(--hl);
+}
+.friendsLabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

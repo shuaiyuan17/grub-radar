@@ -62,6 +62,10 @@
 .badge {
   grid-area: badge;
   justify-self: start;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
 }
 .note {
   grid-area: note;

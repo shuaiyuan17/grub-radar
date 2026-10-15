@@ -8,6 +8,7 @@ import {
   DishSchema,
   PRICES,
   VerdictSchema,
+  VisibilitySchema,
   SpotSchema,
   STATUSES,
   TagsSchema,
@@ -131,6 +132,8 @@ export const SpotPatchSchema = z
     /** The whole list; dishes keep their `id`, new ones may omit it. */
     order: z.optional(z.array(DishSchema).check(z.maxLength(LIMITS.dishes))),
     why: z.optional(z.nullable(z.string().check(z.trim(), z.maxLength(LIMITS.why)))),
+    /** 'friends' (default) or 'private': who else sees this spot. */
+    visibility: z.optional(VisibilitySchema),
     /**
      * The spot's `version` this edit was made from. If the spot has changed
      * since, the edit is refused (409) instead of overwriting the newer data.
@@ -254,7 +257,9 @@ type Draft = Omit<Spot, 'lang' | 'order'> & {
 /** Strips undefined keys so the result is exactly what SpotSchema emits. */
 function finish(spot: Draft): Spot {
   const lang = spotLang(spot);
-  return SpotSchema.parse(withoutUndefined({ ...spot, lang }));
+  // one spelling of the default: absent (never 'friends'), so copies compare equal
+  const visibility = spot.visibility === 'private' ? 'private' : undefined;
+  return SpotSchema.parse(withoutUndefined({ ...spot, lang, visibility }));
 }
 
 /** Drops keys whose value is undefined (zod's strict optional fields want them absent). */
@@ -338,6 +343,7 @@ export function applyPatch(spot: Spot, patch: SpotPatch, today: string): Spot {
     myNote: patch.myNote === undefined ? spot.myNote : orNone(patch.myNote),
     order: patch.order ?? spot.order,
     why,
+    visibility: patch.visibility ?? spot.visibility,
   });
 }
 

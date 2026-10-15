@@ -7,6 +7,9 @@ import { PlacePage } from './pages/PlacePage';
 import { RadarPage } from './pages/RadarPage';
 import { AddSearchPage } from './pages/AddSearchPage';
 import { AddSpotPage, EditSpotPage } from './pages/SpotFormPage';
+import { FriendsPage } from './pages/FriendsPage';
+import { FriendSpotsPage } from './pages/FriendSpotsPage';
+import { InvitePage } from './pages/InvitePage';
 
 export const routes: RouteObject[] = [
   {
@@ -23,6 +26,14 @@ export const routes: RouteObject[] = [
           { path: 'place/:id', element: <PlacePage /> },
           { path: 'place/:id/edit', element: <EditSpotPage /> },
           { path: 'radar', element: <RadarPage /> },
+          { path: 'friends', element: <FriendsPage /> },
+          { path: 'friends/:id', element: <FriendSpotsPage /> },
+          { path: 'invite/:token', element: <InvitePage /> },
+          // owner-only: its own chunk; to anyone else it's the not-found page (see AdminPage)
+          {
+            path: 'admin',
+            lazy: async () => ({ Component: (await import('./pages/admin/AdminPage')).AdminPage }),
+          },
           { path: '*', element: <NotFoundPage /> },
         ],
       },

@@ -27,3 +27,8 @@ DEV_LOGIN_SECRET=change-me
 
 # Locally anyone can sign up.
 SIGNUP_OPEN=true
+
+# Apple subs that may open /admin (comma-separated). Locally: the dev user signed in with
+# POST /auth/dev-login {"as":"admin"} (its stand-in identity is 'dev-login-admin').
+# In production this is a secret (wrangler secret put ADMIN_APPLE_SUBS).
+ADMIN_APPLE_SUBS=dev-login-admin
