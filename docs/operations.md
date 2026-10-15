@@ -168,7 +168,9 @@ with it, including photos and agent connections, **within 30 days**. Do it like 
    ```
 
    Client registrations aren't per person (anyone can register one); an unused one
-   expires on its own after 30 days (`CLIENT_REGISTRATION_TTL_S`).
+   expires on its own after 30 days (`CLIENT_REGISTRATION_TTL_S`). Registrations written
+   before that setting shipped (15 October 2026) keep the library's earlier default, 90
+   days, until they're renewed or expire.
 
 4. **Delete the user row.** D1 enforces foreign keys, so this cascades to
    `auth_identities` (email, Apple sub, refresh token), `sessions`, `user_private` (home),
@@ -187,9 +189,10 @@ with it, including photos and agent connections, **within 30 days**. Do it like 
       DELETE FROM daily_counts WHERE key = 'consent:<user_id>';"
    ```
 
-5. **Photos in R2.** The hourly cron deletes every queued key within the hour (retrying up
-   to 10 times). Then make sure nothing is left under the person's prefix `u/<user_id>/`,
-   which also catches an object whose upload died between R2 and D1: in the dashboard
+5. **Photos in R2.** The hourly cron tries the queued keys, retrying hourly up to 10 times,
+   but that alone doesn't guarantee completion: the manual purge and check below do. Delete
+   everything under the person's prefix `u/<user_id>/` (which also catches an object whose
+   upload died between R2 and D1) and confirm it lists empty: in the dashboard
    (R2 → `grub-radar-photos` → prefix `u/<user_id>/`), or with any S3 client against R2's
    S3 API, e.g. `aws s3 rm s3://grub-radar-photos/u/<user_id>/ --recursive --endpoint-url
 https://<account_id>.r2.cloudflarestorage.com`. (`purgeUserPhotos` in
@@ -197,8 +200,9 @@ https://<account_id>.r2.cloudflarestorage.com`. (`purgeUserPhotos` in
    `photo_deletions` has no rows left at `attempts >= 10` for that prefix.
 
 6. **Check** that `SELECT COUNT(*) FROM users WHERE id = '<user_id>'` is 0 and the KV
-   lists above come back empty, then reply to confirm. Workers Logs (at most 7 days) and
-   the 15-minute search cache hold no account data and expire on their own.
+   lists above come back empty, then reply to confirm. Workers Logs may include request
+   URLs and headers; they're used only for security and debugging and expire after the
+   retention period (at most 7 days). The search cache expires after 15 minutes.
 
 ## Timing and logs
 
