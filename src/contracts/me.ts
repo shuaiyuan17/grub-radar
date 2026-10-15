@@ -66,8 +66,15 @@ export const AvatarEmojiSchema = z.string().check(
 
 export const MeUserSchema = z.strictObject({
   id: z.string(),
+  /** Your own name. While `nameSet` is false it's the stand-in DEFAULT_DISPLAY_NAME. */
   displayName: z.string(),
   avatarEmoji: z.string(),
+  /**
+   * Have you chosen your name (Apple sent it at sign-up, or you saved one)?
+   * false: the app asks before anything else, and nobody else sees a name for
+   * you (friends see a placeholder instead).
+   */
+  nameSet: z.boolean(),
 });
 export type MeUser = z.infer<typeof MeUserSchema>;
 
@@ -79,7 +86,7 @@ export const MeResponseSchema = z.strictObject({
 });
 export type MeResponse = z.infer<typeof MeResponseSchema>;
 
-/** PATCH /api/me body. Returns the updated `MeUser`. */
+/** PATCH /api/me body. Returns the updated `MeUser`. Saving a `displayName` sets `nameSet`. */
 export const PatchMeSchema = z
   .strictObject({
     displayName: z.optional(DisplayNameSchema),

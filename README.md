@@ -303,7 +303,13 @@ same-origin` (without that header: an `Origin` equal to `PUBLIC_ORIGIN`; neither
 fresh 5-minute ES256 client secret **while** loading Apple's JWKS, verifies the id_token
 (RS256; `iss`, `aud`, `exp`, nonce), and finds or creates the user by Apple `sub` and starts
 the session in one D1 batch. Apple sends the person's name only on the first authorization;
-it's stored then. The JWKS is kept in isolate memory and the Cache API
+it's stored then, and counts as chosen (`users.name_set_at`). Without one (a retried first
+sign-in, or a hidden name) the account gets the stand-in `'you'`, `GET /api/me` says
+`nameSet: false`, and the app asks "what should we call you?" before anything else (a
+blocking dialog; an invite link the tab is holding carries on after). Saving a name through
+`PATCH /api/me` chooses it. Until then nobody else sees the stand-in: every read of someone
+else's name (friends, takes, invite previews, admin) selects `NULL` for an unchosen name, in
+SQL, and the app shows "a friend". The JWKS is kept in isolate memory and the Cache API
 (`worker/auth/appleKeys.ts`): Apple's `max-age` if it sends one (clamped 5 min–24 h); it sends
 `no-store` today, so an hour. An unknown `kid` or a failing signature refetches once (even
 when the set came straight from Apple), at most once a minute.
@@ -440,7 +446,8 @@ Worker test that applies the earlier files, writes old-shape rows, then the rest
 (`worker/db/migrations.test.ts`). `0004` (friends, invite links) only adds two tables; its
 test (`worker/db/migration0004.test.ts`) checks a production-shaped database comes through
 unchanged. `0006` (single-use sign-in states) adds one table, `auth_states_used`
-(`worker/db/migration0006.test.ts`). `users.friend_code` from `0001` is unused (friends are by invite link only) and
+(`worker/db/migration0006.test.ts`). `0007` adds `users.name_set_at` and backfills it: every
+name but the stand-in `'you'` counts as chosen (`worker/db/migration0007.test.ts`). `users.friend_code` from `0001` is unused (friends are by invite link only) and
 stays: SQLite can't drop a `UNIQUE` column in place.
 
 **Deploying**: always `npm run deploy` (or `deploy:built` after a build, e.g. in Workers

@@ -11,21 +11,33 @@ export interface User {
   id: string;
   displayName: string;
   avatarEmoji: string;
+  /** Has this person chosen their name (from Apple at sign-up, or saved since)? */
+  nameSet: boolean;
 }
 
-interface UserRow {
+export interface UserRow {
   id: string;
   display_name: string;
   avatar_emoji: string;
+  name_set_at: string | null;
 }
-const toUser = (r: UserRow): User => ({
+export const toUser = (r: UserRow): User => ({
   id: r.id,
   displayName: r.display_name,
   avatarEmoji: r.avatar_emoji,
+  nameSet: r.name_set_at !== null,
 });
 
 // explicit columns everywhere: never SELECT * (home lives elsewhere, but keep the habit)
-const USER_COLUMNS = 'id, display_name, avatar_emoji';
+const USER_COLUMNS = 'id, display_name, avatar_emoji, name_set_at';
+
+/**
+ * Someone's name as anyone else sees it: NULL until they've chosen one, so the
+ * stand-in 'you' never reaches a friend, an invite page or the admin page (the
+ * app shows a neutral placeholder for NULL). `u` is the users table's alias.
+ */
+export const publicNameSql = (u: string) =>
+  `CASE WHEN ${u}.name_set_at IS NULL THEN NULL ELSE ${u}.display_name END`;
 
 export async function getUser(db: D1Database, id: string): Promise<User | null> {
   const row = await db
@@ -91,17 +103,21 @@ export function readMe(
   return { home, signupOpen: open };
 }
 
+/** Saving a name (any name, even the one you had) counts as choosing it. */
 export async function updateUser(
   db: D1Database,
   id: string,
   patch: { displayName?: string; avatarEmoji?: string },
+  now = Date.now(),
 ): Promise<User | null> {
+  const name = patch.displayName ?? null;
   const row = await db
     .prepare(
-      `UPDATE users SET display_name = COALESCE(?, display_name), avatar_emoji = COALESCE(?, avatar_emoji)
+      `UPDATE users SET display_name = COALESCE(?, display_name), avatar_emoji = COALESCE(?, avatar_emoji),
+         name_set_at = CASE WHEN ? IS NULL THEN name_set_at ELSE COALESCE(name_set_at, ?) END
        WHERE id = ? RETURNING ${USER_COLUMNS}`,
     )
-    .bind(patch.displayName ?? null, patch.avatarEmoji ?? null, id)
+    .bind(name, patch.avatarEmoji ?? null, name, iso(now), id)
     .first<UserRow>();
   return row ? toUser(row) : null;
 }
@@ -193,13 +209,15 @@ export async function signInWithApple(
       ),
     db
       .prepare(
-        `INSERT INTO users (id, display_name, created_at, last_login_at)
-         SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM ${IDENTITY})
+        `INSERT INTO users (id, display_name, name_set_at, created_at, last_login_at)
+         SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM ${IDENTITY})
          AND (? = 1 OR (? = 1 AND NOT EXISTS (SELECT 1 FROM users)))`,
       )
       .bind(
         userId,
         opts.displayName ?? DEFAULT_DISPLAY_NAME,
+        // Apple's name counts as chosen; the stand-in doesn't (the app will ask)
+        opts.displayName === null ? null : at,
         at,
         at,
         identity.sub,
@@ -264,10 +282,10 @@ export async function ensureDevUser(
   await db.batch([
     db
       .prepare(
-        `INSERT INTO users (id, display_name, created_at, last_login_at) VALUES (?, ?, ?, ?)
+        `INSERT INTO users (id, display_name, name_set_at, created_at, last_login_at) VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET last_login_at = excluded.last_login_at`,
       )
-      .bind(id, name, at, at),
+      .bind(id, name, at, at, at),
     // a stand-in Apple identity ('dev-login', 'dev-login-<label>'), so the local
     // ADMIN_APPLE_SUBS can name a dev user and e2e can reach the admin page
     db

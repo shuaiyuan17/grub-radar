@@ -12,7 +12,8 @@ import { z } from 'zod/mini';
 export const SIGNUP_DAYS = 30;
 
 export const AdminUserSchema = z.strictObject({
-  displayName: z.string(),
+  /** null: they haven't chosen a name yet (shown as a placeholder). */
+  displayName: z.nullable(z.string()),
   avatarEmoji: z.string(),
   createdAt: z.string(),
   /** The latest of any session's last activity and the last sign-in (ISO). */

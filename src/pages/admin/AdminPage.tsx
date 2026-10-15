@@ -116,7 +116,7 @@ export function AdminPage() {
                 <tr key={`${u.createdAt}-${String(i)}`}>
                   <th scope="row" className={styles.who}>
                     <span aria-hidden="true">{u.avatarEmoji} </span>
-                    {u.displayName}
+                    {u.displayName ?? a.unnamed}
                   </th>
                   <td>{day(u.createdAt)}</td>
                   <td>{day(u.lastSeenAt)}</td>

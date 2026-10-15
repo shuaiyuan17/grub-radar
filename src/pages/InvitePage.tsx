@@ -9,7 +9,7 @@ import { parseHeadline } from '../domain/headlines';
 import { useT } from '../i18n/context';
 import { ApiRequestError } from '../lib/api';
 import { saveErrorMessage } from '../lib/errors';
-import { useFriendsClient, useFriendTakes } from '../lib/friends';
+import { nameOf, useFriendsClient, useFriendTakes } from '../lib/friends';
 import { forgetInviteToken, rememberInviteToken, useNoReferrer } from '../lib/inviteToken';
 import styles from './FriendsPage.module.css';
 
@@ -75,7 +75,7 @@ export function InvitePage() {
       forgetInviteToken();
       setView({
         state: 'accepted',
-        name: res.friend.displayName,
+        name: nameOf(res.friend.displayName, t),
         emoji: res.friend.avatarEmoji,
         already: res.already,
       });
@@ -115,7 +115,9 @@ export function InvitePage() {
             </span>
             {view.preview.state === 'open' && (
               <>
-                <p className={styles.lead}>{t.friends.invitedBy(view.preview.from.displayName)}</p>
+                <p className={styles.lead}>
+                  {t.friends.invitedBy(nameOf(view.preview.from.displayName, t))}
+                </p>
                 <p className={styles.muted}>{t.friends.inviteExplain}</p>
                 <div>
                   <InkButton primary busy={busy} disabled={busy} onClick={() => void accept()}>
@@ -138,7 +140,7 @@ export function InvitePage() {
             {view.preview.state === 'friends' && (
               <>
                 <p className={styles.lead}>
-                  {t.friends.alreadyFriends(view.preview.from.displayName)}
+                  {t.friends.alreadyFriends(nameOf(view.preview.from.displayName, t))}
                 </p>
                 {toFriends}
               </>

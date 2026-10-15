@@ -68,7 +68,7 @@ describe('GET /api/me', () => {
     expect(res.status).toBe(200);
     const body = MeResponseSchema.parse(await res.json());
     expect(body).toEqual({
-      user: { id: 'u_dev', displayName: 'dev', avatarEmoji: '🍜' },
+      user: { id: 'u_dev', displayName: 'dev', avatarEmoji: '🍜', nameSet: true },
       home: HOME,
       signupOpen: false,
     });
@@ -95,7 +95,12 @@ describe('PATCH /api/me', () => {
   it('changes name and emoji', async () => {
     const res = await patch({ displayName: '  Tess ', avatarEmoji: '🥟' });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ id: 'u_dev', displayName: 'Tess', avatarEmoji: '🥟' });
+    expect(await res.json()).toEqual({
+      id: 'u_dev',
+      displayName: 'Tess',
+      avatarEmoji: '🥟',
+      nameSet: true,
+    });
     // one at a time works too
     expect(await json(await patch({ avatarEmoji: '🇯🇵' }))).toMatchObject({
       displayName: 'Tess',
@@ -230,7 +235,7 @@ describe('one user can never see another user’s data', () => {
   let bCookie = '';
   beforeAll(async () => {
     await env.DB.prepare(
-      "INSERT INTO users (id, display_name, avatar_emoji, created_at, last_login_at) VALUES ('u_b', 'Bea', '🥐', 'x', 'x')",
+      "INSERT INTO users (id, display_name, avatar_emoji, name_set_at, created_at, last_login_at) VALUES ('u_b', 'Bea', '🥐', 'x', 'x', 'x')",
     ).run();
     const { token } = await createSession(env.DB, 'u_b', undefined);
     bCookie = `__Host-grub_session=${token}`;
@@ -238,7 +243,7 @@ describe('one user can never see another user’s data', () => {
 
   it('B gets B, and nothing of A, from every endpoint', async () => {
     const me = MeResponseSchema.parse(await (await call('/api/me', { cookie: bCookie })).json());
-    expect(me.user).toEqual({ id: 'u_b', displayName: 'Bea', avatarEmoji: '🥐' });
+    expect(me.user).toEqual({ id: 'u_b', displayName: 'Bea', avatarEmoji: '🥐', nameSet: true });
     expect(me.home).toBeNull();
     const paths = [
       '/api/me',

@@ -81,7 +81,7 @@ describe('D1 round trips per request', () => {
     expect(d1RoundTrips(res)).toBe(1);
     // SIGNUP_OPEN=false with no pin: sign-up state comes from the data, same batch
     expect(MeResponseSchema.parse(await res.json())).toEqual({
-      user: { id: 'u_rt', displayName: 'Rita', avatarEmoji: '🍜' },
+      user: { id: 'u_rt', displayName: 'Rita', avatarEmoji: '🍜', nameSet: true },
       home: { lat: 47.5, lng: -122.3 },
       signupOpen: false,
     });

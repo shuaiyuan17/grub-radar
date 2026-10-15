@@ -46,7 +46,7 @@ describe('api()', () => {
 describe('httpAuthClient', () => {
   it('me(): the parsed user, or null on 401', async () => {
     const me = {
-      user: { id: 'u_1', displayName: 'Tess', avatarEmoji: '🍜' },
+      user: { id: 'u_1', displayName: 'Tess', avatarEmoji: '🍜', nameSet: true },
       home: null,
       signupOpen: false,
     };

@@ -30,6 +30,8 @@ const snapshot = async () =>
   ) as Record<string, unknown[]>;
 
 let before: Record<string, unknown[]> = {};
+/** Right after this migration (later ones may add columns of their own, as 0007 does). */
+let after: Record<string, unknown[]> = {};
 
 beforeAll(async () => {
   for (const t of [
@@ -82,6 +84,8 @@ beforeAll(async () => {
     ).bind(AT),
   ]);
   before = await snapshot();
+  await applyD1Migrations(env.DB, upTo(4));
+  after = await snapshot();
   await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
 });
 
@@ -93,8 +97,8 @@ describe('migration 0004: friends + invites', () => {
     expect(names).toContain('0004_friends.sql');
   });
 
-  it('leaves every existing row exactly as it was', async () => {
-    expect(await snapshot()).toEqual(before);
+  it('leaves every existing row exactly as it was', () => {
+    expect(after).toEqual(before);
     expect(before.user_places).toHaveLength(4);
   });
 

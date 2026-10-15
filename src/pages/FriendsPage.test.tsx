@@ -250,6 +250,71 @@ describe('an invite link', () => {
   });
 });
 
+describe('a friend who hasn’t chosen a name yet: "a friend", never "you"', () => {
+  const nameless = { id: 'u_nell', displayName: null, avatarEmoji: '🫥' };
+  const token = 'q'.repeat(43);
+  afterEach(() => {
+    sessionStorage.clear();
+  });
+
+  it('avatars', () => {
+    render(<FriendAvatars people={[nameless, person(1)]} />);
+    const stack = screen.getByRole('img');
+    expect(stack).toHaveAccessibleName('Friends who’ve been here: a friend, Pal 1');
+    expect(stack.querySelector('[title="a friend"]')).not.toBeNull();
+  });
+
+  it('the friends list, its links and the unfriend question', async () => {
+    const friends = fakeFriendsClient();
+    friends.list.mockResolvedValue({
+      friends: [{ ...nameless, since: '2026-10-15T00:00:00.000Z' }],
+      limit: 200,
+    });
+    const { user } = renderAt('/friends', { friends });
+    const row = (await screen.findByText('a friend')).closest('li');
+    if (!row) throw new Error('no row');
+    expect(within(row).getByRole('link', { name: 'See a friend’s spots' })).toBeInTheDocument();
+    await user.click(within(row).getByRole('button', { name: 'unfriend' }));
+    expect(within(row).getByText(/unfriend a friend\?/)).toBeInTheDocument();
+    expect(within(row).queryByText('you')).toBeNull();
+  });
+
+  it("the place page's verdicts", async () => {
+    renderAt('/place/lucky-thread', {
+      friends: fakeFriendsClient({
+        'lucky-thread': [{ friend: nameless, status: 'been', verdict: 'good' }],
+      }),
+    });
+    const box = await screen.findByRole('region', { name: 'friends’ verdicts' });
+    expect(within(box).getByText('a friend')).toBeInTheDocument();
+  });
+
+  it('their spots page', async () => {
+    const friends = fakeFriendsClient();
+    friends.friendSpots.mockResolvedValue({
+      friend: { ...nameless, since: '2026-10-15T00:00:00.000Z' },
+      spots: [],
+    });
+    renderAt('/friends/u_nell', { friends });
+    expect(await screen.findByRole('heading', { name: /a friend’s spots/ })).toBeInTheDocument();
+  });
+
+  it('an invite from them, and accepting it', async () => {
+    const friends = fakeFriendsClient();
+    friends.preview.mockResolvedValue({ from: nameless, state: 'open' });
+    friends.accept.mockResolvedValue({
+      friend: { ...nameless, since: 'x' },
+      already: false,
+    });
+    const { user } = renderAt(`/invite#${token}`, { friends });
+    expect(
+      await screen.findByText('a friend wants to be friends on grub radar.'),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'accept' }));
+    expect(await screen.findByText('you and a friend are friends now.')).toBeInTheDocument();
+  });
+});
+
 describe('/admin', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -288,6 +353,14 @@ describe('/admin', () => {
             signupsByDay: days,
             users: [
               {
+                displayName: null,
+                avatarEmoji: '🫥',
+                createdAt: '2026-10-15T11:50:00.000Z',
+                lastSeenAt: '2026-10-15T12:00:00.000Z',
+                spots: 0,
+                friends: 1,
+              },
+              {
                 displayName: 'Owner',
                 avatarEmoji: '🍜',
                 createdAt: '2026-10-15T11:48:33.000Z',
@@ -303,7 +376,10 @@ describe('/admin', () => {
     renderAt('/admin');
     expect(await screen.findByRole('heading', { name: 'the back office' })).toBeInTheDocument();
     const table = screen.getByRole('table');
-    expect(within(table).getByRole('rowheader')).toHaveTextContent('Owner');
+    const [nameless, owner] = within(table).getAllByRole('rowheader');
+    expect(owner).toHaveTextContent('Owner');
+    // someone who hasn't chosen a name: a placeholder, never "you"
+    expect(nameless).toHaveTextContent('(no name yet)');
     expect(screen.getByRole('img', { name: /Sign-ups per day .* 2 in all/ })).toBeInTheDocument();
   });
 

@@ -1,5 +1,6 @@
 import type { Person } from '../contracts/friends';
 import { useT } from '../i18n/context';
+import { nameOf } from '../lib/friends';
 import styles from './FriendAvatars.module.css';
 
 /**
@@ -24,14 +25,14 @@ export function FriendAvatars({
     <span
       className={`${styles.stack} ${size === 'big' ? styles.big : ''}`}
       role="img"
-      aria-label={t.friends.beenAria(people.map((p) => p.displayName).join(', '))}
+      aria-label={t.friends.beenAria(people.map((p) => nameOf(p.displayName, t)).join(', '))}
     >
       {shown.map((p, i) => (
         <span
           key={p.id}
           className={styles.avatar}
           style={{ zIndex: shown.length - i, '--i': i }}
-          title={p.displayName}
+          title={nameOf(p.displayName, t)}
           aria-hidden="true"
         >
           {p.avatarEmoji}

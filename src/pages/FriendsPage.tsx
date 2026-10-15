@@ -12,7 +12,7 @@ import { parseHeadline } from '../domain/headlines';
 import { useT } from '../i18n/context';
 import { useAuth } from '../lib/auth';
 import { saveErrorMessage } from '../lib/errors';
-import { inviteUrl, useFriendsClient, useFriendTakes } from '../lib/friends';
+import { inviteUrl, nameOf, useFriendsClient, useFriendTakes } from '../lib/friends';
 import styles from './FriendsPage.module.css';
 
 type ShareResult = 'shared' | 'copied' | 'copyFailed' | null;
@@ -182,6 +182,7 @@ function FriendRow({
 }) {
   const t = useT();
   const client = useFriendsClient();
+  const name = nameOf(friend.displayName, t);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -203,13 +204,13 @@ function FriendRow({
         {friend.avatarEmoji}
       </span>
       <span className={styles.friendBody}>
-        <span className={styles.friendName}>{friend.displayName}</span>
+        <span className={styles.friendName}>{name}</span>
         <span className={styles.muted}>{t.friends.since(t.formatDate(friend.since))}</span>
         <span className={styles.row}>
           <Link
             viewTransition
             to={`/friends/${encodeURIComponent(friend.id)}`}
-            aria-label={t.friends.seeSpotsAria(friend.displayName)}
+            aria-label={t.friends.seeSpotsAria(name)}
             className={styles.seeLink}
           >
             {t.friends.seeSpots}
@@ -228,7 +229,7 @@ function FriendRow({
         </span>
         {confirming && (
           <span className={styles.confirm} role="group" aria-label={t.friends.unfriend}>
-            <span>{t.friends.unfriendConfirm(friend.displayName)}</span>
+            <span>{t.friends.unfriendConfirm(name)}</span>
             <span className={styles.row}>
               <InkButton primary busy={busy} disabled={busy} onClick={() => void unfriend()}>
                 {t.friends.unfriendYes}

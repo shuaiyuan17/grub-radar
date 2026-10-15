@@ -101,6 +101,7 @@ interface SessionRow {
   last_seen_at: string;
   display_name: string;
   avatar_emoji: string;
+  name_set_at: string | null;
 }
 
 export type LoadResult =
@@ -153,7 +154,8 @@ export async function loadSession(
   const [found, ...extras] = await db.batch([
     db
       .prepare(
-        `SELECT s.user_id, s.created_at, s.expires_at, s.last_seen_at, u.display_name, u.avatar_emoji
+        `SELECT s.user_id, s.created_at, s.expires_at, s.last_seen_at, u.display_name, u.avatar_emoji,
+           u.name_set_at
          FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id = ?`,
       )
       .bind(id),
@@ -184,7 +186,12 @@ export async function loadSession(
   return {
     kind: 'ok',
     session: { id, userId: row.user_id, expiresAt: next },
-    user: { id: row.user_id, displayName: row.display_name, avatarEmoji: row.avatar_emoji },
+    user: {
+      id: row.user_id,
+      displayName: row.display_name,
+      avatarEmoji: row.avatar_emoji,
+      nameSet: row.name_set_at !== null,
+    },
     refreshed: refresh,
     extras,
   };

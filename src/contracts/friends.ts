@@ -35,10 +35,17 @@ export const InviteTokenSchema = z
 export const INVITE_ROUTE = '/invite';
 export const invitePath = (token: string) => `${INVITE_ROUTE}#${token}`;
 
+/**
+ * Someone's name as other people see it: null while they haven't chosen one
+ * (Apple didn't send it and they haven't saved one yet). Show a placeholder
+ * then, never the stand-in name their own account carries.
+ */
+export const PublicNameSchema = z.nullable(z.string());
+
 /** Someone, as other people see them. */
 export const PersonSchema = z.strictObject({
   id: z.string(),
-  displayName: z.string(),
+  displayName: PublicNameSchema,
   avatarEmoji: z.string(),
 });
 export type Person = z.infer<typeof PersonSchema>;
@@ -92,7 +99,7 @@ export const InviteTokenBodySchema = z.strictObject({ token: InviteTokenSchema }
  */
 export const INVITE_STATES = ['open', 'own', 'friends'] as const;
 export const InvitePreviewSchema = z.strictObject({
-  from: z.strictObject({ displayName: z.string(), avatarEmoji: z.string() }),
+  from: z.strictObject({ displayName: PublicNameSchema, avatarEmoji: z.string() }),
   state: z.enum(INVITE_STATES),
 });
 export type InvitePreview = z.infer<typeof InvitePreviewSchema>;

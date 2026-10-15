@@ -8,6 +8,7 @@ import { exportJWK, generateKeyPair, SignJWT, type JWK, type JWTPayload } from '
 import { vi } from 'vitest';
 import { createSession } from '../auth/session';
 import { APPLE_ISSUER } from '../auth/siwa';
+import { DEFAULT_DISPLAY_NAME } from '../../src/contracts/me';
 
 export const ORIGIN = 'https://grub.test';
 export const CLIENT_ID = 'me.shuaiyuan.grub.web';
@@ -216,12 +217,20 @@ export function tokenResponse(idToken: string, extra: Record<string, unknown> = 
   });
 }
 
-/** A fresh user with a session; returns the Cookie header value. */
-export async function userSession(id: string, name = id): Promise<string> {
+/**
+ * A fresh user with a session; returns the Cookie header value. Named (a name
+ * they chose) unless `named: false`: then they're the stand-in 'you' account
+ * a sign-up without Apple's name gets.
+ */
+export async function userSession(
+  id: string,
+  name = id,
+  { named = true }: { named?: boolean } = {},
+): Promise<string> {
   await env.DB.prepare(
-    "INSERT INTO users (id, display_name, created_at, last_login_at) VALUES (?, ?, 'x', 'x')",
+    "INSERT INTO users (id, display_name, name_set_at, created_at, last_login_at) VALUES (?, ?, ?, 'x', 'x')",
   )
-    .bind(id, name)
+    .bind(id, named ? name : DEFAULT_DISPLAY_NAME, named ? 'x' : null)
     .run();
   const { token } = await createSession(env.DB, id, undefined);
   return `__Host-grub_session=${token}`;
