@@ -108,7 +108,7 @@ in each tool.
 For an agent, `home` is the centre of the ~1 km grid cell home lies in, and every distance
 from home (and every Apple search "near home") is measured from that point. That is the
 guarantee: an agent can learn the cell, never where in it (up to ~700 m from the centre).
-km/miles from home are also rounded to 0.5, which is cosmetic. `find_nearby` / `roll` from
+km/miles from home are also rounded to 0.5 (never below 0.5), which is cosmetic. `find_nearby` / `roll` from
 `origin=home` leave spot coordinates out of their answers.
 `worker/agents/home.test.ts` trilaterates from three known spots: ~800 m off for an agent
 (52 m on the person's own precise view). More in [security.md](security.md#home).
