@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import type { SharedPlaceResponse, SharedTake } from '../contracts/shared';
 import { MemorySpotRepository } from '../data/memoryRepository';
 import { SEED_SPOTS } from '../data/seed';
@@ -68,20 +68,22 @@ describe('a shared place (not on your list)', () => {
     ...extra,
   });
 
-  function setup(data: SharedPlaceResponse | null, path = `/place/${PLACE.id}`, state?: unknown) {
+  async function setup(
+    data: SharedPlaceResponse | null,
+    path = `/place/${PLACE.id}`,
+    state?: unknown,
+  ) {
     const friends = fakeFriendsClient();
     friends.sharedPlace.mockResolvedValue(data);
-    const repository = new MemorySpotRepository(SEED_SPOTS, {
-      today: () => '2026-10-14',
-      places: [PLACE],
-    });
-    const r = renderAt(path, { friends, repository });
-    if (state !== undefined) void r.router.navigate(path, { replace: true, state });
+    const repository = new MemorySpotRepository(SEED_SPOTS, { places: [PLACE] });
+    // with navigation state: start on the list, then go there the way a link would
+    const r = renderAt(state === undefined ? path : '/', { friends, repository });
+    if (state !== undefined) await act(() => r.router.navigate(path, { state }));
     return { ...r, friends };
   }
 
   it("shows the place and friends' takes instead of not-found", async () => {
-    const { friends } = setup({ place: PLACE, friendsTakes: [take('u_ana', 'Ana')] });
+    const { friends } = await setup({ place: PLACE, friendsTakes: [take('u_ana', 'Ana')] });
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(
       'Ondo Dumpling House',
     );
@@ -100,21 +102,21 @@ describe('a shared place (not on your list)', () => {
   });
 
   it('a non-friend: the place only, and a nudge', async () => {
-    setup({ place: PLACE, friendsTakes: [] });
+    await setup({ place: PLACE, friendsTakes: [] });
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Ondo');
     expect(screen.queryByRole('region', { name: 'friends’ verdicts' })).toBeNull();
     expect(screen.getByText(/none of your friends have a take/)).toBeInTheDocument();
   });
 
   it('no such place: the usual not-found', async () => {
-    setup(null);
+    await setup(null);
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(
       "that spot's not here",
     );
   });
 
   it('add to my radar: on your list as want, then your own page', async () => {
-    const { user, repository } = setup({
+    const { user, repository } = await setup({
       place: PLACE,
       friendsTakes: [take('u_ana', 'Ana', { kind: 'bakery' })],
     });
@@ -130,7 +132,7 @@ describe('a shared place (not on your list)', () => {
   });
 
   it('coming from a friend’s list: their take first, back goes to their list', async () => {
-    const { router } = setup(
+    const { router } = await setup(
       {
         place: PLACE,
         friendsTakes: [
@@ -147,12 +149,15 @@ describe('a shared place (not on your list)', () => {
       .map((li) => li.textContent);
     expect(names[0]).toContain('Ben');
     expect(names[1]).toContain('Ana');
-    expect(screen.getByRole('link', { name: 'back' })).toHaveAttribute('href', '/friends/u_ben');
+    expect(await screen.findByRole('link', { name: 'back' })).toHaveAttribute(
+      'href',
+      '/friends/u_ben',
+    );
     expect(router.state.location.state).toMatchObject({ friend: 'u_ben' });
   });
 
   it('your own spot never asks the shared endpoint, and has a share button', async () => {
-    const { friends } = setup(null, '/place/lucky-thread');
+    const { friends } = await setup(null, '/place/lucky-thread');
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Lucky Thread');
     expect(friends.sharedPlace).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: /Share Lucky Thread Noodle Bar/ })).toBeVisible();
@@ -161,7 +166,7 @@ describe('a shared place (not on your list)', () => {
   it('share: the share sheet when there is one, else the link copied', async () => {
     const share = vi.fn(() => Promise.resolve());
     Object.defineProperty(navigator, 'share', { configurable: true, value: share });
-    const { user } = setup(null, '/place/lucky-thread');
+    const { user } = await setup(null, '/place/lucky-thread');
     await user.click(await screen.findByRole('button', { name: /Share Lucky Thread/ }));
     expect(share).toHaveBeenCalledWith({
       title: 'grub radar',
