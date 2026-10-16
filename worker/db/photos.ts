@@ -103,18 +103,38 @@ export function placePhotosStatements(
          ORDER BY ph.created_at, ph.id`,
       )
       .bind(...viewer.binds, placeId),
-    db
-      .prepare(
-        `SELECT ${PHOTO_COLUMNS} FROM friendships f
-         JOIN user_places up ON up.user_id = f.friend_id AND up.place_id = ?
-           AND up.visibility = 'friends'
-         JOIN photos ph ON ph.user_id = f.friend_id AND ph.place_id = up.place_id
-         WHERE f.user_id = ${viewer.sql}
-         ORDER BY f.created_at, ph.created_at, ph.id`,
-      )
-      .bind(placeId, ...viewer.binds),
+    friendPhotosStatement(db, viewer, placeId),
     usageStatement(db, viewer, placeId),
   ];
+}
+
+/**
+ * Your friends' photos of a place (only friends who share that spot with
+ * you), whether or not it's on your list.
+ */
+export function friendPhotosStatement(
+  db: D1Database,
+  viewer: UserRef,
+  placeId: string,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `SELECT ${PHOTO_COLUMNS} FROM friendships f
+       JOIN user_places up ON up.user_id = f.friend_id AND up.place_id = ?
+         AND up.visibility = 'friends'
+       JOIN photos ph ON ph.user_id = f.friend_id AND ph.place_id = up.place_id
+       WHERE f.user_id = ${viewer.sql}
+       ORDER BY f.created_at, ph.created_at, ph.id`,
+    )
+    .bind(placeId, ...viewer.binds);
+}
+
+/** Rows of friendPhotosStatement, by friend id. */
+export function friendPhotosFromResult(result: D1Result | undefined): Record<string, Photo[]> {
+  const friends: Record<string, Photo[]> = {};
+  for (const r of (result?.results ?? []) as PhotoRow[])
+    (friends[r.user_id] ??= []).push(toPhoto(r));
+  return friends;
 }
 
 export interface PlacePhotos {
@@ -125,12 +145,9 @@ export interface PlacePhotos {
 
 export function placePhotosFromResults(results: D1Result[]): PlacePhotos {
   const [mine, theirs, usage] = results;
-  const friends: Record<string, Photo[]> = {};
-  for (const r of (theirs?.results ?? []) as PhotoRow[])
-    (friends[r.user_id] ??= []).push(toPhoto(r));
   return {
     mine: ((mine?.results ?? []) as PhotoRow[]).map(toPhoto),
-    friends,
+    friends: friendPhotosFromResult(theirs),
     usedBytes: usageFromResult(usage).usedBytes,
   };
 }

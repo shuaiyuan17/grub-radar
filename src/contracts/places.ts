@@ -182,9 +182,26 @@ export const AmbiguousResponseSchema = z.strictObject({
   candidates: z.array(ApplePlaceSchema),
 });
 
-/** Which form of POST /api/spots a body is: by Apple id, by words, or by hand. */
-export function addSpotForm(body: unknown): 'apple' | 'query' | 'manual' {
+/**
+ * POST /api/spots with a place that's already in grub radar, by its id: "add
+ * to my radar" on a shared /place/:id link. Name, location and address are
+ * the shared place's (never from the request). Session only: agents add by
+ * `applePlaceId` or `query`. `kind` defaults to food.
+ */
+export const AddSharedPlaceSchema = z
+  .strictObject({
+    placeId: SpotSchema.shape.id,
+    kind: z.optional(z.enum(KINDS)),
+    ...ADD_EXTRAS,
+  })
+  .check(verdictNeedsBeen());
+export type AddSharedPlaceInput = z.input<typeof AddSharedPlaceSchema>;
+export type AddSharedPlace = z.output<typeof AddSharedPlaceSchema>;
+
+/** Which form of POST /api/spots a body is: by place id, by Apple id, by words, or by hand. */
+export function addSpotForm(body: unknown): 'place' | 'apple' | 'query' | 'manual' {
   if (body && typeof body === 'object') {
+    if ('placeId' in body) return 'place';
     if ('applePlaceId' in body) return 'apple';
     if ('query' in body) return 'query';
   }

@@ -389,6 +389,107 @@ export class D1SpotRepository implements WritableSpotRepository {
   }
 
   /**
+   * Adds a place that's already in `places` by its id: someone shared a
+   * /place/:id link and you tapped "add to my radar". Nothing about the
+   * place is taken from the request (name, location, address are the shared
+   * row's), and nothing of anyone else's entry is read.
+   *   - already on your list: nothing is written; that spot comes back (created: false);
+   *   - no such place: SpotOpError not_found.
+   * Racing twins end on one entry (ON CONFLICT DO NOTHING). One round trip to
+   * look, one to write and read back.
+   */
+  async addSharedPlace(
+    placeId: string,
+    input: AddExtras & { kind?: Kind },
+  ): Promise<{ spot: Spot; created: boolean }> {
+    const db = this.#db;
+    const mineStmt = db.prepare(`${SELECT} AND up.place_id = ?`).bind(this.#userId, placeId);
+    const [mineRes, placeRes] = await db.batch([
+      mineStmt,
+      db
+        .prepare('SELECT id, name, lat, lng, address, apple_place_id FROM places WHERE id = ?')
+        .bind(placeId),
+    ]);
+    const mine = (mineRes?.results as Row[] | undefined)?.[0];
+    if (mine) return { spot: toSpot(mine), created: false };
+    const place = (
+      placeRes?.results as
+        | {
+            id: string;
+            name: string;
+            lat: number;
+            lng: number;
+            address: string | null;
+            apple_place_id: string | null;
+          }[]
+        | undefined
+    )?.[0];
+    if (!place) throw new SpotOpError('not_found', 'no such place');
+    const draft = spotFromInput(
+      place.id,
+      {
+        ...input,
+        name: place.name,
+        location: { lat: place.lat, lng: place.lng },
+        kind: input.kind ?? 'food',
+      },
+      this.#today(),
+      place.apple_place_id
+        ? {
+            applePlaceId: place.apple_place_id,
+            ...(place.address ? { address: place.address } : {}),
+          }
+        : undefined,
+    );
+    const at = iso(this.#now());
+    const cap = this.#underCap();
+    const stmts = [
+      db
+        .prepare(
+          `INSERT INTO user_places (user_id, place_id, ${LIST_COLUMNS}, found_by, version, created_at, updated_at)
+           SELECT ?, ?, ${LIST_MARKS}, ?, 1, ?, ?
+           WHERE EXISTS (SELECT 1 FROM places WHERE id = ?) AND ${cap.sql}
+           ON CONFLICT (user_id, place_id) DO NOTHING`,
+        )
+        .bind(
+          this.#userId,
+          place.id,
+          ...listValues(draft),
+          this.#foundBy,
+          at,
+          at,
+          place.id,
+          ...cap.bind,
+        ),
+    ];
+    if (draft.status === 'been')
+      // the first visit, only alongside a new "been" entry (see addApplePlace)
+      stmts.push(
+        db
+          .prepare(
+            `INSERT INTO visits (id, user_id, place_id, visited_on, verdict, note, created_at)
+             SELECT ?, ?, up.place_id, ?, ?, NULL, ? FROM user_places up
+             WHERE up.user_id = ? AND up.place_id = ? AND up.version = 1 AND up.status = 'been'
+               AND NOT EXISTS (SELECT 1 FROM visits v WHERE v.user_id = up.user_id AND v.place_id = up.place_id)`,
+          )
+          .bind(
+            newVisitId(),
+            this.#userId,
+            this.#today(),
+            draft.verdict ?? null,
+            at,
+            this.#userId,
+            place.id,
+          ),
+      );
+    const results = await db.batch([...stmts, mineStmt]);
+    const row = (results.at(-1)?.results as Row[] | undefined)?.[0];
+    if (!row)
+      throw new SpotOpError('list_full', `a list holds at most ${String(LIMITS.spots)} spots`);
+    return { spot: toSpot(row), created: Boolean(results[0]?.meta.changes) };
+  }
+
+  /**
    * Dev and tests only: put the fictional demo spots on this user's list,
    * keeping their slug ids. Places are shared by id; existing rows are left
    * alone, so it's idempotent. Returns how many spots were added.

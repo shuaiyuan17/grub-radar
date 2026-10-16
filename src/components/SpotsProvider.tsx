@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { isWritable, type SpotRepository } from '../domain/repository';
 import type { Spot } from '../domain/spot';
 import { useT } from '../i18n/context';
-import { canAddApplePlaces, SpotsContext, type SpotActions } from '../lib/spots';
+import {
+  canAddApplePlaces,
+  canAddSharedPlaces,
+  SpotsContext,
+  type SpotActions,
+} from '../lib/spots';
 
 type Load =
   { state: 'loading' } | { state: 'ready'; spots: Spot[] } | { state: 'error'; error: Error };
@@ -116,6 +121,9 @@ export function SpotsProvider({
       add: (input) => run(null, repository.add(input)),
       addApplePlace: canAddApplePlaces(repository)
         ? (input) => run(null, repository.addApplePlace(input))
+        : null,
+      addSharedPlace: canAddSharedPlaces(repository)
+        ? (input) => run(null, repository.addSharedPlace(input))
         : null,
       update: (id, patch) => run(id, repository.update(id, patch)),
       markBeen: (id, input) => run(id, repository.markBeen(id, input)),

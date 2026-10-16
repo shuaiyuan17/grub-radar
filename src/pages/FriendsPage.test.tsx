@@ -77,7 +77,24 @@ describe('friends on cards and the place page', () => {
     await waitFor(async () => {
       expect((await repository.get('lucky-thread'))?.visibility).toBe('private');
     });
-    expect(await screen.findByText('only you see this spot.')).toBeInTheDocument();
+    // honest about links: your take stays yours, the place itself is still shareable
+    expect(
+      await screen.findByText(
+        'your take on it (verdict, notes, photos) stays yours; a link you share still shows the place.',
+      ),
+    ).toBeInTheDocument();
+    // and the share button says so too
+    expect(
+      screen.getByText('just you: a link shows the place, not your take.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Share Lucky Thread/ })).toHaveAccessibleDescription(
+      'just you: a link shows the place, not your take.',
+    );
+    // back to friends: the note goes
+    await user.click(within(group).getByRole('radio', { name: 'friends' }));
+    await waitFor(() => {
+      expect(screen.queryByText(/just you: a link shows the place/)).toBeNull();
+    });
   });
 });
 
@@ -297,6 +314,39 @@ describe('a friend who hasn’t chosen a name yet: "a friend", never "you"', () 
     });
     renderAt('/friends/u_nell', { friends });
     expect(await screen.findByRole('heading', { name: /a friend’s spots/ })).toBeInTheDocument();
+  });
+
+  it('every card on their list opens the place, carrying where back goes', async () => {
+    const friends = fakeFriendsClient();
+    friends.friendSpots.mockResolvedValue({
+      friend: { ...nameless, since: '2026-10-15T00:00:00.000Z' },
+      spots: [
+        {
+          id: 'lucky-thread',
+          name: 'Lucky Thread Noodle Bar',
+          location: { lat: 47.6135, lng: -122.3302 },
+          kind: 'food',
+          status: 'been',
+        },
+        {
+          id: 'p-not-mine',
+          name: 'Ondo Dumpling House',
+          location: { lat: 47.62, lng: -122.33 },
+          kind: 'food',
+          status: 'want',
+        },
+      ],
+    });
+    const { user, router } = renderAt('/friends/u_nell', { friends });
+    const notMine = await screen.findByRole('link', { name: 'Ondo Dumpling House' });
+    expect(notMine).toHaveAttribute('href', '/place/p-not-mine');
+    expect(screen.getByRole('link', { name: 'Lucky Thread Noodle Bar' })).toHaveAttribute(
+      'href',
+      '/place/lucky-thread',
+    );
+    await user.click(notMine);
+    expect(router.state.location.pathname).toBe('/place/p-not-mine');
+    expect(router.state.location.state).toEqual({ back: '/friends/u_nell', friend: 'u_nell' });
   });
 
   it('an invite from them, and accepting it', async () => {

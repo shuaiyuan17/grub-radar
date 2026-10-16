@@ -19,26 +19,10 @@ import {
   StatusEditor,
   VisibilityEditor,
 } from '../components/placeEditors';
+import { backTarget, justAdded, splitName } from '../lib/placeNav';
+import { ShareSpotButton } from '../components/ShareSpotButton';
+import { SharedPlaceView } from './SharedPlaceView';
 import styles from './PlacePage.module.css';
-
-/** Just added from the search (`state.added`): say so once, on arrival. */
-function justAdded(state: unknown): boolean {
-  return Boolean(state && typeof state === 'object' && 'added' in state && state.added === true);
-}
-
-function backTarget(state: unknown): string {
-  if (state && typeof state === 'object' && 'back' in state && typeof state.back === 'string') {
-    return state.back;
-  }
-  return '/';
-}
-
-/** Highlight the last word (or last two, for long names): "Lucky Thread [Noodle Bar]". */
-function splitName(name: string): [string, string] {
-  const words = name.split(' ');
-  const n = words.length >= 3 ? 2 : 1;
-  return [words.slice(0, -n).join(' '), words.slice(-n).join(' ')];
-}
 
 export function PlacePage() {
   const { id } = useParams();
@@ -52,7 +36,7 @@ export function PlacePage() {
   const photos = usePlacePhotos(view?.spot.id, canWrite);
 
   if (!view) {
-    return (
+    const notFound = (
       <main id="main" className={`${styles.main} ${styles.notFound}`}>
         <Headline className={styles.title} parts={parseHeadline(t.spotNotFound)} />
         <p className="note" style={{ fontSize: 24 }}>
@@ -63,6 +47,8 @@ export function PlacePage() {
         </Link>
       </main>
     );
+    // not on your list: maybe someone shared it with you
+    return id ? <SharedPlaceView key={id} id={id} notFound={notFound} /> : notFound;
   }
 
   const { spot, travel, ring } = view;
@@ -196,6 +182,7 @@ export function PlacePage() {
           <SpotAdmin spot={spot} />
 
           <div className={styles.bar}>
+            <ShareSpotButton spot={spot} />
             <a
               className={`sk press ${styles.take}`}
               href={appleMapsUrl(spot.name, spot.location, travel.mode)}

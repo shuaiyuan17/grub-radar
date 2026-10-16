@@ -218,7 +218,8 @@
   background: var(--paper);
   border-top: 2px dashed var(--rule);
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
 }
 .take {
   --fill: var(--ink);
@@ -277,7 +278,7 @@
     letter-spacing: -0.03em;
   }
   .bar {
-    position: static;
+    position: relative;
     padding: 0;
     background: none;
     border: 0;

@@ -52,6 +52,15 @@ page), selecting named columns: name and emoji; the place, kind, cuisine, price,
 verdict and one-liner. Never home, `myNote`, why, dishes or tags. An unchosen name (the
 stand-in `'you'`) is selected as `NULL`.
 
+A **shared place** (`GET /api/places/:id/shared`, what a `/place/:id` link shows someone who
+doesn't have the spot) is session-only too. Its `place` is only the `places` row's name,
+address and location (never `created_by`), the same for everyone; its takes and photos come
+from the caller's own friendships under the rule above. A non-friend's answer is the same
+whether or not anyone has the place, and a missing place is the same 404 as a malformed id.
+Signed out, the wall shows nothing of it, and link previews are the generic site card (no
+per-place tags). One thing a link can't hide: a manual place exists only while someone has it
+(or once had it); an Apple place outlives its last list. `worker/routes/shared.test.ts`.
+
 Friends endpoints are session-only; the agent scope `friends:read` is reserved and not
 wired. Agents can't change `visibility`.
 

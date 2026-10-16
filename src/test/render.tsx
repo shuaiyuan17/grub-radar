@@ -104,6 +104,7 @@ export function fakeFriendsClient(takes: Record<string, FriendTake[]> = {}) {
     updateProfile: vi.fn<FriendsClient['updateProfile']>((patch) =>
       Promise.resolve({ ...TEST_ME.user, ...patch }),
     ),
+    sharedPlace: vi.fn<FriendsClient['sharedPlace']>(() => Promise.resolve(null)),
   } satisfies FriendsClient;
 }
 
@@ -151,9 +152,13 @@ export function fakePhotosClient(byPlace: Record<string, Partial<PlacePhotosResp
   } satisfies PhotosClient;
 }
 
-/** The demo spots, writable in memory (same domain edits as the Worker). */
-export const demoRepository = () =>
-  new MemorySpotRepository(SEED_SPOTS, { today: () => '2026-10-14' });
+/**
+ * The demo spots, writable in memory (same domain edits as the Worker).
+ * "today" is the real UTC date, as on the server: the app stamps visits and
+ * notes with the real local date, which a frozen server date would call the
+ * future once the calendar moves on.
+ */
+export const demoRepository = () => new MemorySpotRepository(SEED_SPOTS);
 
 /**
  * Renders the real app routes at `path`, signed in by default (with `home`

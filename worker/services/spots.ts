@@ -4,7 +4,12 @@
  * repository for the calling principal's user, so scoping is decided once,
  * when the repository is built.
  */
-import type { AddApplePlace, AddByQuery, ApplePlace } from '../../src/contracts/places';
+import type {
+  AddApplePlace,
+  AddByQuery,
+  AddSharedPlace,
+  ApplePlace,
+} from '../../src/contracts/places';
 import type { NearbyQuery, Origin, RollBody } from '../../src/contracts/spots';
 import { SpotOpError, type AddSpot } from '../../src/domain/edits';
 import type { LatLng } from '../../src/domain/geo';
@@ -122,6 +127,8 @@ export async function rollSpot(
 export type AddRequest =
   | { form: 'manual'; input: AddSpot }
   | { form: 'apple'; input: AddApplePlace }
+  /** A place already in `places`, by its id (a shared link). */
+  | { form: 'place'; input: AddSharedPlace }
   /** `near`: already resolved (see resolveSearchCentre); a query add always has one. */
   | { form: 'query'; input: AddByQuery; near: LatLng };
 
@@ -129,7 +136,7 @@ export interface AddResult {
   spot: Spot;
   /** false when it was already on your list: nothing changed, that entry comes back. */
   created: boolean;
-  resolvedFrom: 'manual' | 'apple';
+  resolvedFrom: 'manual' | 'apple' | 'place';
   /** add_spot with `query`: the runners-up, in case the match was the wrong one. */
   alternatives?: ApplePlace[];
 }
@@ -200,6 +207,11 @@ export async function addSpot(
 ): Promise<AddResult> {
   if (req.form === 'manual')
     return { spot: await repo.add(req.input), created: true, resolvedFrom: 'manual' };
+
+  if (req.form === 'place') {
+    const { placeId, ...extras } = req.input;
+    return { ...(await repo.addSharedPlace(placeId, extras)), resolvedFrom: 'place' };
+  }
 
   if (req.form === 'apple') {
     const { applePlaceId, ...extras } = req.input;

@@ -79,8 +79,16 @@ Phone first (~390px wide), with a desktop layout at ≥960px (card grid, with a 
     mid-composition the box holds the pinyin and nothing else moves (see `src/lib/ime.ts`).
 - `/place/:id` one spot: mark it been with a verdict (loved it / it was fine / nope: three
   stamps), change the verdict or move it back to "want to try", tick off and edit "order
-  this", add dated notes, photos, who sees it (friends / just me), edit, delete. Friends who
-  have been show their verdicts here.
+  this", add dated notes, photos, who sees it (friends / just me), edit, delete, **share** (the
+  share sheet, or the link copied). Friends who have been show their verdicts here.
+  - **Someone else's link.** Place ids are global, so a link to a spot that isn't on your list
+    shows the **shared view** instead (`GET /api/places/:id/shared`): the place (name, address,
+    a small hand-drawn map of where it is from you, travel time), your friends' takes on it,
+    and **add to my radar** (as "want to try"; then the same URL is your own page). Coming from
+    a friend's list (`/friends/:id`) puts that friend's take first and sends "back" there
+    (navigation state; display only). Signed out, the wall says someone shared a spot and
+    sign-in comes back to the same `/place/:id`. Link previews stay the generic site card: the
+    static HTML has no per-place tags, so nothing about a place reaches anyone signed out.
 - `/add` find a place on Apple Maps (restaurants, cafés, bakeries around where you measure
   from) and put it on your radar in one tap; `?q=pho` keeps the search (written after a pause
   or Enter, never mid-composition, so Safari's pinyin IME isn't disturbed). Places already on
@@ -94,7 +102,7 @@ Phone first (~390px wide), with a desktop layout at ≥960px (card grid, with a 
   are travel time, dots are spots, coloured and shaped by kind.
 - `/friends` invite a friend (a single-use link, offered to the share sheet or copied), your
   links still waiting (revocable), your friends (unfriend), and how friends see you (name +
-  emoji). `/friends/:id` a friend's shared list. `/invite#<token>` an invite link (the token
+  emoji). `/friends/:id` a friend's shared list; every card opens `/place/:id`. `/invite#<token>` an invite link (the token
   in the fragment): sign in, see who sent it, accept.
 - `/settings` connect an agent, the agents you connected (disconnect), personal tokens. See
   [agents.md](agents.md).

@@ -18,8 +18,9 @@ type Load =
 
 /**
  * /friends/:id: a friend's list, as they share it with you (friends-visible
- * spots: the place, been/want, verdict, one-liner). Places that are on your
- * list too link to your own page for them.
+ * spots: the place, been/want, verdict, one-liner). Every card opens the
+ * place: your own page if it's on your list too, else the shared view with
+ * this friend's take first.
  */
 export function FriendSpotsPage() {
   const { id = '' } = useParams();
@@ -85,13 +86,16 @@ export function FriendSpotsPage() {
                 >
                   <Ink />
                   <h2 className={styles.spotName}>
-                    {onMine.has(s.id) ? (
-                      <Link viewTransition to={`/place/${s.id}`}>
-                        {s.name}
-                      </Link>
-                    ) : (
-                      s.name
-                    )}
+                    {/* the whole card is this link (its ::after covers the card) */}
+                    <Link
+                      viewTransition
+                      className={styles.cardLink}
+                      to={`/place/${encodeURIComponent(s.id)}`}
+                      // display only: where back goes, whose take comes first
+                      state={{ back: `/friends/${id}`, friend: current.data.friend.id }}
+                    >
+                      {s.name}
+                    </Link>
                   </h2>
                   <p className={styles.muted}>
                     {s.cuisine ?? <span lang={locale}>{t.kinds[s.kind]}</span>}

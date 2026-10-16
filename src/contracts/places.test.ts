@@ -51,6 +51,7 @@ describe('normalizeQuery and roundForSearch', () => {
 
 describe('the Apple forms of add_spot', () => {
   it('addSpotForm picks the form by its key', () => {
+    expect(addSpotForm({ placeId: 'p-1' })).toBe('place');
     expect(addSpotForm({ applePlaceId: 'I1' })).toBe('apple');
     expect(addSpotForm({ query: 'pho' })).toBe('query');
     expect(addSpotForm({ name: 'x' })).toBe('manual');
