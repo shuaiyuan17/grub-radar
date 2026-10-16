@@ -277,7 +277,7 @@
     letter-spacing: -0.03em;
   }
   .bar {
-    position: static;
+    position: relative;
     padding: 0;
     background: none;
     border: 0;

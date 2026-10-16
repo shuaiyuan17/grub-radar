@@ -1,10 +1,10 @@
-import type { AddApplePlaceInput } from '../contracts/places';
+import type { AddApplePlaceInput, AddSharedPlaceInput } from '../contracts/places';
 import { SpotListSchema } from '../contracts/spots';
 import type { AddNote, AddSpot, MarkBeen, SpotPatch } from '../domain/edits';
 import type { WritableSpotRepository } from '../domain/repository';
 import { parseSpots, SpotSchema, type Spot } from '../domain/spot';
 import { api, ApiRequestError, isUnauthorized } from '../lib/api';
-import type { ApplePlaceAdder } from '../lib/spots';
+import type { ApplePlaceAdder, SharedPlaceAdder } from '../lib/spots';
 
 /**
  * Your spots, from the Worker (/api/spots*). Every answer goes through the
@@ -26,7 +26,9 @@ const parseSpot = (raw: unknown): Spot => SpotSchema.parse(knownFields(raw));
 /** A primed list older than this isn't handed out; list() fetches afresh. */
 const PRIMED_FOR_MS = 30_000;
 
-export class HttpSpotRepository implements WritableSpotRepository, ApplePlaceAdder {
+export class HttpSpotRepository
+  implements WritableSpotRepository, ApplePlaceAdder, SharedPlaceAdder
+{
   readonly #onUnauthorized: () => void;
   #primed: { at: number; list: Promise<Spot[]> } | null = null;
 
@@ -87,6 +89,11 @@ export class HttpSpotRepository implements WritableSpotRepository, ApplePlaceAdd
 
   /** POST /api/spots { applePlaceId, … }: 201 new, 200 if it was already on your list. */
   addApplePlace(input: AddApplePlaceInput): Promise<Spot> {
+    return this.#spot('/api/spots', 'POST', input);
+  }
+
+  /** POST /api/spots { placeId, … }: 201 new, 200 if it was already on your list. */
+  addSharedPlace(input: AddSharedPlaceInput): Promise<Spot> {
     return this.#spot('/api/spots', 'POST', input);
   }
 

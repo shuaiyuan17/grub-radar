@@ -496,6 +496,32 @@ const en = {
     /** Someone who hasn't chosen a name yet, wherever their name would go. */
     unnamed: 'a friend',
   },
+  /** /place/:id for a spot that isn't on your list: someone shared the link. */
+  sharedPlace: {
+    badge: 'shared with you',
+    wall: 'someone shared a spot with you. sign in to see it.',
+    add: 'add to my radar',
+    adding: 'adding…',
+    /** around the place name, so the name keeps its own lang */
+    addAria: ['Add ', ' to your radar as want to try'] as readonly [string, string],
+    loadFailed: 'couldn’t load this spot just now. try again in a bit.',
+    noTakes: 'none of your friends have a take on this one yet. add it and be the first.',
+    mapTitle: 'where it is',
+    mapAria: (time: string, mode: string, from: string) => `about ${time} ${mode} ${from}`,
+    fromHome: 'from home',
+    fromHere: 'from here',
+  },
+  /** The share button on your own spot's page. */
+  shareSpot: {
+    button: 'share',
+    /** around the place name */
+    aria: ['Share ', ' with a friend'] as readonly [string, string],
+    title: 'grub radar',
+    text: (name: string) => `${name}, on grub radar`,
+    shared: 'sent.',
+    copied: 'link copied. friends see your take; anyone else just the place.',
+    copyFailed: 'couldn’t copy the link. copy it from the address bar.',
+  },
   /** Asked once, before the app, when Apple didn't give us a name (or it was hidden). */
   namePrompt: {
     title: 'what should we call you?',
@@ -960,6 +986,28 @@ const zh: Messages = {
       private: '只有你自己能看到这家店。',
     },
     unnamed: '一位好友',
+  },
+  sharedPlace: {
+    badge: '朋友分享的',
+    wall: '有人跟你分享了一家店。登录后就能看到。',
+    add: '加到我的雷达',
+    adding: '添加中…',
+    addAria: ['把 ', ' 加到你的雷达（想去）'],
+    loadFailed: '暂时打不开这家店，等会儿再试试。',
+    noTakes: '你的好友还没评价过这家。加进来，第一个去试试。',
+    mapTitle: '在哪儿',
+    mapAria: (time: string, mode: string, from: string) => `${from}${mode}大约 ${time}`,
+    fromHome: '从家',
+    fromHere: '从这儿',
+  },
+  shareSpot: {
+    button: '分享',
+    aria: ['把 ', ' 分享给好友'],
+    title: 'grub radar',
+    text: (name: string) => `${name}，在 grub radar 上`,
+    shared: '发出去了。',
+    copied: '链接已复制。好友能看到你的评价，其他人只能看到这家店。',
+    copyFailed: '复制失败，请从地址栏复制链接。',
   },
   namePrompt: {
     title: '我们该怎么称呼你？',

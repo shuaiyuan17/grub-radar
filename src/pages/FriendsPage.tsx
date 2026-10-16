@@ -13,34 +13,8 @@ import { useT } from '../i18n/context';
 import { useAuth } from '../lib/auth';
 import { saveErrorMessage } from '../lib/errors';
 import { inviteUrl, nameOf, useFriendsClient, useFriendTakes } from '../lib/friends';
+import { shareOrCopy, type ShareResult } from '../lib/share';
 import styles from './FriendsPage.module.css';
-
-type ShareResult = 'shared' | 'copied' | 'copyFailed' | null;
-
-/** Web Share where there is one (phones), else the clipboard. Never throws. */
-async function shareOrCopy(
-  url: string,
-  title: string,
-  text: string,
-  { share = true }: { share?: boolean } = {},
-): Promise<ShareResult> {
-  if (share && typeof navigator.share === 'function') {
-    try {
-      await navigator.share({ title, text, url });
-      return 'shared';
-    } catch (e) {
-      // they closed the sheet: the link stays on screen, nothing to say
-      if (e instanceof DOMException && e.name === 'AbortError') return null;
-      // NotAllowedError (the tap's activation ran out while we made the link) etc.: copy instead
-    }
-  }
-  try {
-    await navigator.clipboard.writeText(url);
-    return 'copied';
-  } catch {
-    return 'copyFailed';
-  }
-}
 
 /**
  * "invite a friend": makes a single-use link, offers it to the share sheet

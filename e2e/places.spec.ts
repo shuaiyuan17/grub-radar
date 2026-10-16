@@ -167,9 +167,24 @@ test("one account can't see another's spots", async ({ browser }) => {
   await devLogin(b, { as: freshUser('iso-b'), demo: false });
   await b.goto('/');
   await expect(b.getByRole('heading', { name: 'nothing on your radar yet.' })).toBeVisible();
+  // the link works for B (place ids are global), but only as the shared view: the place
+  // itself, none of what A said about it, and nothing on B's list (e2e/shared-place.spec.ts)
+  const { status } = await a.evaluate(async (p) => {
+    const id = p.split('/').pop() ?? '';
+    const res = await fetch(`/api/spots/${id}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', 'x-grub-request': '1' },
+      body: JSON.stringify({ note: 'alice one-liner, private', visibility: 'private' }),
+    });
+    return { status: res.status };
+  }, path);
+  expect(status).toBe(200);
   await b.goto(path);
-  await expect(b.getByRole('heading', { level: 1 })).toHaveText("that spot's not here.");
-  await expect(b.getByText('Alice’s Secret Spot')).toHaveCount(0);
+  await expect(b.getByRole('heading', { level: 1 })).toHaveText('Alice’s Secret Spot');
+  await expect(b.getByText('shared with you')).toBeVisible();
+  await expect(b.getByText('alice one-liner, private')).toHaveCount(0);
+  await b.goto('/');
+  await expect(b.getByRole('heading', { name: 'nothing on your radar yet.' })).toBeVisible();
   await a.close();
   await b.close();
 });

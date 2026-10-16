@@ -50,6 +50,7 @@ How sign-in works: [auth.md](auth.md).
 | `GET /api/spots/:id`            | read    | one of your spots, or 404                                         |
 | `GET /api/spots/nearby`         | read    | `find_nearby`: `?origin=home\|lat,lng&maxMinutes&kinds&limit`     |
 | `POST /api/spots`               | write   | `add_spot`: by hand, `{ applePlaceId }` or `{ query, near? }`     |
+|                                 | session | `{ placeId }`: a shared place onto your list (agents: 403)        |
 | `PATCH /api/spots/:id`          | write   | edit; `null` clears; stale `version` → 409; to been = a visit     |
 | `POST /api/spots/:id/been`      | write   | `mark_been`: `{ verdict?, on?, note? }`, records a visit          |
 | `POST /api/spots/:id/notes`     | write   | `add_note`: appends `— YYYY-MM-DD: …` to your notes               |
@@ -58,7 +59,16 @@ How sign-in works: [auth.md](auth.md).
 | `GET /api/places/search`        | read    | `search_places`: `?q=&near=home\|lat,lng&lang=` → `{ places }`    |
 | `POST /api/places/search`       | read    | the same, `{ q, near?, lang? }` in the body (the app)             |
 | `GET /api/places/:applePlaceId` | read    | one Apple Maps place (`?lang=`)                                   |
+| `GET /api/places/:id/shared`    | session | a shared place: `{ place, friendsTakes }`; 404 if no such place   |
 | `POST /api/spots/import-demo`   | write   | dev only (404 otherwise): the fictional demo spots onto your list |
+
+`GET /api/places/:id/shared` is what a `/place/:id` link shows someone who doesn't have that
+spot: `place` is only the shared `places` row (name, address, where), the same for every
+caller; `friendsTakes` is the caller's friends' takes on it (verdict, one-liner, kind, photos),
+under the same SQL rule as the friends endpoints. A non-friend gets `[]` whether or not anyone
+has it. `POST /api/spots { placeId, kind?, status?, … }` adds it to your list (201; 200 with your
+entry if it's already there; 404 if there's no such place); name, location and address are the
+place's, never the request's.
 
 For an agent, `home` in `origin` / `near` is the centre of home's ~1 km grid cell
 ([agents.md](agents.md#home-stays-private)). Limits: 1000 spots per list (409 `list_full`),

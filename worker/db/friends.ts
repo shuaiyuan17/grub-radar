@@ -20,7 +20,14 @@ import {
   type InvitePreview,
   type PendingInvite,
 } from '../../src/contracts/friends';
-import { DATA_LANGS, KINDS, PRICES, VERDICTS, type DataLang } from '../../src/domain/spot';
+import {
+  DATA_LANGS,
+  KINDS,
+  PRICES,
+  VERDICTS,
+  type DataLang,
+  type Kind,
+} from '../../src/domain/spot';
 import { randomToken, sha256Hex } from '../lib/crypto';
 import { newInviteId } from '../lib/ids';
 import { DAY, iso } from '../lib/time';
@@ -123,20 +130,52 @@ export function friendPlacesStatement(db: D1Database, user: UserRef): D1Prepared
     .bind(...user.binds);
 }
 
+const toTake = (r: TakeRow): FriendTake =>
+  compact({
+    friend: { id: r.id, displayName: r.display_name, avatarEmoji: r.avatar_emoji },
+    status: asStatus(r.status),
+    verdict: asVerdict(r.verdict),
+    note: orNone(r.note),
+    lang: asLang(r.lang),
+  });
+
 export function friendPlacesFromResult(result: D1Result | undefined): Record<string, FriendTake[]> {
   const places: Record<string, FriendTake[]> = {};
-  for (const r of (result?.results ?? []) as TakeRow[]) {
-    const take: FriendTake = compact({
-      friend: { id: r.id, displayName: r.display_name, avatarEmoji: r.avatar_emoji },
-      status: asStatus(r.status),
-      verdict: asVerdict(r.verdict),
-      note: orNone(r.note),
-      lang: asLang(r.lang),
-    });
-    (places[r.place_id] ??= []).push(take);
-  }
+  for (const r of (result?.results ?? []) as TakeRow[]) (places[r.place_id] ??= []).push(toTake(r));
   return places;
 }
+
+/**
+ * Your friends' takes on one place, whether or not it's on your list (a
+ * shared /place/:id link). The same rule as friendPlacesStatement: through
+ * your own friendships, their 'friends'-visible entries only, named columns.
+ * Not friends with anyone who has it: no rows.
+ */
+export function friendTakesOnPlaceStatement(
+  db: D1Database,
+  viewer: UserRef,
+  placeId: string,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `SELECT theirs.place_id, u.id, ${PUBLIC_NAME} AS display_name, u.avatar_emoji,
+         theirs.status, theirs.verdict, theirs.note, theirs.lang, theirs.kind
+       FROM friendships f
+       JOIN user_places theirs ON theirs.user_id = f.friend_id AND theirs.place_id = ?
+       JOIN users u ON u.id = f.friend_id
+       WHERE f.user_id = ${viewer.sql} AND theirs.visibility = 'friends'
+       ORDER BY f.created_at, u.id`,
+    )
+    .bind(placeId, ...viewer.binds);
+}
+
+export const friendTakesOnPlaceFromResult = (
+  result: D1Result | undefined,
+): (FriendTake & { kind: Kind })[] =>
+  ((result?.results ?? []) as (TakeRow & { kind: string })[]).map((r) => ({
+    ...toTake(r),
+    kind: asKind(r.kind),
+  }));
 
 export async function friendPlaces(
   db: D1Database,

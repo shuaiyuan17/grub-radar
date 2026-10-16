@@ -43,6 +43,24 @@ describe('the login wall', () => {
     expect(assign).toHaveBeenCalledWith('/auth/apple/start?returnTo=%2Fradar');
   });
 
+  it('on a shared /place link: says someone shared a spot, shows none of it, comes back to it', async () => {
+    const { user, client, container } = renderAt('/place/p-shared-1', {
+      auth: { status: 'signed-out' },
+    });
+    expect(
+      screen.getByText('someone shared a spot with you. sign in to see it.'),
+    ).toBeInTheDocument();
+    for (const spot of SEED_SPOTS) expect(container.textContent).not.toContain(spot.name);
+    await user.click(screen.getByRole('button', { name: 'Sign in with Apple' }));
+    expect(client.signInUrl).toHaveBeenCalledWith('/place/p-shared-1');
+    expect(assign).toHaveBeenCalledWith('/auth/apple/start?returnTo=%2Fplace%2Fp-shared-1');
+  });
+
+  it('says nothing about a shared spot anywhere else', () => {
+    renderAt('/radar', { auth: { status: 'signed-out' } });
+    expect(screen.queryByText(/shared a spot/)).toBeNull();
+  });
+
   it.each([
     ['cancelled', /sign-in cancelled/],
     ['closed', /invite-only/],

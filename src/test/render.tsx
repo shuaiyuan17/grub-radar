@@ -104,6 +104,7 @@ export function fakeFriendsClient(takes: Record<string, FriendTake[]> = {}) {
     updateProfile: vi.fn<FriendsClient['updateProfile']>((patch) =>
       Promise.resolve({ ...TEST_ME.user, ...patch }),
     ),
+    sharedPlace: vi.fn<FriendsClient['sharedPlace']>(() => Promise.resolve(null)),
   } satisfies FriendsClient;
 }
 

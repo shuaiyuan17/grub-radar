@@ -63,6 +63,8 @@ export function SignInPage({ backdrop }: { backdrop?: ReactNode }) {
   const { pathname } = useLocation();
   const result = params.get('signin');
   const invite = pathname === INVITE_ROUTE;
+  // a /place/:id link someone sent: say so, show nothing of it (returnTo brings them back)
+  const sharedSpot = /^\/place\/[^/]+\/?$/.test(pathname);
 
   const dismiss = () => {
     const next = new URLSearchParams(params);
@@ -91,6 +93,7 @@ export function SignInPage({ backdrop }: { backdrop?: ReactNode }) {
             parts={parseHeadline(t.wallTagline)}
           />
           {invite && <p className={`note ${styles.inviteNote}`}>{t.friends.inviteWall}</p>}
+          {sharedSpot && <p className={`note ${styles.inviteNote}`}>{t.sharedPlace.wall}</p>}
           <div role="status" className={styles.status}>
             {isSigninResult(result) && (
               <div className={`sk ${styles.notice}`}>

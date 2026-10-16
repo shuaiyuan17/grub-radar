@@ -23,6 +23,7 @@ import { mapkit } from './routes/mapkit';
 import { me, mePrefetch } from './routes/me';
 import { isPhotoUpload, photos, photosPrefetch } from './routes/photos';
 import { places, placesSearchPrefetch } from './routes/places';
+import { sharedPlace, sharedPlacePrefetch } from './routes/shared';
 import { rollRoute, spots, spotsPrefetch } from './routes/spots';
 import { VERSION } from './version';
 import { publicOrigin } from './auth/siwa';
@@ -94,6 +95,7 @@ app.use(
     if (c.req.path === '/api/places/search') return placesSearchPrefetch(c.env);
     if (c.req.path === '/api/spots' && c.req.method === 'POST') return placesSearchPrefetch(c.env);
     if (c.req.path.startsWith('/api/photos')) return photosPrefetch(c, c.env);
+    if (c.req.path.startsWith('/api/places/')) return sharedPlacePrefetch(c, c.env);
     if (c.req.method !== 'GET') return null;
     if (c.req.path === '/api/me') return mePrefetch(c.env);
     if (c.req.path === '/api/spots') return spotsPrefetch(c.env);
@@ -105,6 +107,8 @@ app.use(
 app.route('/api/mapkit-token', mapkit);
 app.route('/api/me', agentSettings);
 app.route('/api/me', me);
+// before `places`: a shared place is session-only, not an Apple lookup for agents
+app.route('/api/places', sharedPlace);
 app.route('/api/places', places);
 app.route('/api/spots', spots);
 app.route('/api/roll', rollRoute);

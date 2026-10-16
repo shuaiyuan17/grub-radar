@@ -16,8 +16,13 @@ import {
   type PendingInvite,
 } from '../contracts/friends';
 import { MeUserSchema, type MeUser, type PatchMe } from '../contracts/me';
+import {
+  SharedPlaceResponseSchema,
+  sharedPlacePath,
+  type SharedPlaceResponse,
+} from '../contracts/shared';
 import type { Messages } from '../i18n/messages';
-import { api } from './api';
+import { api, ApiRequestError } from './api';
 
 /**
  * Someone's name for display: theirs, or the placeholder ("a friend") while
@@ -41,6 +46,8 @@ export interface FriendsClient {
   preview(token: string): Promise<InvitePreview>;
   accept(token: string): Promise<AcceptInviteResponse>;
   updateProfile(patch: PatchMe): Promise<MeUser>;
+  /** A place someone shared a link to, with your friends' takes on it; null: no such place. */
+  sharedPlace(id: string): Promise<SharedPlaceResponse | null>;
 }
 
 const json = async (res: Response): Promise<unknown> => res.json();
@@ -73,6 +80,14 @@ export const httpFriendsClient: FriendsClient = {
     ),
   updateProfile: async (patch) =>
     MeUserSchema.parse(await json(await api('/api/me', { method: 'PATCH', body: patch }))),
+  sharedPlace: async (id) => {
+    try {
+      return SharedPlaceResponseSchema.parse(await json(await api(sharedPlacePath(id))));
+    } catch (e) {
+      if (e instanceof ApiRequestError && e.status === 404) return null;
+      throw e;
+    }
+  },
 };
 
 export const FriendsClientContext = createContext<FriendsClient>(httpFriendsClient);

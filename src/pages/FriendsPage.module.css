@@ -194,6 +194,28 @@
 .spotName a {
   color: inherit;
 }
+/* the card's one link, stretched over the whole card (the card is .sk: position: relative) */
+.cardLink {
+  text-decoration: none;
+}
+.cardLink::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: var(--r-card);
+  cursor: pointer;
+}
+.spot:hover .cardLink {
+  text-decoration: underline;
+}
+.cardLink:focus-visible {
+  outline: none;
+}
+.cardLink:focus-visible::after {
+  outline: 3px dashed var(--note-red);
+  outline-offset: 3px;
+}
 .address {
   overflow-wrap: anywhere;
 }

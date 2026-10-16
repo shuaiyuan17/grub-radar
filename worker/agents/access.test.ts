@@ -21,6 +21,8 @@ const ROUTES: [string, string, Kind][] = [
   ['GET', '/api/places/search?q=pho&near=1,2', 'read'],
   ['POST', '/api/places/search', 'read'],
   ['GET', '/api/places/IFAKE', 'read'],
+  // a shared /place/:id link: the person only, agents get nothing about the place
+  ['GET', '/api/places/p-x/shared', 'session'],
   ['POST', '/api/spots', 'write'],
   ['PATCH', '/api/spots/p-x', 'write'],
   ['POST', '/api/spots/p-x/been', 'write'],

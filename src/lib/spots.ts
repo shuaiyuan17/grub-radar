@@ -1,5 +1,5 @@
 import { createContext, use } from 'react';
-import type { AddApplePlaceInput } from '../contracts/places';
+import type { AddApplePlaceInput, AddSharedPlaceInput } from '../contracts/places';
 import type { AddNote, AddSpot, MarkBeen, SpotPatch } from '../domain/edits';
 import type { SpotRepository } from '../domain/repository';
 import type { Spot } from '../domain/spot';
@@ -20,11 +20,25 @@ export interface SpotActions {
    * hands back your entry). null when the source can't reach Apple Maps.
    */
   addApplePlace: ((input: AddApplePlaceInput) => Promise<Spot>) | null;
+  /**
+   * Puts a place someone shared a link to on your list, by its place id (or
+   * hands back your entry if it's already there). null when the source can't.
+   */
+  addSharedPlace: ((input: AddSharedPlaceInput) => Promise<Spot>) | null;
 }
 
 /** A spot source that can add places from Apple Maps (the server; test doubles). */
 export interface ApplePlaceAdder {
   addApplePlace(input: AddApplePlaceInput): Promise<Spot>;
+}
+
+/** A spot source that can add a shared place by its id (the server; test doubles). */
+export interface SharedPlaceAdder {
+  addSharedPlace(input: AddSharedPlaceInput): Promise<Spot>;
+}
+
+export function canAddSharedPlaces<T extends object>(repo: T): repo is T & SharedPlaceAdder {
+  return typeof (repo as Partial<SharedPlaceAdder>).addSharedPlace === 'function';
 }
 
 export function canAddApplePlaces<T extends object>(repo: T): repo is T & ApplePlaceAdder {

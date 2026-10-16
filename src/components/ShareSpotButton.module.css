@@ -1,0 +1,46 @@
+.share {
+  --fill: var(--card);
+  --sx: 2px;
+  --sy: 3px;
+  flex: none;
+  min-width: 56px;
+  min-height: 56px;
+  padding: 0 16px;
+  border-radius: var(--r-btn);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink);
+}
+/* the answer floats above the bar; empty, it takes no room */
+.result {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: 100%;
+  margin: 0 0 6px;
+  padding: 4px 10px;
+  background: var(--paper);
+  border-radius: var(--r-tag);
+  font-size: 20px;
+  line-height: 1.1;
+  color: var(--note-red);
+  pointer-events: none;
+}
+.result:empty {
+  display: none;
+}
+@media (max-width: 380px) {
+  .label {
+    display: none;
+  }
+}
+@media (min-width: 960px) {
+  .result {
+    left: 0;
+    right: 0;
+  }
+}

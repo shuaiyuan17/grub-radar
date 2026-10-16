@@ -299,6 +299,39 @@ describe('a friend who hasn’t chosen a name yet: "a friend", never "you"', () 
     expect(await screen.findByRole('heading', { name: /a friend’s spots/ })).toBeInTheDocument();
   });
 
+  it('every card on their list opens the place, carrying where back goes', async () => {
+    const friends = fakeFriendsClient();
+    friends.friendSpots.mockResolvedValue({
+      friend: { ...nameless, since: '2026-10-15T00:00:00.000Z' },
+      spots: [
+        {
+          id: 'lucky-thread',
+          name: 'Lucky Thread Noodle Bar',
+          location: { lat: 47.6135, lng: -122.3302 },
+          kind: 'food',
+          status: 'been',
+        },
+        {
+          id: 'p-not-mine',
+          name: 'Ondo Dumpling House',
+          location: { lat: 47.62, lng: -122.33 },
+          kind: 'food',
+          status: 'want',
+        },
+      ],
+    });
+    const { user, router } = renderAt('/friends/u_nell', { friends });
+    const notMine = await screen.findByRole('link', { name: 'Ondo Dumpling House' });
+    expect(notMine).toHaveAttribute('href', '/place/p-not-mine');
+    expect(screen.getByRole('link', { name: 'Lucky Thread Noodle Bar' })).toHaveAttribute(
+      'href',
+      '/place/lucky-thread',
+    );
+    await user.click(notMine);
+    expect(router.state.location.pathname).toBe('/place/p-not-mine');
+    expect(router.state.location.state).toEqual({ back: '/friends/u_nell', friend: 'u_nell' });
+  });
+
   it('an invite from them, and accepting it', async () => {
     const friends = fakeFriendsClient();
     friends.preview.mockResolvedValue({ from: nameless, state: 'open' });

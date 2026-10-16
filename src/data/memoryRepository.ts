@@ -9,28 +9,46 @@ import {
   type MarkBeen,
   type SpotPatch,
 } from '../domain/edits';
-import { AddApplePlaceSchema, type AddApplePlaceInput, type ApplePlace } from '../contracts/places';
+import {
+  AddApplePlaceSchema,
+  AddSharedPlaceSchema,
+  type AddApplePlaceInput,
+  type AddSharedPlaceInput,
+  type ApplePlace,
+} from '../contracts/places';
+import type { SharedPlace } from '../contracts/shared';
 import type { WritableSpotRepository } from '../domain/repository';
 import { parseSpots, type Spot } from '../domain/spot';
-import type { ApplePlaceAdder } from '../lib/spots';
+import type { ApplePlaceAdder, SharedPlaceAdder } from '../lib/spots';
 
 /**
  * A writable list in memory, for tests and local experiments. Runs the same
  * domain edit functions as the Worker's D1 repository, so the UI sees the
  * same behaviour. Synchronous `snapshot()`, so no loading flash in tests.
  */
-export class MemorySpotRepository implements WritableSpotRepository, ApplePlaceAdder {
+export class MemorySpotRepository
+  implements WritableSpotRepository, ApplePlaceAdder, SharedPlaceAdder
+{
   #spots: Spot[];
   #seq = 0;
   readonly #today: () => string;
   readonly #apple: readonly ApplePlace[];
+  readonly #places: readonly SharedPlace[];
 
-  /** `applePlaces`: what "Apple Maps" knows, for addApplePlace. */
+  /**
+   * `applePlaces`: what "Apple Maps" knows, for addApplePlace. `places`:
+   * places other people have (the shared `places` table), for addSharedPlace.
+   */
   constructor(
     input: unknown = [],
-    opts: { today?: () => string; applePlaces?: readonly ApplePlace[] } = {},
+    opts: {
+      today?: () => string;
+      applePlaces?: readonly ApplePlace[];
+      places?: readonly SharedPlace[];
+    } = {},
   ) {
     this.#apple = opts.applePlaces ?? [];
+    this.#places = opts.places ?? [];
     // versions like the server's: 1 when stored, +1 on every write
     this.#spots = parseSpots(input).map((s) => ({ ...s, version: s.version ?? 1 }));
     this.#today = opts.today ?? (() => new Date().toISOString().slice(0, 10));
@@ -77,6 +95,26 @@ export class MemorySpotRepository implements WritableSpotRepository, ApplePlaceA
         this.#today(),
         { applePlaceId, ...(place.address ? { address: place.address } : {}) },
       ),
+      version: 1,
+    };
+    this.#spots = [...this.#spots, spot];
+    return Promise.resolve(spot);
+  }
+
+  /** Like the server: by place id, deduped; the existing entry comes back. */
+  addSharedPlace(raw: AddSharedPlaceInput): Promise<Spot> {
+    const { placeId, ...input } = AddSharedPlaceSchema.parse(raw);
+    const mine = this.#spots.find((s) => s.id === placeId);
+    if (mine) return Promise.resolve(mine);
+    const place = this.#places.find((p) => p.id === placeId);
+    if (!place) return Promise.reject(new SpotOpError('not_found', 'no such place'));
+    const spot = {
+      ...spotFromInput(
+        place.id,
+        { ...input, name: place.name, location: place.location, kind: input.kind ?? 'food' },
+        this.#today(),
+      ),
+      ...(place.address ? { address: place.address } : {}),
       version: 1,
     };
     this.#spots = [...this.#spots, spot];

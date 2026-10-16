@@ -26,7 +26,8 @@ cookie it carries:
 
 Without one, the session cookie decides. CSRF follows the resolved principal
 ([auth.md](auth.md#csrf)). Agents reach exactly the spot and place routes (`read` / `write`
-in [api.md](api.md), by scope `spots:read` / `spots:write`); every `session` route answers an
+in [api.md](api.md), by scope `spots:read` / `spots:write`; not a shared place,
+`GET /api/places/:id/shared`, nor adding one by `placeId`); every `session` route answers an
 agent 403 (except photo bytes, `GET /api/photos/:id`, which answers anyone but a signed-in
 person with the same 404 as a missing photo). Test: `worker/agents/access.test.ts` (every
 route × every kind of caller).

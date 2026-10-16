@@ -8,6 +8,7 @@ import type { z } from 'zod/mini';
 import {
   AddApplePlaceSchema,
   AddByQuerySchema,
+  AddSharedPlaceSchema,
   addSpotForm,
   type AddByQueryResponse,
 } from '../../src/contracts/places';
@@ -136,8 +137,11 @@ spots.get('/:id', read, async (c) => {
 });
 
 /**
- * `add_spot`, three ways (see addSpotForm):
+ * `add_spot`, four ways (see addSpotForm):
  *   { name, kind, location, … }   by hand                                    -> Spot
+ *   { placeId, kind?, … }         a place already in grub radar (a shared
+ *                                 /place/:id link); the person only, an
+ *                                 agent gets 403                             -> Spot
  *   { applePlaceId, kind?, … }    a place from Apple Maps (Apple's name,
  *                                 location and address, in English)          -> Spot
  *   { query, near?, kind?, … }    the Apple Maps match for some words, only
@@ -156,6 +160,13 @@ spots.post('/', ...write, async (c) => {
   let req: AddRequest;
   if (form === 'manual') {
     const input = parseBody(c, AddSpotSchema, body.data);
+    if (!input.ok) return input.res;
+    req = { form, input: input.data };
+  } else if (form === 'place') {
+    // only from a shared link, in the person's own browser: agents add by Apple id or words
+    if (isAgent(c))
+      return apiError(c, 403, 'forbidden', 'only the person can add a shared place, not an agent');
+    const input = parseBody(c, AddSharedPlaceSchema, body.data);
     if (!input.ok) return input.res;
     req = { form, input: input.data };
   } else {
