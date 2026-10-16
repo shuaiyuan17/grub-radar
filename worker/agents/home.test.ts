@@ -9,7 +9,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { CreatedTokenSchema } from '../../src/contracts/agents';
 import { NearbyResponseSchema } from '../../src/contracts/spots';
 import { distanceKm, type LatLng } from '../../src/domain/geo';
-import { snapToGrid } from '../services/spots';
+import { coarseDistance, snapToGrid } from '../services/spots';
 import { call, send, userSession } from '../test/helpers';
 import { connectAgent, mcpClient, toolJson } from '../test/agents';
 
@@ -94,6 +94,16 @@ describe('snapToGrid', () => {
       expect(distanceKm(p, c)).toBeLessThan(0.71);
       expect(snapToGrid(c)).toEqual(c);
     }
+  });
+});
+
+describe('coarse distances', () => {
+  it('rounds to the nearest 0.5 and never shows 0', () => {
+    expect(coarseDistance(0.3)).toBe(0.5);
+    expect(coarseDistance(0.19)).toBe(0.5); // 0.3 km in miles: used to come out as 0 next to 0.5 km
+    expect(coarseDistance(0)).toBe(0.5);
+    expect(coarseDistance(1.2)).toBe(1);
+    expect(coarseDistance(1.3)).toBe(1.5);
   });
 });
 

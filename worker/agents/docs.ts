@@ -238,7 +238,7 @@ How to connect (and the rules for doing it): ${origin}/agent-setup.md
 
 ## Privacy
 
-Home's coordinates are never sent to an agent. For an agent, "home" is the centre of the ~1 km grid cell home lies in, and every distance from home is measured from that point: that is the guarantee (home is anywhere in that cell, up to ~700 m from its centre). km and miles from home are also rounded to the nearest 0.5, but that rounding is cosmetic; the grid is what protects home.
+Home's coordinates are never sent to an agent. For an agent, "home" is the centre of the ~1 km grid cell home lies in, and every distance from home is measured from that point: that is the guarantee (home is anywhere in that cell, up to ~700 m from its centre). km and miles from home are also rounded to the nearest 0.5 (never below 0.5), but that rounding is cosmetic; the grid is what protects home.
 
 ## What an agent may change
 

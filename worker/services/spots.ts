@@ -47,8 +47,12 @@ export function snapToGrid(p: LatLng, cellKm = HOME_GRID_KM): LatLng {
   return { lat, lng };
 }
 
-/** km and miles to the nearest 0.5: what an agent sees for a distance from home. */
-const half = (n: number) => Math.round(n * 2) / 2;
+/**
+ * km and miles to the nearest 0.5, never below 0.5: what an agent sees for a distance from home.
+ * Home is only known to within ~700 m, so "0" would claim a precision we don't give (and next to
+ * "0.5 km" it read as a bug: 0.3 km rounds up, the same 0.19 mi rounded down).
+ */
+export const coarseDistance = (n: number) => Math.max(0.5, Math.round(n * 2) / 2);
 
 export type OriginResult =
   | {
@@ -84,7 +88,7 @@ type ResolvedOrigin = Extract<OriginResult, { ok: true }>;
 /** One result as the caller may see it: no location from home; coarse distances for agents. */
 function present(v: SpotView, origin: ResolvedOrigin): NearbySpot {
   const out = toNearbySpot(v, !origin.isHome);
-  return origin.coarse ? { ...out, km: half(out.km), miles: half(out.miles) } : out;
+  return origin.coarse ? { ...out, km: coarseDistance(out.km), miles: coarseDistance(out.miles) } : out;
 }
 
 /** `find_nearby`: closest first, within reach, at most `limit`. */
