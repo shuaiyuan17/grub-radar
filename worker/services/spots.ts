@@ -88,7 +88,9 @@ type ResolvedOrigin = Extract<OriginResult, { ok: true }>;
 /** One result as the caller may see it: no location from home; coarse distances for agents. */
 function present(v: SpotView, origin: ResolvedOrigin): NearbySpot {
   const out = toNearbySpot(v, !origin.isHome);
-  return origin.coarse ? { ...out, km: coarseDistance(out.km), miles: coarseDistance(out.miles) } : out;
+  return origin.coarse
+    ? { ...out, km: coarseDistance(out.km), miles: coarseDistance(out.miles) }
+    : out;
 }
 
 /** `find_nearby`: closest first, within reach, at most `limit`. */
