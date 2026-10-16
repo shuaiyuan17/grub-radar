@@ -77,7 +77,24 @@ describe('friends on cards and the place page', () => {
     await waitFor(async () => {
       expect((await repository.get('lucky-thread'))?.visibility).toBe('private');
     });
-    expect(await screen.findByText('only you see this spot.')).toBeInTheDocument();
+    // honest about links: your take stays yours, the place itself is still shareable
+    expect(
+      await screen.findByText(
+        'your take on it (verdict, notes, photos) stays yours; a link you share still shows the place.',
+      ),
+    ).toBeInTheDocument();
+    // and the share button says so too
+    expect(
+      screen.getByText('just you: a link shows the place, not your take.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Share Lucky Thread/ })).toHaveAccessibleDescription(
+      'just you: a link shows the place, not your take.',
+    );
+    // back to friends: the note goes
+    await user.click(within(group).getByRole('radio', { name: 'friends' }));
+    await waitFor(() => {
+      expect(screen.queryByText(/just you: a link shows the place/)).toBeNull();
+    });
   });
 });
 

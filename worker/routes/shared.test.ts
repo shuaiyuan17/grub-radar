@@ -5,6 +5,8 @@ import { SharedPlaceResponseSchema, sharedPlacePath } from '../../src/contracts/
 import { SpotSchema } from '../../src/domain/spot';
 import { call, d1RoundTrips, send, userSession } from '../test/helpers';
 import { webp } from '../test/images';
+import { sessionScope } from '../auth/session';
+import { sharedPlaceStatements } from '../db/sharedPlace';
 
 /**
  * A shared place (GET /api/places/:id/shared) and "add to my radar" (POST
@@ -179,6 +181,45 @@ describe('GET /api/places/:id/shared', () => {
     expect(await res.text()).not.toContain('Kite');
     // a missing place reads the same signed out
     expect((await call(sharedPlacePath('p-nope'))).status).toBe(401);
+  });
+
+  it('a fake or expired cookie: the same 401 for a place that exists and one that doesn’t', async () => {
+    // an expired session: a real row, past its time
+    const expired = await userSession('u_s_gone', 'gone');
+    await env.DB.prepare(
+      "UPDATE sessions SET expires_at = '2000-01-01T00:00:00.000Z' WHERE user_id = ?",
+    )
+      .bind('u_s_gone')
+      .run();
+    /** Everything a caller sees, with only the per-request durations taken out. */
+    const seen = async (id: string, cookie: string) => {
+      const res = await call(sharedPlacePath(id), { cookie });
+      const headers = [...res.headers.entries()]
+        .map(([k, v]) => `${k}: ${v.replace(/dur=[\d.]+/g, 'dur=*')}`)
+        .sort();
+      return { status: res.status, headers, body: await res.text() };
+    };
+    for (const cookie of ['__Host-grub_session=forged-token-0000', expired]) {
+      const there = await seen(shared, cookie);
+      const missing = await seen('p-nope', cookie);
+      expect(there.status).toBe(401);
+      expect(there).toEqual(missing);
+      expect(there.body).not.toContain('Kite');
+    }
+  });
+
+  it('with a dead session the prefetch reads nothing of the place, existing or not', async () => {
+    const dead = sessionScope('no-such-session', Date.now());
+    const run = async (id: string) => {
+      const [place, takes, photos] = await env.DB.batch(sharedPlaceStatements(env.DB, dead, id));
+      return {
+        rows: [place, takes, photos].map((r) => r?.results.length),
+        read: place?.meta.rows_read,
+      };
+    };
+    const there = await run(shared);
+    expect(there.rows).toEqual([0, 0, 0]);
+    expect(there).toEqual(await run('p-nope'));
   });
 
   it('an agent: 403, nothing about the place', async () => {

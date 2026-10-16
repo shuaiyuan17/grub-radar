@@ -15,7 +15,11 @@ const NOTE_MS = 6000;
  * the place and your take (if you share it with friends); anyone else, the
  * place only; nobody signed out sees anything.
  */
-export function ShareSpotButton({ spot }: { spot: Pick<Spot, 'id' | 'name' | 'lang'> }) {
+export function ShareSpotButton({
+  spot,
+}: {
+  spot: Pick<Spot, 'id' | 'name' | 'lang' | 'visibility'>;
+}) {
   const t = useT();
   const [result, setResult] = useState<ShareResult>(null);
   // the note floats over the page: it goes away on its own
@@ -40,12 +44,18 @@ export function ShareSpotButton({ spot }: { spot: Pick<Spot, 'id' | 'name' | 'la
         className={`sk press ${styles.share}`}
         onClick={() => void share()}
         aria-labelledby="share-label"
+        aria-describedby={spot.visibility === 'private' ? 'share-private' : undefined}
       >
         <SpotLabel id="share-label" parts={t.shareSpot.aria} spot={spot} />
         <Ink />
         <Icon name="share" size={20} strokeWidth={2.4} />
         <span className={styles.label}>{t.shareSpot.button}</span>
       </button>
+      {spot.visibility === 'private' && (
+        <p id="share-private" className={`note ${styles.privateNote}`}>
+          {t.shareSpot.privateNote}
+        </p>
+      )}
       <p role="status" className={`note ${styles.result}`}>
         {result && t.shareSpot[result]}
       </p>

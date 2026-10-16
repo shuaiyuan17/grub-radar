@@ -2,7 +2,8 @@
  * A shared place (GET /api/places/:id/shared): what a /place/:id link shows a
  * signed-in person who doesn't have that spot on their list.
  *
- * Three reads, one batch (they ride along with the session lookup):
+ * Three reads, one batch (they ride along with the session lookup), each one
+ * scoped by the viewer, so a dead session reads nothing:
  *   1. the `places` row: name, where, address. Never `created_by`, never
  *      anything from anyone's `user_places`, so it says nothing about who has
  *      the place, or whether anyone does;
@@ -33,7 +34,17 @@ export function sharedPlaceStatements(
   placeId: string,
 ): D1PreparedStatement[] {
   return [
-    db.prepare('SELECT id, name, lat, lng, address FROM places WHERE id = ?').bind(placeId),
+    // gated on the viewer: this rides along with the session lookup, before anyone knows
+    // whether the cookie is any good. For a dead session `viewer.sql` is NULL, and the
+    // CROSS JOIN (SQLite keeps its order: the viewer first) never reaches `places`, so a
+    // bad cookie learns nothing about whether the place exists, not even from timing.
+    db
+      .prepare(
+        `SELECT p.id, p.name, p.lat, p.lng, p.address
+         FROM (SELECT ${viewer.sql} AS viewer) v CROSS JOIN places p
+         WHERE v.viewer IS NOT NULL AND p.id = ?`,
+      )
+      .bind(...viewer.binds, placeId),
     friendTakesOnPlaceStatement(db, viewer, placeId),
     friendPhotosStatement(db, viewer, placeId),
   ];

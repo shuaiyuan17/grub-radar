@@ -491,7 +491,8 @@ const en = {
     visibilityHint: {
       friends:
         'friends see the place, your verdict, your one-liner and your photos. never your notes.',
-      private: 'only you see this spot.',
+      private:
+        'your take on it (verdict, notes, photos) stays yours; a link you share still shows the place.',
     } satisfies Record<Visibility, string>,
     /** Someone who hasn't chosen a name yet, wherever their name would go. */
     unnamed: 'a friend',
@@ -521,6 +522,8 @@ const en = {
     shared: 'sent.',
     copied: 'link copied. friends see your take; anyone else just the place.',
     copyFailed: 'couldn’t copy the link. copy it from the address bar.',
+    /** Beside "share" when the spot is "just me". */
+    privateNote: 'just you: a link shows the place, not your take.',
   },
   /** Asked once, before the app, when Apple didn't give us a name (or it was hidden). */
   namePrompt: {
@@ -983,7 +986,7 @@ const zh: Messages = {
     visibility: { friends: '好友', private: '只有我' },
     visibilityHint: {
       friends: '好友能看到店、你的评价、那句话和照片，看不到你的笔记。',
-      private: '只有你自己能看到这家店。',
+      private: '你的评价、笔记和照片只有你看得到；你分享的链接仍会显示这家店本身。',
     },
     unnamed: '一位好友',
   },
@@ -1008,6 +1011,7 @@ const zh: Messages = {
     shared: '发出去了。',
     copied: '链接已复制。好友能看到你的评价，其他人只能看到这家店。',
     copyFailed: '复制失败，请从地址栏复制链接。',
+    privateNote: '仅自己可见：链接只显示这家店，不含你的评价。',
   },
   namePrompt: {
     title: '我们该怎么称呼你？',

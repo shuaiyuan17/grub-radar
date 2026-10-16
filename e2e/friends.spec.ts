@@ -163,7 +163,12 @@ test('invite link → sign in → accept → each other’s faces on the cards',
   await ana.getByRole('group', { name: 'who sees this spot' }).getByText('just me').click();
   await expect(ana.getByRole('alert')).toHaveCount(0);
   await expect(justMe).toBeChecked();
-  await expect(ana.getByText('only you see this spot.')).toBeVisible();
+  await expect(
+    ana.getByText(
+      'your take on it (verdict, notes, photos) stays yours; a link you share still shows the place.',
+    ),
+  ).toBeVisible();
+  await expect(ana.getByText('just you: a link shows the place, not your take.')).toBeVisible();
   await shot(ana, '8-place-visibility-private', project);
   await ben.goto('/');
   await expect(

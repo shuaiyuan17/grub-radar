@@ -180,6 +180,16 @@ test('a friend opens a shared link: the place, her take, add to my radar (once)'
   // none of Ana's words came with it
   expect(list.find((s) => s.id === kite)?.note).toBeUndefined();
 
+  // a "just me" spot: the share button says what a link shows
+  expect((await api(ana, 'PATCH', `/api/spots/${kite}`, { visibility: 'private' })).status).toBe(
+    200,
+  );
+  await ana.goto(`/place/${kite}`);
+  await expect(ana.getByText('just you: a link shows the place, not your take.')).toBeVisible();
+  await noHorizontalScroll(ana);
+  await noSeriousA11yIssues(ana);
+  await shot(ana, 'share-8-owner-private', info);
+
   await ana.context().close();
   await ben.context().close();
 });
